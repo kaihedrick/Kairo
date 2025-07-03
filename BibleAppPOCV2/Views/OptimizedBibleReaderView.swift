@@ -98,7 +98,7 @@ struct OptimizedBibleReaderView: View {
             .padding(.vertical, 12)
             .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
-            .onChange(of: page) { newPage in
+            .onChange(of: page) { _, newPage in
                 updateCurrentPageInfo(newPage)
             }
             .onAppear {

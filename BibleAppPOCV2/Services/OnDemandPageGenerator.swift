@@ -228,13 +228,13 @@ class OnDemandPageGenerator: ObservableObject {
             // Check if we've run out of verses in this chapter
             if currentVerseIndex >= chapterContent.verses.count {
                 // Try to move to next chapter
-                guard let nextChapter = await loadNextChapter(after: currentBook, chapter: currentChapter) else {
+                guard let nextKey = await nextChapterKey(after: currentBook, chapter: currentChapter) else {
                     break // No more chapters available
                 }
-                
+
                 // Move to first verse of next chapter
-                currentBook = nextChapter.book
-                currentChapter = nextChapter.chapter
+                currentBook = nextKey.book
+                currentChapter = nextKey.chapter
                 currentVerseIndex = 0
                 isFirstVerseOfChapter = true
                 let newVerseKey = VerseKey(book: currentBook, chapter: currentChapter, verse: 1)
@@ -393,27 +393,21 @@ class OnDemandPageGenerator: ObservableObject {
         return VerseKey(book: prevBook, chapter: lastChapter, verse: lastVerse)
     }
     
-    private func loadNextChapter(after book: String, chapter: Int) async -> ChapterContent? {
-        // First try next chapter in same book
-        if let nextChapter = await OptimizedBibleDataLoader.shared.loadChapterContent(
-            book: book, 
-            chapter: chapter + 1
-        ) {
-            return nextChapter
-        }
-        
-        // If no next chapter, try first chapter of next book
+    private func nextChapterKey(after book: String, chapter: Int) async -> (book: String, chapter: Int)? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
-        
-        if let currentBookIndex = metadata.books.firstIndex(where: { $0.name == book }),
-           currentBookIndex + 1 < metadata.books.count {
-            let nextBook = metadata.books[currentBookIndex + 1]
-            return await OptimizedBibleDataLoader.shared.loadChapterContent(
-                book: nextBook.name, 
-                chapter: 1
-            )
+
+        if let currentBook = metadata.books.first(where: { $0.name == book }) {
+            if chapter < currentBook.chapterCount {
+                return (book: book, chapter: chapter + 1)
+            }
         }
-        
+
+        if let currentIndex = metadata.books.firstIndex(where: { $0.name == book }),
+           currentIndex + 1 < metadata.books.count {
+            let nextBook = metadata.books[currentIndex + 1]
+            return (book: nextBook.name, chapter: 1)
+        }
+
         return nil
     }
     
@@ -429,8 +423,8 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         // Next chapter
-        if let nextChapter = await loadNextChapter(after: verse.book, chapter: verse.chapter) {
-            return VerseKey(book: nextChapter.book, chapter: nextChapter.chapter, verse: 1)
+        if let nextKey = await nextChapterKey(after: verse.book, chapter: verse.chapter) {
+            return VerseKey(book: nextKey.book, chapter: nextKey.chapter, verse: 1)
         }
         
         return nil
