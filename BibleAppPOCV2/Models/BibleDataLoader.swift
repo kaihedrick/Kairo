@@ -8,21 +8,29 @@
 import Foundation
 
 // Legacy loader bridge for migration compatibility
+enum BibleLoadError: Error {
+    case fileNotFound
+    case decodingFailed(Error)
+}
+
 class BibleDataLoader {
-    static func loadBible() -> Bible {
-        // Simple implementation for migration
-        // Read from your existing bible.json or equivalent source
-        guard let url = Bundle.main.url(forResource: "KJV", withExtension: "json") else {
-            return Bible(books: []) // Return empty Bible on failure
+    static func loadBible(named fileName: String = "KJV.json") -> Result<Bible, BibleLoadError> {
+        // Allow loading future translations by passing a different filename
+        let ns = fileName as NSString
+        let name = ns.deletingPathExtension
+        let ext = ns.pathExtension.isEmpty ? "json" : ns.pathExtension
+
+        guard let url = Bundle.main.url(forResource: name, withExtension: ext) else {
+            return .failure(.fileNotFound)
         }
-        
+
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
-            return try decoder.decode(Bible.self, from: data)
+            let bible = try decoder.decode(Bible.self, from: data)
+            return .success(bible)
         } catch {
-            print("Error loading Bible: \(error)")
-            return Bible(books: [])
+            return .failure(.decodingFailed(error))
         }
     }
 }

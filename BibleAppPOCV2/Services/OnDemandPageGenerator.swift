@@ -85,6 +85,7 @@ class JITTextFormatter {
     }
     
     static func measureText(_ text: AttributedString, maxSize: CGSize) -> CGSize {
+        if text.characters.isEmpty { return .zero }
         let cacheKey = "\(text.characters.count):\(maxSize.width):\(maxSize.height)"
         
         if let cached = measurementCache.get(cacheKey) {
@@ -103,6 +104,10 @@ class JITTextFormatter {
         measurementCache.set(cacheKey, size)
         
         return size
+    }
+
+    static func measureText(_ text: String, maxSize: CGSize) -> CGSize {
+        measureText(AttributedString(text), maxSize: maxSize)
     }
     
     static func clearCache() {
@@ -531,6 +536,73 @@ class OnDemandPageGenerator: ObservableObject {
         // Both will load in parallel and can be awaited when needed
         _ = await nextChapter
         _ = await prevChapter
+    }
+
+    // Paginate an entire chapter into discrete pages
+    func paginateChapter(_ chapter: ChapterContent, font: Font = .body, frameSize: CGSize) -> [Page] {
+        var pages: [Page] = []
+        var buffer = AttributedString()
+        var firstKey: VerseKey?
+        var lastKey: VerseKey?
+
+        func commitPage() {
+            if let first = firstKey, let last = lastKey, !buffer.characters.isEmpty {
+                pages.append(Page(attributedText: buffer, firstVerseKey: first, lastVerseKey: last))
+            }
+            buffer = AttributedString()
+            firstKey = nil
+            lastKey = nil
+        }
+
+        for verse in chapter.verses {
+            let key = VerseKey(book: chapter.book, chapter: chapter.chapter, verse: verse.verse)
+            let attributed = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: verse.text)
+
+            if firstKey == nil { firstKey = key }
+            var candidate = buffer + attributed
+            var size = JITTextFormatter.measureText(candidate, maxSize: frameSize)
+
+            if size.height <= frameSize.height {
+                buffer = candidate
+                lastKey = key
+                continue
+            }
+
+            // Overflow: binary search for longest prefix that fits
+            let words = verse.text.split(separator: " ")
+            var low = 0
+            var high = words.count
+            var best = 0
+            while low <= high {
+                let mid = (low + high) / 2
+                let prefixText = words.prefix(mid).joined(separator: " ")
+                let prefixAttr = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: prefixText)
+                let test = buffer + prefixAttr
+                size = JITTextFormatter.measureText(test, maxSize: frameSize)
+                if size.height <= frameSize.height {
+                    best = mid
+                    low = mid + 1
+                } else {
+                    high = mid - 1
+                }
+            }
+
+            let prefix = words.prefix(best).joined(separator: " ")
+            let suffix = words.dropFirst(best).joined(separator: " ")
+            let prefixAttr = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: prefix)
+            buffer += prefixAttr
+            lastKey = key
+            commitPage()
+
+            if !suffix.isEmpty {
+                buffer = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: suffix)
+                firstKey = key
+                lastKey = key
+            }
+        }
+
+        commitPage()
+        return pages
     }
     
     // MARK: - Memory Management
