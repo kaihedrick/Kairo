@@ -76,7 +76,7 @@ struct OptimizedVerseView: View {
             OptimizedBibleReaderView(
                 pageSize: CGSize(
                     width: geometry.size.width - 40,
-                    height: geometry.size.height - 100
+                    height: geometry.size.height - 40
                 ),
                 initialVerse: (bookName, chapterNumber, verse.verse)
             )

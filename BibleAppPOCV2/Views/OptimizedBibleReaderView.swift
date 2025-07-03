@@ -36,16 +36,11 @@ struct OptimizedBibleReaderView: View {
             VStack(spacing: 0) {
                 // Current location indicator with verse range
                 if !currentPageInfo.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text(currentPageInfo)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial)
-                        Spacer()
-                    }
+                    Text(currentPageInfo)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                        .frame(maxWidth: .infinity)
                 }
 
                 
@@ -63,30 +58,6 @@ struct OptimizedBibleReaderView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                // Navigation controls
-                HStack {
-                    Button(action: { 
-                        Task { await pageGenerator.generatePreviousPage() }
-                    }) {
-                        Label("Previous", systemImage: "chevron.left")
-                            .labelStyle(.iconOnly)
-                            .padding()
-                    }
-                    .disabled(pageGenerator.isGenerating)
-                    
-                    Spacer()
-                    
-                    Button(action: { 
-                        Task { await pageGenerator.generateNextPage() }
-                    }) {
-                        Label("Next", systemImage: "chevron.right")
-                            .labelStyle(.iconOnly)
-                            .padding()
-                    }
-                    .disabled(pageGenerator.isGenerating)
-                }
-                .padding(.horizontal)
-                .background(.ultraThinMaterial)
             }
             
             // Performance overlay (development only)
