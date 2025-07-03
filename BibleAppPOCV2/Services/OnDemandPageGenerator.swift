@@ -341,7 +341,7 @@ class OnDemandPageGenerator: ObservableObject {
     private func isLastVerseOfBook(_ verseKey: VerseKey) async -> Bool {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return false }
 
-        guard let bookMeta = metadata.first(where: { $0.name == verseKey.book }) else {
+        guard let bookMeta = metadata.books.first(where: { $0.name == verseKey.book }) else {
             return false
         }
         
@@ -359,26 +359,26 @@ class OnDemandPageGenerator: ObservableObject {
     // Find the first verse of the next book
     private func findFirstVerseOfNextBook(after bookName: String) async -> VerseKey? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
-        
-        guard let currentBookIndex = metadata.firstIndex(where: { $0.name == bookName }),
-              currentBookIndex + 1 < metadata.count else {
+
+        guard let currentBookIndex = metadata.books.firstIndex(where: { $0.name == bookName }),
+              currentBookIndex + 1 < metadata.books.count else {
             return nil
         }
 
-        let nextBook = metadata[currentBookIndex + 1].name
+        let nextBook = metadata.books[currentBookIndex + 1].name
         return VerseKey(book: nextBook, chapter: 1, verse: 1)
     }
     
     // Find the last verse of the previous book
     private func findLastVerseOfPreviousBook(before bookName: String) async -> VerseKey? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
-        
-        guard let currentBookIndex = metadata.firstIndex(where: { $0.name == bookName }),
+
+        guard let currentBookIndex = metadata.books.firstIndex(where: { $0.name == bookName }),
               currentBookIndex > 0 else {
             return nil
         }
 
-        let prevBookMeta = metadata[currentBookIndex - 1]
+        let prevBookMeta = metadata.books[currentBookIndex - 1]
         let prevBook = prevBookMeta.name
         let lastChapter = prevBookMeta.chapterCount
         
@@ -396,15 +396,15 @@ class OnDemandPageGenerator: ObservableObject {
     private func nextChapterKey(after book: String, chapter: Int) async -> (book: String, chapter: Int)? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
 
-        if let currentBook = metadata.first(where: { $0.name == book }) {
+        if let currentBook = metadata.books.first(where: { $0.name == book }) {
             if chapter < currentBook.chapterCount {
                 return (book: book, chapter: chapter + 1)
             }
         }
 
-        if let currentIndex = metadata.firstIndex(where: { $0.name == book }),
-           currentIndex + 1 < metadata.count {
-            let nextBook = metadata[currentIndex + 1]
+        if let currentIndex = metadata.books.firstIndex(where: { $0.name == book }),
+           currentIndex + 1 < metadata.books.count {
+            let nextBook = metadata.books[currentIndex + 1]
             return (book: nextBook.name, chapter: 1)
         }
 
