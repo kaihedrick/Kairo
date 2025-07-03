@@ -81,10 +81,6 @@ class JITTextFormatter {
         attributed.append(verseNumberAttr)
         attributed.append(verseTextAttr)
 
-        var style = AttributedStringParagraphStyle()
-        style.alignment = .leading
-        attributed.paragraphStyle = style
-
         return attributed
     }
     
