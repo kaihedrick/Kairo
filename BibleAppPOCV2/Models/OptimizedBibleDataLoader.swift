@@ -152,7 +152,11 @@ actor OptimizedBibleDataLoader {
     
     private func generateMetadataFromFullBible() async {
         // If no metadata file exists, generate from full Bible (slower fallback)
-        let bible = BibleDataLoader.loadBible()
+        let bibleResult = BibleDataLoader.loadBible()
+        guard case let .success(bible) = bibleResult else {
+            _metadata = BibleMetadata(books: [])
+            return
+        }
         let bookMetadata = bible.books.map { book in
             BookMetadata(name: book.name, chapterCount: book.chapters.count)
         }
@@ -180,8 +184,9 @@ actor OptimizedBibleDataLoader {
         loadingTasks.add(taskKey)
         defer { loadingTasks.remove(taskKey) }
         
-        // Load from full Bible data
-        let bible = BibleDataLoader.loadBible()
+        guard case let .success(bible) = BibleDataLoader.loadBible() else {
+            return nil
+        }
         
         guard let bookData = bible.books.first(where: { $0.name == book }),
               let chapterData = bookData.chapters.first(where: { $0.chapter == chapter }) else {
