@@ -120,6 +120,7 @@ class OnDemandPageGenerator: ObservableObject {
     private let pageSize: CGSize
     private let pageCache = LRUCache<VerseKey, OptimizedPageSlice>(capacity: 10)
     private var currentPosition: VerseKey?
+    private var pendingPartial: (key: VerseKey, text: String)?
     
     init(pageSize: CGSize) {
         self.pageSize = pageSize
@@ -205,15 +206,20 @@ class OnDemandPageGenerator: ObservableObject {
         var currentChapter = startKey.chapter
         var currentVerseIndex = startKey.verse - 1  // 0-based index
         var isFirstVerseOfChapter = true
-        
-        // CHANGE THIS LINE: Rename the variable to avoid conflict with the function name
         var isFirstOfBook = await isFirstVerseOfBook(startKey)
-        
+
+        // If we have leftover text from a previous page starting at the same verse, use it
+        var carryOverText: String?
+        if let pending = pendingPartial, pending.key == startKey {
+            carryOverText = pending.text
+            pendingPartial = nil
+        }
+
         // Loop until page is full
         while true {
             // Load current chapter if needed
             guard let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
-                book: currentBook, 
+                book: currentBook,
                 chapter: currentChapter
             ) else {
                 break
@@ -231,8 +237,6 @@ class OnDemandPageGenerator: ObservableObject {
                 currentChapter = nextChapter.chapter
                 currentVerseIndex = 0
                 isFirstVerseOfChapter = true
-                
-                // CHANGE THIS LINE: Use the renamed variable
                 let newVerseKey = VerseKey(book: currentBook, chapter: currentChapter, verse: 1)
                 if currentBook != startKey.book {
                     isFirstOfBook = await isFirstVerseOfBook(newVerseKey)
@@ -242,18 +246,18 @@ class OnDemandPageGenerator: ObservableObject {
                 continue
             }
             
-            // Process current verse
+            // Process current verse (or remaining text from previous page)
             let verse = chapterContent.verses[currentVerseIndex]
-            
-            // CHANGE THESE LINES: Use renamed variable in condition
-            let shouldShowChapterHeader = isFirstVerseOfChapter && verse.verse == 1
-            let shouldShowBookTitle = isFirstOfBook && isFirstVerseOfChapter && verse.verse == 1
-            
+            var verseText = carryOverText ?? verse.text
+
+            let shouldShowChapterHeader = isFirstVerseOfChapter && verse.verse == 1 && carryOverText == nil
+            let shouldShowBookTitle = isFirstOfBook && isFirstVerseOfChapter && verse.verse == 1 && carryOverText == nil
+
             let formatted = JITTextFormatter.formatVerse(
                 book: currentBook,
                 chapter: currentChapter,
                 verse: verse.verse,
-                text: verse.text,
+                text: verseText,
                 showChapterHeader: shouldShowChapterHeader,
                 showBookTitle: shouldShowBookTitle
             )
@@ -265,11 +269,31 @@ class OnDemandPageGenerator: ObservableObject {
                 height: pageSize.height - 40  // Apply vertical margins
             ))
             
-            if size.height > pageSize.height - 40 && !currentContent.characters.isEmpty {
-                // Page is full, stop here
+            if size.height > pageSize.height - 40 {
+                // If nothing has been added yet or we are carrying over text, split the verse
+                if currentContent.characters.isEmpty || carryOverText != nil {
+                    let (partial, remaining) = splitVerse(
+                        book: currentBook,
+                        chapter: currentChapter,
+                        verse: verse.verse,
+                        text: verseText,
+                        existing: currentContent,
+                        showChapterHeader: shouldShowChapterHeader,
+                        showBookTitle: shouldShowBookTitle
+                    )
+
+                    if !partial.characters.isEmpty {
+                        currentContent += partial
+                        verseKeys.append(VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse))
+                        pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), remaining)
+                    }
+                } else {
+                    // Page is full, stop here
+                    pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verseText)
+                }
                 break
             }
-            
+
             // Add verse to page
             currentContent = candidateContent
             let verseKey = VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse)
@@ -277,11 +301,16 @@ class OnDemandPageGenerator: ObservableObject {
             
             // Reset flags after using them
             isFirstVerseOfChapter = false
-            // CHANGE THIS LINE: Use renamed variable
             if isFirstOfBook { isFirstOfBook = false }
             
-            // Move to next verse
-            currentVerseIndex += 1
+            // Move to next verse if we consumed the full verse
+            if carryOverText == nil {
+                currentVerseIndex += 1
+            } else {
+                // We displayed the remainder of a split verse
+                carryOverText = nil
+                currentVerseIndex += 1
+            }
         }
         
         guard !verseKeys.isEmpty else { return nil }
@@ -423,6 +452,55 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         return nil
+    }
+
+    private func splitVerse(
+        book: String,
+        chapter: Int,
+        verse: Int,
+        text: String,
+        existing: AttributedString,
+        showChapterHeader: Bool,
+        showBookTitle: Bool
+    ) -> (AttributedString, String) {
+        let words = text.split(separator: " ")
+        var fitted: [Substring] = []
+        var remainder = words
+        for (index, word) in words.enumerated() {
+            fitted.append(word)
+            let partial = JITTextFormatter.formatVerse(
+                book: book,
+                chapter: chapter,
+                verse: verse,
+                text: fitted.joined(separator: " "),
+                showChapterHeader: showChapterHeader,
+                showBookTitle: showBookTitle
+            )
+            let candidate = existing + partial
+            let size = JITTextFormatter.measureText(
+                candidate,
+                maxSize: CGSize(width: pageSize.width - 32, height: pageSize.height - 40)
+            )
+            if size.height <= pageSize.height - 40 {
+                remainder = Array(words.dropFirst(index + 1))
+            } else {
+                fitted.removeLast()
+                remainder = Array(words.dropFirst(index))
+                break
+            }
+        }
+
+        let partialAttr = JITTextFormatter.formatVerse(
+            book: book,
+            chapter: chapter,
+            verse: verse,
+            text: fitted.joined(separator: " "),
+            showChapterHeader: showChapterHeader,
+            showBookTitle: showBookTitle
+        )
+
+        let remainingText = remainder.joined(separator: " ")
+        return (partialAttr, remainingText)
     }
     
     private func predictivelyLoadNextPage(from endVerse: VerseKey) async {
