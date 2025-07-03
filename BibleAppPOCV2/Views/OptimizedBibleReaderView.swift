@@ -122,32 +122,29 @@ struct OptimizedBibleReaderView: View {
     }
     
     private func pageView(_ page: OptimizedPageSlice) -> some View {
-        ScrollView {
         Text(page.content)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
-
-        }
-        .onChange(of: page) { newPage in
-            updateCurrentPageInfo(newPage)
-        }
-        .onAppear {
-            updateCurrentPageInfo(page)
-        }
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onChanged { value in
-                    isDragging = true
-                    dragOffset = value.translation
-                }
-                .onEnded { value in
-                    isDragging = false
-                    dragOffset = .zero
-                    handleSwipeGesture(value)
-                }
-        )
+            .onChange(of: page) { newPage in
+                updateCurrentPageInfo(newPage)
+            }
+            .onAppear {
+                updateCurrentPageInfo(page)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        isDragging = true
+                        dragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        dragOffset = .zero
+                        handleSwipeGesture(value)
+                    }
+            )
     }
     
     private func handleSwipeGesture(_ value: DragGesture.Value) {
