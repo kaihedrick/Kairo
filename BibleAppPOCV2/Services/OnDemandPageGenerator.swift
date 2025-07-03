@@ -77,10 +77,14 @@ class JITTextFormatter {
         var verseTextAttr = AttributedString("\(text) ")
         verseTextAttr.font = .body
         verseTextAttr.foregroundColor = .primary
-        
+
         attributed.append(verseNumberAttr)
         attributed.append(verseTextAttr)
-        
+
+        var style = ParagraphStyle()
+        style.alignment = .leading
+        attributed.paragraphStyle = style
+
         return attributed
     }
     
