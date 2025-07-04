@@ -50,7 +50,7 @@ struct OptimizedBibleReaderView: View {
                         ProgressView("Loading page...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let currentPage = pageGenerator.currentPage {
-                        pageView(currentPage)
+                        pageView(currentPage.toOptimizedPageSlice())
                     } else {
                         ProgressView("Preparing content...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -98,8 +98,10 @@ struct OptimizedBibleReaderView: View {
             .padding(.vertical, 12)
             .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
-            .onChange(of: page) { _, newPage in
-                updateCurrentPageInfo(newPage)
+            .onChange(of: pageGenerator.currentPage) { _, newGeneratedPage in
+                if let newPage = newGeneratedPage {
+                    updateCurrentPageInfo(newPage.toOptimizedPageSlice())
+                }
             }
             .onAppear {
                 updateCurrentPageInfo(page)
