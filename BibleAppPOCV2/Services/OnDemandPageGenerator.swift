@@ -8,117 +8,8 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Optimized Page Models
-
-struct VerseKey: Hashable, Codable {
-    let book: String
-    let chapter: Int
-    let verse: Int
-    
-    var description: String {
-        return "\(book) \(chapter):\(verse)"
-    }
-}
-
-struct PageNavigationContext: Equatable {
-    let isFirstVerseOfBook: Bool
-    let isLastVerseOfBook: Bool
-}
-
-struct OptimizedPageSlice: Identifiable, Equatable {
-    let id = UUID()
-    let content: AttributedString
-    let verseKeys: [VerseKey]
-    let startVerse: VerseKey
-    let endVerse: VerseKey
-    let navigationContext: PageNavigationContext
-    
-    static func == (lhs: OptimizedPageSlice, rhs: OptimizedPageSlice) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.startVerse == rhs.startVerse &&
-        lhs.endVerse == rhs.endVerse &&
-        lhs.verseKeys.count == rhs.verseKeys.count
-    }
-}
-
-struct GeneratedPage {
-    let verses: [VerseContent]
-    let startKey: VerseKey
-}
-
-// MARK: - Just-in-Time Text Formatter
-
-class JITTextFormatter {
-    private static let measurementCache = LRUCache<String, CGSize>(capacity: 100)
-    
-    static func formatVerse(book: String, chapter: Int, verse: Int, text: String, showChapterHeader: Bool = false, showBookTitle: Bool = false) -> AttributedString {
-        var attributed = AttributedString()
-        
-        // Add book title only on first page of book
-        if showBookTitle {
-            var bookAttr = AttributedString("\(book)\n\n")
-            bookAttr.font = .system(size: 32, weight: .bold)
-            bookAttr.foregroundColor = .primary
-            attributed.append(bookAttr)
-        }
-        
-        // Add chapter number as inline element for first verse of chapter
-        if showChapterHeader {
-            var chapterAttr = AttributedString("\(chapter) ")
-            chapterAttr.font = .system(size: 28, weight: .bold)
-            chapterAttr.foregroundColor = .primary
-            
-            // Apply background for visual separation
-            chapterAttr.backgroundColor = .clear
-            attributed.append(chapterAttr)
-        }
-        
-        // Add verse number and text with proper styling
-        var verseNumberAttr = AttributedString("\(verse) ")
-        verseNumberAttr.font = .system(size: 12, weight: .semibold)
-        verseNumberAttr.foregroundColor = .secondary
-        
-        // Add verse text without extra line breaks to ensure continuous flow
-        var verseTextAttr = AttributedString("\(text) ")
-        verseTextAttr.font = .body
-        verseTextAttr.foregroundColor = .primary
-
-        attributed.append(verseNumberAttr)
-        attributed.append(verseTextAttr)
-
-        return attributed
-    }
-    
-    static func measureText(_ text: AttributedString, maxSize: CGSize) -> CGSize {
-        if text.characters.isEmpty { return .zero }
-        let cacheKey = "\(text.characters.count):\(maxSize.width):\(maxSize.height)"
-        
-        if let cached = measurementCache.get(cacheKey) {
-            return cached
-        }
-        
-        let nsAttr = NSAttributedString(text)
-        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-        let drawingRect = nsAttr.boundingRect(
-            with: CGSize(width: maxSize.width, height: .greatestFiniteMagnitude),
-            options: drawingOptions,
-            context: nil
-        )
-        
-        let size = CGSize(width: ceil(drawingRect.width), height: ceil(drawingRect.height))
-        measurementCache.set(cacheKey, size)
-        
-        return size
-    }
-
-    static func measureText(_ text: String, maxSize: CGSize) -> CGSize {
-        measureText(AttributedString(text), maxSize: maxSize)
-    }
-    
-    static func clearCache() {
-        measurementCache.clear()
-    }
-}
+// Shared models and text formatter lives in separate files for reuse
+// across views and generators.
 
 // MARK: - On-Demand Page Generator
 
@@ -177,24 +68,26 @@ class OnDemandPageGenerator: ObservableObject {
     
     func generateNextPage() async {
         guard let current = currentPage else { return }
-        
+
         // Find the last verse in the current page
         guard let lastVerse = current.verses.last else { return }
         let lastVerseKey = VerseKey(book: current.startKey.book, chapter: current.startKey.chapter, verse: lastVerse.verse)
-        
+
         // Find next verse
         let nextVerse = await findNextVerse(after: lastVerseKey)
         if let next = nextVerse {
+            print("➡️ Navigating to next page starting at \(next)")
             await generatePage(startingAt: (next.book, next.chapter, next.verse))
         }
     }
-    
+
     func generatePreviousPage() async {
         guard let current = currentPage else { return }
         
         // Find previous verse before the start of current page
         let prevVerse = await findPreviousVerse(before: current.startKey)
         if let prev = prevVerse {
+            print("⬅️ Navigating to previous page starting at \(prev)")
             await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
         }
     }
@@ -354,138 +247,6 @@ class OnDemandPageGenerator: ObservableObject {
         return nil
     }
 
-    private func splitVerse(
-        book: String,
-        chapter: Int,
-        verse: Int,
-        text: String,
-        existing: AttributedString,
-        showChapterHeader: Bool,
-        showBookTitle: Bool
-    ) -> (AttributedString, String) {
-        let words = text.split(separator: " ")
-        guard !words.isEmpty else { return (AttributedString(), "") }
-
-        // Phase 1: quickly find a prefix that is likely to fit by adding words sequentially
-        var low = 1
-        var high = words.count
-        var best = 0
-
-        while low <= high {
-            let mid = (low + high) / 2
-            let prefixText = words.prefix(mid).joined(separator: " ")
-            let partial = JITTextFormatter.formatVerse(
-                book: book,
-                chapter: chapter,
-                verse: verse,
-                text: prefixText,
-                showChapterHeader: showChapterHeader,
-                showBookTitle: showBookTitle
-            )
-            let candidate = existing + partial
-            let size = JITTextFormatter.measureText(
-                candidate,
-                maxSize: CGSize(width: pageSize.width - 32, height: pageSize.height - 40)
-            )
-
-            if size.height <= pageSize.height - 40 {
-                best = mid
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
-        }
-
-        // If no words fit on this page, return empty to indicate overflow
-        if best == 0 {
-            return (AttributedString(), text)
-        }
-
-        let prefix = words.prefix(best).joined(separator: " ")
-        let suffix = words.dropFirst(best).joined(separator: " ")
-        let prefixAttr = JITTextFormatter.formatVerse(
-            book: book,
-            chapter: chapter,
-            verse: verse,
-            text: prefix,
-            showChapterHeader: showChapterHeader,
-            showBookTitle: showBookTitle
-        )
-
-        return (prefixAttr, suffix)
-    }
-    
-    private func predictivelyLoadNextPage(from endVerse: VerseKey) async {
-        guard let nextVerse = await findNextVerse(after: endVerse) else { return }
-        
-        // Generate next page in background if not already cached
-        if pageCache.get(nextVerse) == nil {
-            let _ = await generatePageContent(startingAt: nextVerse)
-        }
-    }
-    
-    private func predictivelyLoadPreviousPage(from startVerse: VerseKey) async {
-        guard let prevVerse = await findPreviousVerse(before: startVerse) else { return }
-        
-        // Generate previous page in background if not already cached
-        if pageCache.get(prevVerse) == nil {
-            let _ = await generatePageContent(startingAt: prevVerse)
-        }
-    }
-    
-    private func predictiveNextChapters(from verseKey: VerseKey) async {
-        let book = verseKey.book
-        let chapter = verseKey.chapter
-        
-        async let nextChapter = OptimizedBibleDataLoader.shared.loadChapterContent(
-            book: book,
-            chapter: chapter + 1
-        )
-        async let prevChapter = OptimizedBibleDataLoader.shared.loadChapterContent(
-            book: book,
-            chapter: chapter - 1
-        )
-        
-        // Both will load in parallel and can be awaited when needed
-        _ = await nextChapter
-        _ = await prevChapter
-    }
-
-    // Paginate an entire chapter into discrete pages
-    func paginateChapter(_ chapter: OptimizedBible.ChapterContent, font: Font = .body, frameSize: CGSize) -> [GeneratedPage] {
-        var pages: [GeneratedPage] = []
-        var currentVerses: [VerseContent] = []
-        var currentHeight: CGFloat = 0
-        var firstKey: VerseKey?
-
-        func commitPage() {
-            if let start = firstKey, !currentVerses.isEmpty {
-                pages.append(GeneratedPage(verses: currentVerses, startKey: start))
-            }
-            currentVerses.removeAll()
-            currentHeight = 0
-            firstKey = nil
-        }
-
-        for verse in chapter.verses {
-            let attributed = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: verse.text)
-            let verseHeight = JITTextFormatter.measureText(attributed, maxSize: frameSize).height
-            if firstKey == nil {
-                firstKey = VerseKey(book: chapter.book, chapter: chapter.chapter, verse: verse.verse)
-            }
-
-            if currentHeight + verseHeight > frameSize.height && !currentVerses.isEmpty {
-                commitPage()
-                firstKey = VerseKey(book: chapter.book, chapter: chapter.chapter, verse: verse.verse)
-            }
-
-            currentVerses.append(verse)
-            currentHeight += verseHeight
-        }
-
-        commitPage()
-        return pages
-    }
     
     // MARK: - Memory Management
     
