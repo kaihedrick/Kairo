@@ -68,7 +68,6 @@ struct OptimizedVerseView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            }
         }
         .navigationTitle("\(bookName) \(chapterNumber)")
         .task {
