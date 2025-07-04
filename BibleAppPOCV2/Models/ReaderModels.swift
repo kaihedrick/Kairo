@@ -40,4 +40,5 @@ struct OptimizedPageSlice: Identifiable, Equatable {
 struct GeneratedPage {
     let verses: [VerseContent]
     let startKey: VerseKey
+    let navigationContext: PageNavigationContext
 }
