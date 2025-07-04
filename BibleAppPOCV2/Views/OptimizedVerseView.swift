@@ -4,9 +4,10 @@ struct OptimizedVerseView: View {
     let bookName: String
     let chapterNumber: Int
     
-    @State private var chapterContent: ChapterContent?
+    @State private var chapterContent: OptimizedBible.ChapterContent?
     @State private var isLoading = true
     @State private var loadError: Error?
+    @State private var pageIndex: Int = 0
     
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
     private let tileSize: CGFloat = 50
@@ -46,22 +47,26 @@ struct OptimizedVerseView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let content = chapterContent {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(content.verses, id: \.id) { verse in
-                            NavigationLink {
-                                destinationView(verse: verse)
-                            } label: {
-                                Text("\(verse.verse)")
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                    .frame(width: tileSize, height: tileSize)
-                                    .glassBackground(cornerRadius: 10)
+                TabView(selection: $pageIndex) {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(content.verses, id: \.verse) { verse in
+                                NavigationLink {
+                                    destinationView(verse: verse)
+                                } label: {
+                                    Text("\(verse.verse)")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                        .frame(width: tileSize, height: tileSize)
+                                        .glassBackground(cornerRadius: 10)
+                                }
                             }
                         }
+                        .padding()
                     }
-                    .padding()
+                    .tag(0)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .navigationTitle("\(bookName) \(chapterNumber)")
@@ -73,17 +78,17 @@ struct OptimizedVerseView: View {
     @ViewBuilder
     private func destinationView(verse: VerseContent) -> some View {
         GeometryReader { geometry in
-            OptimizedBibleReaderView(
+            BibleReaderView(
                 pageSize: CGSize(
-                    width: geometry.size.width - 40,
-                    height: geometry.size.height - 100
+                    width: geometry.size.width,
+                    height: geometry.size.height
                 ),
                 initialVerse: (bookName, chapterNumber, verse.verse)
             )
         }
         .navigationBarTitleDisplayMode(.inline)
     }
-    
+
     private func loadChapterContent() async {
         isLoading = true
         loadError = nil
