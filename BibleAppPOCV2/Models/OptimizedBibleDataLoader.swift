@@ -17,10 +17,8 @@ import SwiftUI
 
 // MARK: - Optimized Data Models
 
-typealias BibleMetadata = OptimizedBible.Metadata
-typealias BookMetadata = OptimizedBible.Book
-typealias ChapterContent = OptimizedBible.Chapter
-typealias VerseContent = OptimizedBible.Verse
+// Note: The core data models (BibleMetadata, BookMetadata, ChapterContent, VerseContent) 
+// are now defined in OptimizedBibleModels.swift to avoid redeclaration errors.
 
 // MARK: - LRU Cache Implementation
 
@@ -125,7 +123,7 @@ actor OptimizedBibleDataLoader {
     static let shared = OptimizedBibleDataLoader()
     
     private var _metadata: BibleMetadata?
-    private let chapterCache = LRUCache<String, ChapterContent>(capacity: 20)
+    private let chapterCache = LRUCache<String, OptimizedBible.ChapterContent>(capacity: 20)
     private let loadingTasks: NSMutableSet = NSMutableSet()
     
     var metadata: BibleMetadata? {
@@ -165,17 +163,21 @@ actor OptimizedBibleDataLoader {
     
     // MARK: - Chapter Content Loading (Cached)
     
-    func loadChapterContent(book: String, chapter: Int) async -> ChapterContent? {
+    func loadChapterContent(book: String, chapter: Int) async -> OptimizedBible.ChapterContent? {
+        print("🔍 Attempting to load: \(book) \(chapter)")
+        
         let cacheKey = "\(book):\(chapter)"
         
         // Check cache first
         if let cached = chapterCache.get(cacheKey) {
+            print("✅ Found in cache: \(book) \(chapter)")
             return cached
         }
         
         // Prevent duplicate loading
         let taskKey = cacheKey
         if loadingTasks.contains(taskKey) {
+            print("⏳ Already loading: \(book) \(chapter)")
             // Wait a bit and try cache again
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
             return chapterCache.get(cacheKey)
@@ -184,25 +186,83 @@ actor OptimizedBibleDataLoader {
         loadingTasks.add(taskKey)
         defer { loadingTasks.remove(taskKey) }
         
-        guard case let .success(bible) = BibleDataLoader.loadBible() else {
+        // Try to load the Bible data directly from JSON
+        guard let url = Bundle.main.url(forResource: "KJV", withExtension: "json") else {
+            print("❌ KJV.json file not found in bundle")
             return nil
         }
         
-        guard let bookData = bible.books.first(where: { $0.name == book }),
-              let chapterData = bookData.chapters.first(where: { $0.chapter == chapter }) else {
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            
+            // Try to decode as the optimized structure first
+            if let optimizedBible = try? decoder.decode(OptimizedBible.self, from: data) {
+                print("📚 Loaded optimized Bible with \(optimizedBible.books.count) books")
+                
+                guard let bookData = optimizedBible.books.first(where: { $0.name == book }) else {
+                    print("❌ Book '\(book)' not found in optimized structure")
+                    print("📚 Available books: \(optimizedBible.books.map { $0.name })")
+                    return nil
+                }
+                
+                // Check if the chapter index is valid (chapters are 0-indexed in array)
+                let chapterIndex = chapter - 1
+                guard chapterIndex >= 0 && chapterIndex < bookData.chapters.count else {
+                    print("❌ Chapter \(chapter) not found in book '\(book)' (has \(bookData.chapters.count) chapters)")
+                    return nil
+                }
+                
+                let chapterVerses = bookData.chapters[chapterIndex]
+                let verses = chapterVerses.map { verse in
+                    VerseContent(verse: verse.verse, text: verse.text)
+                }
+                
+                let content = OptimizedBible.ChapterContent(book: book, chapter: chapter, verses: verses)
+                print("✅ Successfully loaded from optimized structure: \(book) \(chapter) with \(verses.count) verses")
+                
+                // Cache the result
+                chapterCache.set(cacheKey, content)
+                return content
+            }
+            
+            // Fall back to legacy structure
+            guard case let .success(bible) = BibleDataLoader.loadBible() else {
+                print("❌ Failed to load Bible data using legacy loader")
+                return nil
+            }
+            
+            print("📚 Available books: \(bible.books.map { $0.name })")
+            
+            guard let bookData = bible.books.first(where: { $0.name == book }) else {
+                print("❌ Book '\(book)' not found in available books")
+                return nil
+            }
+            
+            print("📖 Book '\(book)' found with \(bookData.chapters.count) chapters")
+            
+            guard let chapterData = bookData.chapters.first(where: { $0.chapter == chapter }) else {
+                print("❌ Chapter \(chapter) not found in book '\(book)'")
+                return nil
+            }
+            
+            let verses = chapterData.verses.map { verse in
+                VerseContent(verse: verse.verse, text: verse.text)
+            }
+            
+            let content = OptimizedBible.ChapterContent(book: book, chapter: chapter, verses: verses)
+            
+            print("✅ Successfully loaded from legacy structure: \(book) \(chapter) with \(verses.count) verses")
+            
+            // Cache the result
+            chapterCache.set(cacheKey, content)
+            
+            return content
+            
+        } catch {
+            print("❌ Error loading Bible data: \(error)")
             return nil
         }
-        
-        let verses = chapterData.verses.map { verse in
-            VerseContent(verse: verse.verse, text: verse.text)
-        }
-        
-        let content = ChapterContent(book: book, chapter: chapter, verses: verses)
-        
-        // Cache the result
-        chapterCache.set(cacheKey, content)
-        
-        return content
     }
     
     // MARK: - Memory Management

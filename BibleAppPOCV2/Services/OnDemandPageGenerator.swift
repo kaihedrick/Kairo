@@ -121,6 +121,7 @@ class JITTextFormatter {
 class OnDemandPageGenerator: ObservableObject {
     @Published var currentPage: OptimizedPageSlice?
     @Published var isGenerating = false
+    @Published var lastError: String?
     
     private let pageSize: CGSize
     private let pageCache = LRUCache<VerseKey, OptimizedPageSlice>(capacity: 10)
@@ -134,6 +135,9 @@ class OnDemandPageGenerator: ObservableObject {
     // MARK: - Page Generation
     
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
+        // Clear previous error
+        lastError = nil
+        
         let startKey = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         
         // Check cache first
@@ -147,6 +151,16 @@ class OnDemandPageGenerator: ObservableObject {
         defer { isGenerating = false }
         
         let page = await generatePageContent(startingAt: startKey)
+        
+        if page == nil {
+            // Set error when page generation fails
+            if verse.chapter <= 0 || verse.verse <= 0 {
+                lastError = "Invalid chapter or verse number: \(verse.book) \(verse.chapter):\(verse.verse)"
+            } else {
+                lastError = "Could not generate page for \(verse.book) \(verse.chapter):\(verse.verse). The verse may not exist."
+            }
+        }
+        
         currentPage = page
         currentPosition = startKey
         
@@ -251,18 +265,18 @@ class OnDemandPageGenerator: ObservableObject {
                 continue
             }
             
-            // Process current verse (or remaining text from previous page)
+            // Process current verse
             let verse = chapterContent.verses[currentVerseIndex]
-            var verseText = carryOverText ?? verse.text
-
-            let shouldShowChapterHeader = isFirstVerseOfChapter && verse.verse == 1 && carryOverText == nil
-            let shouldShowBookTitle = isFirstOfBook && isFirstVerseOfChapter && verse.verse == 1 && carryOverText == nil
-
+            
+            // Calculate display flags separately
+            let shouldShowChapterHeader = isFirstVerseOfChapter && verse.verse == 1
+            let shouldShowBookTitle = (isFirstOfBook || currentBook != startKey.book) && isFirstVerseOfChapter && verse.verse == 1
+            
             let formatted = JITTextFormatter.formatVerse(
                 book: currentBook,
                 chapter: currentChapter,
                 verse: verse.verse,
-                text: verseText,
+                text: verse.text,
                 showChapterHeader: shouldShowChapterHeader,
                 showBookTitle: shouldShowBookTitle
             )
@@ -281,7 +295,7 @@ class OnDemandPageGenerator: ObservableObject {
                         book: currentBook,
                         chapter: currentChapter,
                         verse: verse.verse,
-                        text: verseText,
+                        text: verse.text,
                         existing: currentContent,
                         showChapterHeader: shouldShowChapterHeader,
                         showBookTitle: shouldShowBookTitle
@@ -293,11 +307,11 @@ class OnDemandPageGenerator: ObservableObject {
                         pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), remaining)
                     } else {
                         // Nothing from this verse fits on the current page
-                        pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verseText)
+                        pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verse.text)
                     }
                 } else {
                     // Page is full, stop here
-                    pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verseText)
+                    pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verse.text)
                 }
                 break
             }
@@ -554,7 +568,7 @@ class OnDemandPageGenerator: ObservableObject {
     }
 
     // Paginate an entire chapter into discrete pages
-    func paginateChapter(_ chapter: ChapterContent, font: Font = .body, frameSize: CGSize) -> [Page] {
+    func paginateChapter(_ chapter: OptimizedBible.ChapterContent, font: Font = .body, frameSize: CGSize) -> [Page] {
         var pages: [Page] = []
         var buffer = AttributedString()
         var firstKey: VerseKey?

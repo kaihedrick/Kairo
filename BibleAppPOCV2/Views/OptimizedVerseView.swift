@@ -4,7 +4,7 @@ struct OptimizedVerseView: View {
     let bookName: String
     let chapterNumber: Int
     
-    @State private var chapterContent: ChapterContent?
+    @State private var chapterContent: OptimizedBible.ChapterContent?
     @State private var isLoading = true
     @State private var loadError: Error?
     @State private var pageIndex: Int = 0
@@ -50,7 +50,7 @@ struct OptimizedVerseView: View {
                 TabView(selection: $pageIndex) {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(content.verses, id: \.id) { verse in
+                            ForEach(content.verses, id: \.verse) { verse in
                                 NavigationLink {
                                     destinationView(verse: verse)
                                 } label: {
@@ -78,17 +78,17 @@ struct OptimizedVerseView: View {
     @ViewBuilder
     private func destinationView(verse: VerseContent) -> some View {
         GeometryReader { geometry in
-            OptimizedBibleReaderView(
+            BibleReaderView(
                 pageSize: CGSize(
-                    width: geometry.size.width - 40,
-                    height: geometry.size.height - 40
+                    width: geometry.size.width,
+                    height: geometry.size.height
                 ),
                 initialVerse: (bookName, chapterNumber, verse.verse)
             )
         }
         .navigationBarTitleDisplayMode(.inline)
     }
-    
+
     private func loadChapterContent() async {
         isLoading = true
         loadError = nil
