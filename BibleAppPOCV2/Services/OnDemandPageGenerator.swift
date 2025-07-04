@@ -41,6 +41,12 @@ struct OptimizedPageSlice: Identifiable, Equatable {
     }
 }
 
+struct Page {
+    let attributedText: AttributedString
+    let firstVerseKey: VerseKey
+    let lastVerseKey: VerseKey
+}
+
 // MARK: - Just-in-Time Text Formatter
 
 class JITTextFormatter {
@@ -135,6 +141,9 @@ class OnDemandPageGenerator: ObservableObject {
     // MARK: - Page Generation
     
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
+        // Ensure metadata is loaded first
+        await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
+        
         // Clear previous error
         lastError = nil
         
@@ -144,13 +153,16 @@ class OnDemandPageGenerator: ObservableObject {
         if let cachedPage = pageCache.get(startKey) {
             currentPage = cachedPage
             currentPosition = startKey
+            isGenerating = false
             return
         }
         
         isGenerating = true
-        defer { isGenerating = false }
         
         let page = await generatePageContent(startingAt: startKey)
+        
+        // Always set isGenerating = false before updating UI
+        isGenerating = false
         
         if page == nil {
             // Set error when page generation fails
@@ -159,6 +171,8 @@ class OnDemandPageGenerator: ObservableObject {
             } else {
                 lastError = "Could not generate page for \(verse.book) \(verse.chapter):\(verse.verse). The verse may not exist."
             }
+            currentPage = nil
+            return
         }
         
         currentPage = page
@@ -357,11 +371,17 @@ class OnDemandPageGenerator: ObservableObject {
     
     // Helper methods for book boundaries
     private func isFirstVerseOfBook(_ verseKey: VerseKey) async -> Bool {
+        await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
         return verseKey.chapter == 1 && verseKey.verse == 1
     }
     
     private func isLastVerseOfBook(_ verseKey: VerseKey) async -> Bool {
-        guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return false }
+        await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
+        guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { 
+            // Fallback: assume not last verse if metadata unavailable
+            print("⚠️ Warning: Metadata not available for boundary check")
+            return false
+        }
 
         guard let bookMeta = metadata.books.first(where: { $0.name == verseKey.book }) else {
             return false
