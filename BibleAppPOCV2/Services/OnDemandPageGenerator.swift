@@ -122,10 +122,11 @@ class JITTextFormatter {
 
 // MARK: - On-Demand Page Generator
 
-actor OnDemandPageGenerator {
-    @Published @MainActor private(set) var currentPage: GeneratedPage?
-    @Published var isGenerating = false
-    @Published var lastError: String?
+@MainActor
+class OnDemandPageGenerator: ObservableObject {
+    @Published private(set) var currentPage: GeneratedPage?
+    @Published private(set) var isGenerating = false
+    @Published private(set) var lastError: String?
     
     private let pageSize: CGSize
     private let estimatedLineHeight: CGFloat = 20.0
@@ -138,12 +139,14 @@ actor OnDemandPageGenerator {
     
     // MARK: - Page Generation
     
-    @MainActor
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let startKey = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         print("🔄 generatePage start for \(startKey)")
 
+        // Ensure metadata is loaded first (this is async work)
         await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
+        
+        // Update UI state on main actor
         lastError = nil
         isGenerating = true
         defer {
@@ -151,12 +154,14 @@ actor OnDemandPageGenerator {
             isGenerating = false
         }
 
+        // Check cache first
         if let cached = pageCache.get(startKey) {
             print("📄 Returning cached page for \(startKey)")
             currentPage = cached
             return
         }
         
+        // Generate page content (this is async work that can be done off main actor)
         guard let page = await generatePageContent(startingAt: startKey) else {
             print("⚠️ generatePageContent returned nil for \(startKey)")
             lastError = "Could not generate page for \(startKey.book) \(startKey.chapter):\(startKey.verse)"
@@ -164,6 +169,7 @@ actor OnDemandPageGenerator {
             return
         }
         
+        // Update UI state on main actor
         print("✅ Generated new page for \(startKey) with \(page.verses.count) verses")
         currentPage = page
         pageCache.set(startKey, page)
@@ -195,7 +201,7 @@ actor OnDemandPageGenerator {
     
     // MARK: - Private Methods
     
-    private func generatePageContent(startingAt startKey: VerseKey) async -> GeneratedPage? {
+    nonisolated private func generatePageContent(startingAt startKey: VerseKey) async -> GeneratedPage? {
         print("🔍 generatePageContent start for \(startKey)")
         let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
             book: startKey.book,
@@ -208,7 +214,7 @@ actor OnDemandPageGenerator {
         }
         
         var pageVerses: [VerseContent] = []
-        let maxCount = Int(pageSize.height / estimatedLineHeight)
+        let maxCount = await Int(pageSize.height / estimatedLineHeight)
         var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
         
         while currentVerseIndex < chapterContent.verses.count && pageVerses.count < maxCount {
@@ -524,3 +530,50 @@ actor OnDemandPageGenerator {
         }
     }
 }
+
+// MARK: - GeneratedPage Extensions
+
+extension GeneratedPage {
+    /// Convert GeneratedPage to OptimizedPageSlice for SwiftUI compatibility
+    func toOptimizedPageSlice() -> OptimizedPageSlice {
+        // Create AttributedString from verses
+        var content = AttributedString()
+        var verseKeys: [VerseKey] = []
+        
+        for verse in verses {
+            let verseKey = VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)
+            verseKeys.append(verseKey)
+            
+            // Format the verse content
+            let formatted = JITTextFormatter.formatVerse(
+                book: startKey.book,
+                chapter: startKey.chapter,
+                verse: verse.verse,
+                text: verse.text,
+                showChapterHeader: verse.verse == 1,
+                showBookTitle: startKey.chapter == 1 && verse.verse == 1
+            )
+            content += formatted
+        }
+        
+        // Calculate start and end verses
+        let startVerse = verseKeys.first ?? startKey
+        let endVerse = verseKeys.last ?? startKey
+        
+        // Create navigation context
+        let navigationContext = PageNavigationContext(
+            isFirstVerseOfBook: startVerse.chapter == 1 && startVerse.verse == 1,
+            isLastVerseOfBook: false // This would need proper calculation
+        )
+        
+        return OptimizedPageSlice(
+            content: content,
+            verseKeys: verseKeys,
+            startVerse: startVerse,
+            endVerse: endVerse,
+            navigationContext: navigationContext
+        )
+    }
+}
+
+// MARK: - Just-in-Time Text Formatter
