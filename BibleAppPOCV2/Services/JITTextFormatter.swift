@@ -3,6 +3,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Formats verses for on-demand pagination and caches measurements.
 class JITTextFormatter {
