@@ -22,6 +22,7 @@ class OnDemandPageGenerator: ObservableObject {
     private let pageSize: CGSize
     private let pageCache = LRUCache<VerseKey, GeneratedPage>(capacity: 10)
     private var pendingRemainder: (key: VerseKey, text: AttributedString)?
+    private var pageHistory: [VerseKey] = []
 
     /// Padding applied to the text container in `BibleReaderView.pageView`
     /// which reduces the actual area available for verse text.
@@ -36,7 +37,7 @@ class OnDemandPageGenerator: ObservableObject {
     
     // MARK: - Page Generation
     
-    func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
+    func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int), storeInHistory: Bool = true) async {
         let startKey = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         print("🔄 generatePage start for \(startKey)")
 
@@ -49,6 +50,12 @@ class OnDemandPageGenerator: ObservableObject {
         defer {
             print("🔄 generatePage end for \(startKey) — currentPage set? \((currentPage != nil))")
             isGenerating = false
+        }
+
+        if storeInHistory {
+            if pageHistory.last != startKey {
+                pageHistory.append(startKey)
+            }
         }
 
         // Use cache only when no partial text is pending
@@ -78,6 +85,11 @@ class OnDemandPageGenerator: ObservableObject {
         if initialRemainder == nil && result.remainder == nil {
             pageCache.set(startKey, page)
         }
+
+        Task { [weak self, page, result = pendingRemainder] in
+            guard let self else { return }
+            await self.prefetchNextPage(from: page, remainder: result)
+        }
     }
     
     func generateNextPage() async {
@@ -100,14 +112,12 @@ class OnDemandPageGenerator: ObservableObject {
     }
 
     func generatePreviousPage() async {
-        guard let current = currentPage else { return }
-        
-        // Find previous verse before the start of current page
-        let prevVerse = await findPreviousVerse(before: current.startKey)
-        if let prev = prevVerse {
-            print("⬅️ Navigating to previous page starting at \(prev)")
-            await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
-        }
+        guard pageHistory.count >= 2 else { return }
+        // Remove current page key
+        pageHistory.removeLast()
+        guard let prev = pageHistory.last else { return }
+        print("⬅️ Navigating to previous page starting at \(prev)")
+        await generatePage(startingAt: (prev.book, prev.chapter, prev.verse), storeInHistory: false)
     }
     
     // MARK: - Private Methods
@@ -322,6 +332,30 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         return nil
+    }
+
+    private func prefetchNextPage(from page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?) async {
+        let startKey: VerseKey?
+        let tail: AttributedString?
+        if let remainder = remainder {
+            startKey = remainder.key
+            tail = remainder.text
+        } else if let lastKey = page.segments.last?.verseKey {
+            startKey = await findNextVerse(after: lastKey)
+            tail = nil
+        } else {
+            startKey = nil
+            tail = nil
+        }
+
+        guard let key = startKey else { return }
+        if pageCache.get(key) != nil { return }
+
+        if let result = await generatePageContent(startingAt: key, initialRemainder: tail) {
+            if result.remainder == nil {
+                pageCache.set(key, result.page)
+            }
+        }
     }
 
     
