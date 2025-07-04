@@ -132,6 +132,12 @@ actor OptimizedBibleDataLoader {
     
     private init() {}
     
+    func ensureMetadataLoaded() async {
+        if _metadata == nil {
+            try? await loadBibleMetadata()
+        }
+    }
+    
     // MARK: - Metadata Loading (Fast)
     
     func loadBibleMetadata() async throws {
