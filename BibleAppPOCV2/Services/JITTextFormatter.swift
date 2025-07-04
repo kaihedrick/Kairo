@@ -75,4 +75,39 @@ class JITTextFormatter {
     static func clearCache() {
         measurementCache.clear()
     }
+
+    /// Split an attributed string into the portion that fits within the given size
+    /// and the remaining text.
+    static func split(
+        attributed: AttributedString,
+        maxSize: CGSize
+    ) -> (fitting: AttributedString, remainder: AttributedString) {
+        if attributed.characters.isEmpty { return (.init(), .init()) }
+
+        let nsAttr = NSMutableAttributedString(attributed)
+        let storage = NSTextStorage(attributedString: nsAttr)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: maxSize)
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+
+        // Force layout calculation
+        layout.glyphRange(for: container)
+        let glyphRange = layout.glyphRange(forBoundingRect: CGRect(origin: .zero, size: maxSize), in: container)
+        let charRange = layout.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+
+        let fitting = nsAttr.attributedSubstring(from: charRange)
+
+        let remainderLocation = charRange.location + charRange.length
+        let remainderLength = nsAttr.length - remainderLocation
+        let remainder: NSAttributedString
+        if remainderLength > 0 {
+            remainder = nsAttr.attributedSubstring(from: NSRange(location: remainderLocation, length: remainderLength))
+        } else {
+            remainder = NSAttributedString()
+        }
+
+        return (AttributedString(fitting), AttributedString(remainder))
+    }
 }
