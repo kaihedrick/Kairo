@@ -13,6 +13,12 @@ import SwiftUI
 
 // MARK: - On-Demand Page Generator
 
+/// Specific reasons page generation can fail.
+enum PageGenerationError: Error {
+    case noChapterContent(VerseKey)
+    case noSegments(VerseKey)
+}
+
 @MainActor
 class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentPage: GeneratedPage?
@@ -20,8 +26,16 @@ class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var lastError: String?
     
     private let pageSize: CGSize
-    private let estimatedLineHeight: CGFloat = 20.0
     private let pageCache = LRUCache<VerseKey, GeneratedPage>(capacity: 10)
+    private var pendingRemainder: (key: VerseKey, text: AttributedString)?
+    private var pageHistory: [VerseKey] = []
+
+    /// Padding applied to the text container in `BibleReaderView.pageView`
+    /// which reduces the actual area available for verse text.
+    /// These values should stay in sync with the view layout to ensure
+    /// pagination calculations closely match on-screen rendering.
+    private let verticalPadding: CGFloat = 24   // top + bottom in pageView
+    private let horizontalPadding: CGFloat = 32 // left + right in pageView
     
     init(pageSize: CGSize) {
         self.pageSize = pageSize
@@ -29,7 +43,7 @@ class OnDemandPageGenerator: ObservableObject {
     
     // MARK: - Page Generation
     
-    func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
+    func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int), storeInHistory: Bool = true) async {
         let startKey = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         print("🔄 generatePage start for \(startKey)")
 
@@ -44,36 +58,67 @@ class OnDemandPageGenerator: ObservableObject {
             isGenerating = false
         }
 
-        // Check cache first
-        if let cached = pageCache.get(startKey) {
+        if storeInHistory {
+            if pageHistory.last != startKey {
+                pageHistory.append(startKey)
+            }
+        }
+
+        // Use cache only when no partial text is pending
+        if pendingRemainder == nil, let cached = pageCache.get(startKey) {
             print("📄 Returning cached page for \(startKey)")
             currentPage = cached
             return
         }
-        
+
+        // Determine if we have leftover text for this verse
+        let initialRemainder = (pendingRemainder?.key == startKey) ? pendingRemainder?.text : nil
+        pendingRemainder = nil
+
         // Generate page content (this is async work that can be done off main actor)
-        guard let page = await generatePageContent(startingAt: startKey) else {
-            print("⚠️ generatePageContent returned nil for \(startKey)")
-            lastError = "Could not generate page for \(startKey.book) \(startKey.chapter):\(startKey.verse)"
+        let generationResult = await generatePageContent(startingAt: startKey, initialRemainder: initialRemainder)
+        switch generationResult {
+        case .failure(let error):
+            print("⚠️ generatePageContent failed for \(startKey) with \(error)")
+            switch error {
+            case .noChapterContent:
+                lastError = "Missing chapter data for \(startKey.book) \(startKey.chapter)"
+            case .noSegments:
+                lastError = "No text could be rendered for \(startKey.book) \(startKey.chapter):\(startKey.verse)"
+            }
             currentPage = nil
             return
+        case .success(let result):
+            let page = result.page
+            pendingRemainder = result.remainder
+
+            // Update UI state on main actor
+            print("✅ Generated new page for \(startKey) with \(page.segments.count) segments")
+            currentPage = page
+            if initialRemainder == nil && result.remainder == nil {
+                pageCache.set(startKey, page)
+            }
+
+            Task { [weak self, page, result = pendingRemainder] in
+                guard let self else { return }
+                await self.prefetchNextPage(from: page, remainder: result)
+            }
         }
-        
-        // Update UI state on main actor
-        print("✅ Generated new page for \(startKey) with \(page.verses.count) verses")
-        currentPage = page
-        pageCache.set(startKey, page)
     }
     
     func generateNextPage() async {
+        if let pending = pendingRemainder {
+            await generatePage(startingAt: (pending.key.book, pending.key.chapter, pending.key.verse))
+            return
+        }
+
         guard let current = currentPage else { return }
 
-        // Find the last verse in the current page
-        guard let lastVerse = current.verses.last else { return }
-        let lastVerseKey = VerseKey(book: current.startKey.book, chapter: current.startKey.chapter, verse: lastVerse.verse)
+        // Find the last verse displayed on the current page
+        guard let lastKey = current.segments.last?.verseKey else { return }
 
         // Find next verse
-        let nextVerse = await findNextVerse(after: lastVerseKey)
+        let nextVerse = await findNextVerse(after: lastKey)
         if let next = nextVerse {
             print("➡️ Navigating to next page starting at \(next)")
             await generatePage(startingAt: (next.book, next.chapter, next.verse))
@@ -81,19 +126,20 @@ class OnDemandPageGenerator: ObservableObject {
     }
 
     func generatePreviousPage() async {
-        guard let current = currentPage else { return }
-        
-        // Find previous verse before the start of current page
-        let prevVerse = await findPreviousVerse(before: current.startKey)
-        if let prev = prevVerse {
-            print("⬅️ Navigating to previous page starting at \(prev)")
-            await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
-        }
+        guard pageHistory.count >= 2 else { return }
+        // Remove current page key
+        pageHistory.removeLast()
+        guard let prev = pageHistory.last else { return }
+        print("⬅️ Navigating to previous page starting at \(prev)")
+        await generatePage(startingAt: (prev.book, prev.chapter, prev.verse), storeInHistory: false)
     }
     
     // MARK: - Private Methods
     
-    nonisolated private func generatePageContent(startingAt startKey: VerseKey) async -> GeneratedPage? {
+    nonisolated private func generatePageContent(
+        startingAt startKey: VerseKey,
+        initialRemainder: AttributedString? = nil
+    ) async -> Result<(page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?), PageGenerationError> {
         print("🔍 generatePageContent start for \(startKey)")
         let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
             book: startKey.book,
@@ -102,39 +148,95 @@ class OnDemandPageGenerator: ObservableObject {
         
         guard let chapterContent = chapterContent else {
             print("⚠️ No chapter content found for \(startKey)")
-            return nil
+            return .failure(.noChapterContent(startKey))
         }
         
-        var pageVerses: [VerseContent] = []
-        // If the view reports an initial height of zero, still render at least
-        // one verse so the page is not empty. This helps when GeometryReader
-        // sizes are not available on first appearance.
-        let maxCount = max(Int(pageSize.height / estimatedLineHeight), 1)
+        let availableHeight = max(pageSize.height - verticalPadding, 0)
+        let availableWidth = max(pageSize.width - horizontalPadding, 0)
+
+        var segments: [PageSegment] = []
+        var currentHeight: CGFloat = 0
+        var remainder: (key: VerseKey, text: AttributedString)?
+
         var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
-        
-        while currentVerseIndex < chapterContent.verses.count && pageVerses.count < maxCount {
+
+        if var remaining = initialRemainder, !remaining.characters.isEmpty {
+            let size = JITTextFormatter.measureText(remaining, maxSize: CGSize(width: availableWidth, height: .greatestFiniteMagnitude))
+            if size.height > availableHeight {
+                let (fit, tail) = JITTextFormatter.split(attributed: remaining, maxSize: CGSize(width: availableWidth, height: availableHeight))
+                segments.append(PageSegment(attributed: fit, verseKey: startKey))
+                remainder = (startKey, tail)
+                let nav = PageNavigationContext(
+                    isFirstVerseOfBook: await isFirstVerseOfBook(startKey),
+                    isLastVerseOfBook: await isLastVerseOfBook(startKey)
+                )
+                let page = GeneratedPage(segments: segments, startKey: startKey, navigationContext: nav)
+                return .success((page: page, remainder: remainder))
+            } else {
+                segments.append(PageSegment(attributed: remaining, verseKey: startKey))
+                currentHeight += size.height
+                currentVerseIndex += 1
+            }
+        }
+
+        while currentVerseIndex < chapterContent.verses.count {
             let verse = chapterContent.verses[currentVerseIndex]
-            print("📝 Adding verse \(startKey.book) \(startKey.chapter):\(verse.verse) at index \(currentVerseIndex)")
-            pageVerses.append(verse)
-            currentVerseIndex += 1
-        }
-        
-        guard !pageVerses.isEmpty else {
-            print("⚠️ No verses collected for \(startKey)")
-            return nil
+
+            let formatted = JITTextFormatter.formatVerse(
+                book: startKey.book,
+                chapter: startKey.chapter,
+                verse: verse.verse,
+                text: verse.text,
+                showChapterHeader: verse.verse == 1 && segments.isEmpty,
+                showBookTitle: startKey.chapter == 1 && verse.verse == 1 && segments.isEmpty
+            )
+            let verseSize = JITTextFormatter.measureText(
+                formatted,
+                maxSize: CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
+            )
+            if segments.isEmpty {
+                print("first-verse H=\(verseSize.height)  budget=\(availableHeight)")
+            }
+
+            if currentHeight + verseSize.height <= availableHeight {
+                segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
+                currentHeight += verseSize.height
+                currentVerseIndex += 1
+            } else {
+                let headSpace = availableHeight - currentHeight
+                if headSpace > 0 {
+                    let (fit, tail) = JITTextFormatter.split(attributed: formatted, maxSize: CGSize(width: availableWidth, height: headSpace))
+                    if !fit.characters.isEmpty {
+                        segments.append(PageSegment(attributed: fit, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
+                    }
+                    remainder = (VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse), tail)
+                } else if segments.isEmpty {
+                    // *** safety: never return 0 slices ***
+                    segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
+                    currentVerseIndex += 1
+                }
+                break
+            }
         }
 
-        print("📄 generatePageContent returning \(pageVerses.count) verses for \(startKey)")
+        if segments.isEmpty {
+            print("⚠️ No segments collected for \(startKey) - using preview text")
+            let preview = chapterContent.verses.first(where: { $0.verse == startKey.verse })?.text.prefix(120) ?? ""
+            let fallback = AttributedString(String(preview) + "…")
+            segments.append(PageSegment(attributed: fallback, verseKey: startKey))
+        }
 
-        // Determine navigation context
-        let firstKey = pageVerses.first.map { VerseKey(book: startKey.book, chapter: startKey.chapter, verse: $0.verse) } ?? startKey
-        let lastKey = pageVerses.last.map { VerseKey(book: startKey.book, chapter: startKey.chapter, verse: $0.verse) } ?? startKey
+        print("📄 generatePageContent returning \(segments.count) segments for \(startKey)")
+
+        let firstKey = segments.first?.verseKey ?? startKey
+        let lastKey = segments.last?.verseKey ?? startKey
         let navContext = PageNavigationContext(
             isFirstVerseOfBook: await isFirstVerseOfBook(firstKey),
             isLastVerseOfBook: await isLastVerseOfBook(lastKey)
         )
 
-        return GeneratedPage(verses: pageVerses, startKey: startKey, navigationContext: navContext)
+        let page = GeneratedPage(segments: segments, startKey: startKey, navigationContext: navContext)
+        return .success((page: page, remainder: remainder))
     }
     
     // Helper methods for book boundaries
@@ -258,6 +360,31 @@ class OnDemandPageGenerator: ObservableObject {
         return nil
     }
 
+    private func prefetchNextPage(from page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?) async {
+        let startKey: VerseKey?
+        let tail: AttributedString?
+        if let remainder = remainder {
+            startKey = remainder.key
+            tail = remainder.text
+        } else if let lastKey = page.segments.last?.verseKey {
+            startKey = await findNextVerse(after: lastKey)
+            tail = nil
+        } else {
+            startKey = nil
+            tail = nil
+        }
+
+        guard let key = startKey else { return }
+        if pageCache.get(key) != nil { return }
+
+        let result = await generatePageContent(startingAt: key, initialRemainder: tail)
+        if case .success(let pageResult) = result {
+            if pageResult.remainder == nil {
+                pageCache.set(key, pageResult.page)
+            }
+        }
+    }
+
     
     // MARK: - Memory Management
     
@@ -277,30 +404,19 @@ class OnDemandPageGenerator: ObservableObject {
 extension GeneratedPage {
     /// Convert GeneratedPage to OptimizedPageSlice for SwiftUI compatibility
     func toOptimizedPageSlice() -> OptimizedPageSlice {
-        // Create AttributedString from verses
         var content = AttributedString()
         var verseKeys: [VerseKey] = []
-        
-        for verse in verses {
-            let verseKey = VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)
-            verseKeys.append(verseKey)
-            
-            // Format the verse content
-            let formatted = JITTextFormatter.formatVerse(
-                book: startKey.book,
-                chapter: startKey.chapter,
-                verse: verse.verse,
-                text: verse.text,
-                showChapterHeader: verse.verse == 1,
-                showBookTitle: startKey.chapter == 1 && verse.verse == 1
-            )
-            content += formatted
+
+        for segment in segments {
+            if verseKeys.last != segment.verseKey {
+                verseKeys.append(segment.verseKey)
+            }
+            content += segment.attributed
         }
-        
-        // Calculate start and end verses
+
         let startVerse = verseKeys.first ?? startKey
         let endVerse = verseKeys.last ?? startKey
-        
+
         return OptimizedPageSlice(
             content: content,
             verseKeys: verseKeys,

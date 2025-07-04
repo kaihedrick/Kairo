@@ -78,13 +78,17 @@ struct OptimizedVerseView: View {
     @ViewBuilder
     private func destinationView(verse: VerseContent) -> some View {
         GeometryReader { geometry in
-            BibleReaderView(
-                pageSize: CGSize(
-                    width: geometry.size.width,
-                    height: geometry.size.height
-                ),
-                initialVerse: (bookName, chapterNumber, verse.verse)
-            )
+            if geometry.size.height > 50 {
+                BibleReaderView(
+                    pageSize: CGSize(
+                        width: geometry.size.width,
+                        height: geometry.size.height
+                    ),
+                    initialVerse: (bookName, chapterNumber, verse.verse)
+                )
+            } else {
+                Color.clear
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -19,6 +19,13 @@ struct PageNavigationContext: Equatable {
     let isLastVerseOfBook: Bool
 }
 
+/// Represents a chunk of text from a specific verse.
+struct PageSegment: Identifiable {
+    let id = UUID()
+    let attributed: AttributedString
+    let verseKey: VerseKey
+}
+
 /// A lightweight representation of visible Bible text.
 struct OptimizedPageSlice: Identifiable, Equatable {
     let id = UUID()
@@ -38,7 +45,7 @@ struct OptimizedPageSlice: Identifiable, Equatable {
 
 /// Raw generated data before being converted for display.
 struct GeneratedPage {
-    let verses: [VerseContent]
+    let segments: [PageSegment]
     let startKey: VerseKey
     let navigationContext: PageNavigationContext
 }
