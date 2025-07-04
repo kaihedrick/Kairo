@@ -21,6 +21,13 @@ class OnDemandPageGenerator: ObservableObject {
     
     private let pageSize: CGSize
     private let pageCache = LRUCache<VerseKey, GeneratedPage>(capacity: 10)
+
+    /// Padding applied to the text container in `BibleReaderView.pageView`
+    /// which reduces the actual area available for verse text.
+    /// These values should stay in sync with the view layout to ensure
+    /// pagination calculations closely match on-screen rendering.
+    private let verticalPadding: CGFloat = 24   // top + bottom in pageView
+    private let horizontalPadding: CGFloat = 32 // left + right in pageView
     
     init(pageSize: CGSize) {
         self.pageSize = pageSize
@@ -104,6 +111,9 @@ class OnDemandPageGenerator: ObservableObject {
             return nil
         }
         
+        let availableHeight = max(pageSize.height - verticalPadding, 0)
+        let availableWidth = max(pageSize.width - horizontalPadding, 0)
+
         var pageVerses: [VerseContent] = []
         var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
         var currentHeight: CGFloat = 0
@@ -124,12 +134,12 @@ class OnDemandPageGenerator: ObservableObject {
             )
             let verseSize = JITTextFormatter.measureText(
                 formatted,
-                maxSize: CGSize(width: pageSize.width, height: .greatestFiniteMagnitude)
+                maxSize: CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
             )
 
             // If adding this verse would exceed the page height and we already
             // have at least one verse collected, stop here.
-            if currentHeight + verseSize.height > pageSize.height && !pageVerses.isEmpty {
+            if currentHeight + verseSize.height > availableHeight && !pageVerses.isEmpty {
                 break
             }
 
@@ -140,7 +150,7 @@ class OnDemandPageGenerator: ObservableObject {
 
             // If this single verse exceeds the page height, we still append it
             // but break to avoid an infinite loop.
-            if currentHeight >= pageSize.height {
+            if currentHeight >= availableHeight {
                 break
             }
         }
