@@ -22,7 +22,6 @@ class OnDemandPageGenerator: ObservableObject {
     private let pageSize: CGSize
     private let estimatedLineHeight: CGFloat = 20.0
     private let pageCache = LRUCache<VerseKey, GeneratedPage>(capacity: 10)
-    private var currentPosition: VerseKey?
     
     init(pageSize: CGSize) {
         self.pageSize = pageSize
@@ -123,7 +122,16 @@ class OnDemandPageGenerator: ObservableObject {
         }
 
         print("📄 generatePageContent returning \(pageVerses.count) verses for \(startKey)")
-        return GeneratedPage(verses: pageVerses, startKey: startKey)
+
+        // Determine navigation context
+        let firstKey = pageVerses.first.map { VerseKey(book: startKey.book, chapter: startKey.chapter, verse: $0.verse) } ?? startKey
+        let lastKey = pageVerses.last.map { VerseKey(book: startKey.book, chapter: startKey.chapter, verse: $0.verse) } ?? startKey
+        let navContext = PageNavigationContext(
+            isFirstVerseOfBook: await isFirstVerseOfBook(firstKey),
+            isLastVerseOfBook: await isLastVerseOfBook(lastKey)
+        )
+
+        return GeneratedPage(verses: pageVerses, startKey: startKey, navigationContext: navContext)
     }
     
     // Helper methods for book boundaries
@@ -289,12 +297,6 @@ extension GeneratedPage {
         // Calculate start and end verses
         let startVerse = verseKeys.first ?? startKey
         let endVerse = verseKeys.last ?? startKey
-        
-        // Create navigation context
-        let navigationContext = PageNavigationContext(
-            isFirstVerseOfBook: startVerse.chapter == 1 && startVerse.verse == 1,
-            isLastVerseOfBook: false // This would need proper calculation
-        )
         
         return OptimizedPageSlice(
             content: content,
