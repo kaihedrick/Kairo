@@ -98,8 +98,8 @@ struct OptimizedBibleReaderView: View {
             .padding(.vertical, 12)
             .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
-            .onChange(of: pageGenerator.currentPage) { _, newGeneratedPage in
-                if let newPage = newGeneratedPage {
+            .onChange(of: pageGenerator.currentPage?.startKey) { _, _ in
+                if let newPage = pageGenerator.currentPage {
                     updateCurrentPageInfo(newPage.toOptimizedPageSlice())
                 }
             }
@@ -166,8 +166,9 @@ struct OptimizedBibleReaderView: View {
                 .font(.headline)
             
             if let page = pageGenerator.currentPage {
-                Text("Current page: \(page.startVerse.description) to \(page.endVerse.description)")
-                Text("Verses in view: \(page.verseKeys.count)")
+                let slice = page.toOptimizedPageSlice()
+                Text("Current page: \(slice.startVerse.description) to \(slice.endVerse.description)")
+                Text("Verses in view: \(slice.verseKeys.count)")
             }
             
             Text("Memory: \(cacheStats.hitRate * 100, specifier: "%.1f")% hit rate")
