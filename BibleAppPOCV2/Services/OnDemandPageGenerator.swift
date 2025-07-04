@@ -106,7 +106,10 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         var pageVerses: [VerseContent] = []
-        let maxCount = Int(pageSize.height / estimatedLineHeight)
+        // If the view reports an initial height of zero, still render at least
+        // one verse so the page is not empty. This helps when GeometryReader
+        // sizes are not available on first appearance.
+        let maxCount = max(Int(pageSize.height / estimatedLineHeight), 1)
         var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
         
         while currentVerseIndex < chapterContent.verses.count && pageVerses.count < maxCount {
