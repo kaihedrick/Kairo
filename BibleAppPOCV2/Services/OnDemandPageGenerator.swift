@@ -544,5 +544,3 @@ extension GeneratedPage {
         )
     }
 }
-
-// MARK: - Just-in-Time Text Formatter

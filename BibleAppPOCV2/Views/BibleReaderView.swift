@@ -76,7 +76,7 @@ struct BibleReaderView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)  // Left alignment to prevent cutoff
                 .multilineTextAlignment(.leading)
         }
-        .onChange(of: pageGenerator.currentPage?.startKey) { _, _ in
+        .onChange(of: pageGenerator.currentPage?.startKey) { _ in
             if let newPage = pageGenerator.currentPage {
                 updateCurrentPageInfo(newPage.toOptimizedPageSlice())
             }
