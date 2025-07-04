@@ -20,7 +20,6 @@ class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var lastError: String?
     
     private let pageSize: CGSize
-    private let estimatedLineHeight: CGFloat = 20.0
     private let pageCache = LRUCache<VerseKey, GeneratedPage>(capacity: 10)
     
     init(pageSize: CGSize) {
@@ -106,17 +105,44 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         var pageVerses: [VerseContent] = []
-        // If the view reports an initial height of zero, still render at least
-        // one verse so the page is not empty. This helps when GeometryReader
-        // sizes are not available on first appearance.
-        let maxCount = max(Int(pageSize.height / estimatedLineHeight), 1)
         var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
-        
-        while currentVerseIndex < chapterContent.verses.count && pageVerses.count < maxCount {
+        var currentHeight: CGFloat = 0
+
+        // Measure verses one by one until we run out of space. If the first
+        // verse alone exceeds the page height we still include it to avoid an
+        // empty page.
+        while currentVerseIndex < chapterContent.verses.count {
             let verse = chapterContent.verses[currentVerseIndex]
+
+            let formatted = JITTextFormatter.formatVerse(
+                book: startKey.book,
+                chapter: startKey.chapter,
+                verse: verse.verse,
+                text: verse.text,
+                showChapterHeader: verse.verse == 1,
+                showBookTitle: startKey.chapter == 1 && verse.verse == 1
+            )
+            let verseSize = JITTextFormatter.measureText(
+                formatted,
+                maxSize: CGSize(width: pageSize.width, height: .greatestFiniteMagnitude)
+            )
+
+            // If adding this verse would exceed the page height and we already
+            // have at least one verse collected, stop here.
+            if currentHeight + verseSize.height > pageSize.height && !pageVerses.isEmpty {
+                break
+            }
+
             print("📝 Adding verse \(startKey.book) \(startKey.chapter):\(verse.verse) at index \(currentVerseIndex)")
             pageVerses.append(verse)
+            currentHeight += verseSize.height
             currentVerseIndex += 1
+
+            // If this single verse exceeds the page height, we still append it
+            // but break to avoid an infinite loop.
+            if currentHeight >= pageSize.height {
+                break
+            }
         }
         
         guard !pageVerses.isEmpty else {
