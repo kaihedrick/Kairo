@@ -214,7 +214,7 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         var pageVerses: [VerseContent] = []
-        let maxCount = await Int(pageSize.height / estimatedLineHeight)
+        let maxCount = Int(pageSize.height / estimatedLineHeight)
         var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
         
         while currentVerseIndex < chapterContent.verses.count && pageVerses.count < maxCount {
@@ -454,64 +454,33 @@ class OnDemandPageGenerator: ObservableObject {
     // Paginate an entire chapter into discrete pages
     func paginateChapter(_ chapter: OptimizedBible.ChapterContent, font: Font = .body, frameSize: CGSize) -> [GeneratedPage] {
         var pages: [GeneratedPage] = []
-        var buffer = AttributedString()
+        var currentVerses: [VerseContent] = []
+        var currentHeight: CGFloat = 0
         var firstKey: VerseKey?
-        var lastKey: VerseKey?
 
         func commitPage() {
-            if let first = firstKey, let last = lastKey, !buffer.characters.isEmpty {
-                pages.append(GeneratedPage(attributedText: buffer, firstVerseKey: first, lastVerseKey: last))
+            if let start = firstKey, !currentVerses.isEmpty {
+                pages.append(GeneratedPage(verses: currentVerses, startKey: start))
             }
-            buffer = AttributedString()
+            currentVerses.removeAll()
+            currentHeight = 0
             firstKey = nil
-            lastKey = nil
         }
 
         for verse in chapter.verses {
-            let key = VerseKey(book: chapter.book, chapter: chapter.chapter, verse: verse.verse)
             let attributed = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: verse.text)
-
-            if firstKey == nil { firstKey = key }
-            let candidate = buffer + attributed
-            var size = JITTextFormatter.measureText(candidate, maxSize: frameSize)
-
-            if size.height <= frameSize.height {
-                buffer = candidate
-                lastKey = key
-                continue
+            let verseHeight = JITTextFormatter.measureText(attributed, maxSize: frameSize).height
+            if firstKey == nil {
+                firstKey = VerseKey(book: chapter.book, chapter: chapter.chapter, verse: verse.verse)
             }
 
-            // Overflow: binary search for longest prefix that fits
-            let words = verse.text.split(separator: " ")
-            var low = 0
-            var high = words.count
-            var best = 0
-            while low <= high {
-                let mid = (low + high) / 2
-                let prefixText = words.prefix(mid).joined(separator: " ")
-                let prefixAttr = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: prefixText)
-                let test = buffer + prefixAttr
-                size = JITTextFormatter.measureText(test, maxSize: frameSize)
-                if size.height <= frameSize.height {
-                    best = mid
-                    low = mid + 1
-                } else {
-                    high = mid - 1
-                }
+            if currentHeight + verseHeight > frameSize.height && !currentVerses.isEmpty {
+                commitPage()
+                firstKey = VerseKey(book: chapter.book, chapter: chapter.chapter, verse: verse.verse)
             }
 
-            let prefix = words.prefix(best).joined(separator: " ")
-            let suffix = words.dropFirst(best).joined(separator: " ")
-            let prefixAttr = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: prefix)
-            buffer += prefixAttr
-            lastKey = key
-            commitPage()
-
-            if !suffix.isEmpty {
-                buffer = JITTextFormatter.formatVerse(book: chapter.book, chapter: chapter.chapter, verse: verse.verse, text: suffix)
-                firstKey = key
-                lastKey = key
-            }
+            currentVerses.append(verse)
+            currentHeight += verseHeight
         }
 
         commitPage()
