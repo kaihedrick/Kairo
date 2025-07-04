@@ -67,15 +67,13 @@ struct BibleReaderView: View {
 
     // MARK: - Helper Views
 
-    /// Displays a page of Bible text
+    /// Displays a page of Bible text without scrolling
     private func pageView(_ page: OptimizedPageSlice) -> some View {
-        ScrollView {
-            Text(page.content)
-                .padding(.horizontal, 16)  // Proper margins
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)  // Left alignment to prevent cutoff
-                .multilineTextAlignment(.leading)
-        }
+        Text(page.content)
+            .padding(.horizontal, 16)  // Proper margins
+            .padding(.vertical, 12)
+            .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
+            .multilineTextAlignment(.leading)
         .onChange(of: pageGenerator.currentPage?.startKey) { _, _ in
             if let newPage = pageGenerator.currentPage {
                 updateCurrentPageInfo(newPage.toOptimizedPageSlice())
