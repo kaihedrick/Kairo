@@ -13,6 +13,12 @@ import SwiftUI
 
 // MARK: - On-Demand Page Generator
 
+/// Specific reasons page generation can fail.
+enum PageGenerationError: Error {
+    case noChapterContent(VerseKey)
+    case noSegments(VerseKey)
+}
+
 @MainActor
 class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentPage: GeneratedPage?
@@ -70,25 +76,33 @@ class OnDemandPageGenerator: ObservableObject {
         pendingRemainder = nil
 
         // Generate page content (this is async work that can be done off main actor)
-        guard let result = await generatePageContent(startingAt: startKey, initialRemainder: initialRemainder) else {
-            print("⚠️ generatePageContent returned nil for \(startKey)")
-            lastError = "Could not generate page for \(startKey.book) \(startKey.chapter):\(startKey.verse)"
+        let generationResult = await generatePageContent(startingAt: startKey, initialRemainder: initialRemainder)
+        switch generationResult {
+        case .failure(let error):
+            print("⚠️ generatePageContent failed for \(startKey) with \(error)")
+            switch error {
+            case .noChapterContent:
+                lastError = "Missing chapter data for \(startKey.book) \(startKey.chapter)"
+            case .noSegments:
+                lastError = "No text could be rendered for \(startKey.book) \(startKey.chapter):\(startKey.verse)"
+            }
             currentPage = nil
             return
-        }
-        let page = result.page
-        pendingRemainder = result.remainder
+        case .success(let result):
+            let page = result.page
+            pendingRemainder = result.remainder
 
-        // Update UI state on main actor
-        print("✅ Generated new page for \(startKey) with \(page.segments.count) segments")
-        currentPage = page
-        if initialRemainder == nil && result.remainder == nil {
-            pageCache.set(startKey, page)
-        }
+            // Update UI state on main actor
+            print("✅ Generated new page for \(startKey) with \(page.segments.count) segments")
+            currentPage = page
+            if initialRemainder == nil && result.remainder == nil {
+                pageCache.set(startKey, page)
+            }
 
-        Task { [weak self, page, result = pendingRemainder] in
-            guard let self else { return }
-            await self.prefetchNextPage(from: page, remainder: result)
+            Task { [weak self, page, result = pendingRemainder] in
+                guard let self else { return }
+                await self.prefetchNextPage(from: page, remainder: result)
+            }
         }
     }
     
@@ -125,7 +139,7 @@ class OnDemandPageGenerator: ObservableObject {
     nonisolated private func generatePageContent(
         startingAt startKey: VerseKey,
         initialRemainder: AttributedString? = nil
-    ) async -> (page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?)? {
+    ) async -> Result<(page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?), PageGenerationError> {
         print("🔍 generatePageContent start for \(startKey)")
         let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
             book: startKey.book,
@@ -134,7 +148,7 @@ class OnDemandPageGenerator: ObservableObject {
         
         guard let chapterContent = chapterContent else {
             print("⚠️ No chapter content found for \(startKey)")
-            return nil
+            return .failure(.noChapterContent(startKey))
         }
         
         let availableHeight = max(pageSize.height - verticalPadding, 0)
@@ -197,7 +211,7 @@ class OnDemandPageGenerator: ObservableObject {
 
         guard !segments.isEmpty else {
             print("⚠️ No segments collected for \(startKey)")
-            return nil
+            return .failure(.noSegments(startKey))
         }
 
         print("📄 generatePageContent returning \(segments.count) segments for \(startKey)")
@@ -210,7 +224,7 @@ class OnDemandPageGenerator: ObservableObject {
         )
 
         let page = GeneratedPage(segments: segments, startKey: startKey, navigationContext: navContext)
-        return (page, remainder)
+        return .success((page: page, remainder: remainder))
     }
     
     // Helper methods for book boundaries
@@ -351,9 +365,10 @@ class OnDemandPageGenerator: ObservableObject {
         guard let key = startKey else { return }
         if pageCache.get(key) != nil { return }
 
-        if let result = await generatePageContent(startingAt: key, initialRemainder: tail) {
-            if result.remainder == nil {
-                pageCache.set(key, result.page)
+        let result = await generatePageContent(startingAt: key, initialRemainder: tail)
+        if case .success(let pageResult) = result {
+            if pageResult.remainder == nil {
+                pageCache.set(key, pageResult.page)
             }
         }
     }
