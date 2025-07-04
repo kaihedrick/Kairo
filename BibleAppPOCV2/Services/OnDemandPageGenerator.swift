@@ -170,7 +170,8 @@ class OnDemandPageGenerator: ObservableObject {
                     isFirstVerseOfBook: await isFirstVerseOfBook(startKey),
                     isLastVerseOfBook: await isLastVerseOfBook(startKey)
                 )
-                return (GeneratedPage(segments: segments, startKey: startKey, navigationContext: nav), remainder)
+                let page = GeneratedPage(segments: segments, startKey: startKey, navigationContext: nav)
+                return .success((page: page, remainder: remainder))
             } else {
                 segments.append(PageSegment(attributed: remaining, verseKey: startKey))
                 currentHeight += size.height
