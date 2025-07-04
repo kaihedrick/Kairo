@@ -194,6 +194,9 @@ class OnDemandPageGenerator: ObservableObject {
                 formatted,
                 maxSize: CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
             )
+            if segments.isEmpty {
+                print("first-verse H=\(verseSize.height)  budget=\(availableHeight)")
+            }
 
             if currentHeight + verseSize.height <= availableHeight {
                 segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
@@ -203,16 +206,24 @@ class OnDemandPageGenerator: ObservableObject {
                 let headSpace = availableHeight - currentHeight
                 if headSpace > 0 {
                     let (fit, tail) = JITTextFormatter.split(attributed: formatted, maxSize: CGSize(width: availableWidth, height: headSpace))
-                    segments.append(PageSegment(attributed: fit, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
+                    if !fit.characters.isEmpty {
+                        segments.append(PageSegment(attributed: fit, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
+                    }
                     remainder = (VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse), tail)
+                } else if segments.isEmpty {
+                    // *** safety: never return 0 slices ***
+                    segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)))
+                    currentVerseIndex += 1
                 }
                 break
             }
         }
 
-        guard !segments.isEmpty else {
-            print("⚠️ No segments collected for \(startKey)")
-            return .failure(.noSegments(startKey))
+        if segments.isEmpty {
+            print("⚠️ No segments collected for \(startKey) - using preview text")
+            let preview = chapterContent.verses.first(where: { $0.verse == startKey.verse })?.text.prefix(120) ?? ""
+            let fallback = AttributedString(String(preview) + "…")
+            segments.append(PageSegment(attributed: fallback, verseKey: startKey))
         }
 
         print("📄 generatePageContent returning \(segments.count) segments for \(startKey)")
