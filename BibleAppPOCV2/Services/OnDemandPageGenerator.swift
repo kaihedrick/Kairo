@@ -291,6 +291,9 @@ class OnDemandPageGenerator: ObservableObject {
                         currentContent += partial
                         verseKeys.append(VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse))
                         pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), remaining)
+                    } else {
+                        // Nothing from this verse fits on the current page
+                        pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verseText)
                     }
                 } else {
                     // Page is full, stop here
@@ -463,15 +466,21 @@ class OnDemandPageGenerator: ObservableObject {
         showBookTitle: Bool
     ) -> (AttributedString, String) {
         let words = text.split(separator: " ")
-        var fitted: [Substring] = []
-        var remainder = words
-        for (index, word) in words.enumerated() {
-            fitted.append(word)
+        guard !words.isEmpty else { return (AttributedString(), "") }
+
+        // Phase 1: quickly find a prefix that is likely to fit by adding words sequentially
+        var low = 1
+        var high = words.count
+        var best = 0
+
+        while low <= high {
+            let mid = (low + high) / 2
+            let prefixText = words.prefix(mid).joined(separator: " ")
             let partial = JITTextFormatter.formatVerse(
                 book: book,
                 chapter: chapter,
                 verse: verse,
-                text: fitted.joined(separator: " "),
+                text: prefixText,
                 showChapterHeader: showChapterHeader,
                 showBookTitle: showBookTitle
             )
@@ -480,26 +489,32 @@ class OnDemandPageGenerator: ObservableObject {
                 candidate,
                 maxSize: CGSize(width: pageSize.width - 32, height: pageSize.height - 40)
             )
+
             if size.height <= pageSize.height - 40 {
-                remainder = Array(words.dropFirst(index + 1))
+                best = mid
+                low = mid + 1
             } else {
-                fitted.removeLast()
-                remainder = Array(words.dropFirst(index))
-                break
+                high = mid - 1
             }
         }
 
-        let partialAttr = JITTextFormatter.formatVerse(
+        // If no words fit on this page, return empty to indicate overflow
+        if best == 0 {
+            return (AttributedString(), text)
+        }
+
+        let prefix = words.prefix(best).joined(separator: " ")
+        let suffix = words.dropFirst(best).joined(separator: " ")
+        let prefixAttr = JITTextFormatter.formatVerse(
             book: book,
             chapter: chapter,
             verse: verse,
-            text: fitted.joined(separator: " "),
+            text: prefix,
             showChapterHeader: showChapterHeader,
             showBookTitle: showBookTitle
         )
 
-        let remainingText = remainder.joined(separator: " ")
-        return (partialAttr, remainingText)
+        return (prefixAttr, suffix)
     }
     
     private func predictivelyLoadNextPage(from endVerse: VerseKey) async {
