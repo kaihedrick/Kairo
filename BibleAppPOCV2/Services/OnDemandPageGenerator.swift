@@ -8,119 +8,20 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Optimized Page Models
-
-struct VerseKey: Hashable, Codable {
-    let book: String
-    let chapter: Int
-    let verse: Int
-    
-    var description: String {
-        return "\(book) \(chapter):\(verse)"
-    }
-}
-
-struct PageNavigationContext: Equatable {
-    let isFirstVerseOfBook: Bool
-    let isLastVerseOfBook: Bool
-}
-
-struct OptimizedPageSlice: Identifiable, Equatable {
-    let id = UUID()
-    let content: AttributedString
-    let verseKeys: [VerseKey]
-    let startVerse: VerseKey
-    let endVerse: VerseKey
-    let navigationContext: PageNavigationContext
-    
-    static func == (lhs: OptimizedPageSlice, rhs: OptimizedPageSlice) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.startVerse == rhs.startVerse &&
-        lhs.endVerse == rhs.endVerse &&
-        lhs.verseKeys.count == rhs.verseKeys.count
-    }
-}
-
-// MARK: - Just-in-Time Text Formatter
-
-class JITTextFormatter {
-    private static let measurementCache = LRUCache<String, CGSize>(capacity: 100)
-    
-    static func formatVerse(book: String, chapter: Int, verse: Int, text: String, showChapterHeader: Bool = false, showBookTitle: Bool = false) -> AttributedString {
-        var attributed = AttributedString()
-        
-        // Add book title only on first page of book
-        if showBookTitle {
-            var bookAttr = AttributedString("\(book)\n\n")
-            bookAttr.font = .system(size: 32, weight: .bold)
-            bookAttr.foregroundColor = .primary
-            attributed.append(bookAttr)
-        }
-        
-        // Add chapter number as inline element for first verse of chapter
-        if showChapterHeader {
-            var chapterAttr = AttributedString("\(chapter) ")
-            chapterAttr.font = .system(size: 28, weight: .bold)
-            chapterAttr.foregroundColor = .primary
-            
-            // Apply background for visual separation
-            chapterAttr.backgroundColor = .clear
-            attributed.append(chapterAttr)
-        }
-        
-        // Add verse number and text with proper styling
-        var verseNumberAttr = AttributedString("\(verse) ")
-        verseNumberAttr.font = .system(size: 12, weight: .semibold)
-        verseNumberAttr.foregroundColor = .secondary
-        
-        // Add verse text without extra line breaks to ensure continuous flow
-        var verseTextAttr = AttributedString("\(text) ")
-        verseTextAttr.font = .body
-        verseTextAttr.foregroundColor = .primary
-        
-        attributed.append(verseNumberAttr)
-        attributed.append(verseTextAttr)
-        
-        return attributed
-    }
-    
-    static func measureText(_ text: AttributedString, maxSize: CGSize) -> CGSize {
-        let cacheKey = "\(text.characters.count):\(maxSize.width):\(maxSize.height)"
-        
-        if let cached = measurementCache.get(cacheKey) {
-            return cached
-        }
-        
-        let nsAttr = NSAttributedString(text)
-        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-        let drawingRect = nsAttr.boundingRect(
-            with: CGSize(width: maxSize.width, height: .greatestFiniteMagnitude),
-            options: drawingOptions,
-            context: nil
-        )
-        
-        let size = CGSize(width: ceil(drawingRect.width), height: ceil(drawingRect.height))
-        measurementCache.set(cacheKey, size)
-        
-        return size
-    }
-    
-    static func clearCache() {
-        measurementCache.clear()
-    }
-}
+// Shared models and text formatter lives in separate files for reuse
+// across views and generators.
 
 // MARK: - On-Demand Page Generator
 
 @MainActor
 class OnDemandPageGenerator: ObservableObject {
-    @Published var currentPage: OptimizedPageSlice?
-    @Published var isGenerating = false
+    @Published private(set) var currentPage: GeneratedPage?
+    @Published private(set) var isGenerating = false
+    @Published private(set) var lastError: String?
     
     private let pageSize: CGSize
-    private let pageCache = LRUCache<VerseKey, OptimizedPageSlice>(capacity: 10)
-    private var currentPosition: VerseKey?
-    private var pendingPartial: (key: VerseKey, text: String)?
+    private let estimatedLineHeight: CGFloat = 20.0
+    private let pageCache = LRUCache<VerseKey, GeneratedPage>(capacity: 10)
     
     init(pageSize: CGSize) {
         self.pageSize = pageSize
@@ -130,217 +31,126 @@ class OnDemandPageGenerator: ObservableObject {
     
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let startKey = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
+        print("🔄 generatePage start for \(startKey)")
+
+        // Ensure metadata is loaded first (this is async work)
+        await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
         
+        // Update UI state on main actor
+        lastError = nil
+        isGenerating = true
+        defer {
+            print("🔄 generatePage end for \(startKey) — currentPage set? \((currentPage != nil))")
+            isGenerating = false
+        }
+
         // Check cache first
-        if let cachedPage = pageCache.get(startKey) {
-            currentPage = cachedPage
-            currentPosition = startKey
+        if let cached = pageCache.get(startKey) {
+            print("📄 Returning cached page for \(startKey)")
+            currentPage = cached
             return
         }
         
-        isGenerating = true
-        defer { isGenerating = false }
-        
-        let page = await generatePageContent(startingAt: startKey)
-        currentPage = page
-        currentPosition = startKey
-        
-        if let page = page {
-            pageCache.set(startKey, page)
-            
-            // Predictively load next AND previous pages
-            Task {
-                await predictivelyLoadNextPage(from: page.endVerse)
-            }
-            
-            Task {
-                await predictivelyLoadPreviousPage(from: page.startVerse)
-            }
+        // Generate page content (this is async work that can be done off main actor)
+        guard let page = await generatePageContent(startingAt: startKey) else {
+            print("⚠️ generatePageContent returned nil for \(startKey)")
+            lastError = "Could not generate page for \(startKey.book) \(startKey.chapter):\(startKey.verse)"
+            currentPage = nil
+            return
         }
+        
+        // Update UI state on main actor
+        print("✅ Generated new page for \(startKey) with \(page.verses.count) verses")
+        currentPage = page
+        pageCache.set(startKey, page)
     }
     
     func generateNextPage() async {
         guard let current = currentPage else { return }
-        
-        // Check if we're at the end of a book and need to transition
-        if current.navigationContext.isLastVerseOfBook {
-            // Find first verse of next book
-            if let nextBookVerse = await findFirstVerseOfNextBook(after: current.endVerse.book) {
-                await generatePage(startingAt: (nextBookVerse.book, nextBookVerse.chapter, nextBookVerse.verse))
-                return
-            }
-        }
-        
-        // Otherwise use standard next verse logic
-        let nextVerse = await findNextVerse(after: current.endVerse)
+
+        // Find the last verse in the current page
+        guard let lastVerse = current.verses.last else { return }
+        let lastVerseKey = VerseKey(book: current.startKey.book, chapter: current.startKey.chapter, verse: lastVerse.verse)
+
+        // Find next verse
+        let nextVerse = await findNextVerse(after: lastVerseKey)
         if let next = nextVerse {
+            print("➡️ Navigating to next page starting at \(next)")
             await generatePage(startingAt: (next.book, next.chapter, next.verse))
         }
     }
-    
+
     func generatePreviousPage() async {
         guard let current = currentPage else { return }
         
-        // Check if we're at the start of a book and need to transition
-        if current.navigationContext.isFirstVerseOfBook {
-            // Find last verse of previous book
-            if let prevBookVerse = await findLastVerseOfPreviousBook(before: current.startVerse.book) {
-                await generatePage(startingAt: (prevBookVerse.book, prevBookVerse.chapter, prevBookVerse.verse))
-                return
-            }
-        }
-        
-        // Otherwise use standard previous verse logic
-        let prevVerse = await findPreviousVerse(before: current.startVerse)
+        // Find previous verse before the start of current page
+        let prevVerse = await findPreviousVerse(before: current.startKey)
         if let prev = prevVerse {
+            print("⬅️ Navigating to previous page starting at \(prev)")
             await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
         }
     }
     
     // MARK: - Private Methods
     
-    private func generatePageContent(startingAt startKey: VerseKey) async -> OptimizedPageSlice? {
-        var currentContent = AttributedString()
-        var verseKeys: [VerseKey] = []
-        var currentBook = startKey.book
-        var currentChapter = startKey.chapter
-        var currentVerseIndex = startKey.verse - 1  // 0-based index
-        var isFirstVerseOfChapter = true
-        var isFirstOfBook = await isFirstVerseOfBook(startKey)
-
-        // If we have leftover text from a previous page starting at the same verse, use it
-        var carryOverText: String?
-        if let pending = pendingPartial, pending.key == startKey {
-            carryOverText = pending.text
-            pendingPartial = nil
-        }
-
-        // Loop until page is full
-        while true {
-            // Load current chapter if needed
-            guard let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
-                book: currentBook,
-                chapter: currentChapter
-            ) else {
-                break
-            }
-            
-            // Check if we've run out of verses in this chapter
-            if currentVerseIndex >= chapterContent.verses.count {
-                // Try to move to next chapter
-                guard let nextChapter = await loadNextChapter(after: currentBook, chapter: currentChapter) else {
-                    break // No more chapters available
-                }
-                
-                // Move to first verse of next chapter
-                currentBook = nextChapter.book
-                currentChapter = nextChapter.chapter
-                currentVerseIndex = 0
-                isFirstVerseOfChapter = true
-                let newVerseKey = VerseKey(book: currentBook, chapter: currentChapter, verse: 1)
-                if currentBook != startKey.book {
-                    isFirstOfBook = await isFirstVerseOfBook(newVerseKey)
-                } else {
-                    isFirstOfBook = false
-                }
-                continue
-            }
-            
-            // Process current verse (or remaining text from previous page)
-            let verse = chapterContent.verses[currentVerseIndex]
-            var verseText = carryOverText ?? verse.text
-
-            let shouldShowChapterHeader = isFirstVerseOfChapter && verse.verse == 1 && carryOverText == nil
-            let shouldShowBookTitle = isFirstOfBook && isFirstVerseOfChapter && verse.verse == 1 && carryOverText == nil
-
-            let formatted = JITTextFormatter.formatVerse(
-                book: currentBook,
-                chapter: currentChapter,
-                verse: verse.verse,
-                text: verseText,
-                showChapterHeader: shouldShowChapterHeader,
-                showBookTitle: shouldShowBookTitle
-            )
-            
-            // Check if adding this verse would overflow the page
-            let candidateContent = currentContent + formatted
-            let size = JITTextFormatter.measureText(candidateContent, maxSize: CGSize(
-                width: pageSize.width - 32,  // Apply horizontal margins
-                height: pageSize.height - 40  // Apply vertical margins
-            ))
-            
-            if size.height > pageSize.height - 40 {
-                // If nothing has been added yet or we are carrying over text, split the verse
-                if currentContent.characters.isEmpty || carryOverText != nil {
-                    let (partial, remaining) = splitVerse(
-                        book: currentBook,
-                        chapter: currentChapter,
-                        verse: verse.verse,
-                        text: verseText,
-                        existing: currentContent,
-                        showChapterHeader: shouldShowChapterHeader,
-                        showBookTitle: shouldShowBookTitle
-                    )
-
-                    if !partial.characters.isEmpty {
-                        currentContent += partial
-                        verseKeys.append(VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse))
-                        pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), remaining)
-                    }
-                } else {
-                    // Page is full, stop here
-                    pendingPartial = (VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse), verseText)
-                }
-                break
-            }
-
-            // Add verse to page
-            currentContent = candidateContent
-            let verseKey = VerseKey(book: currentBook, chapter: currentChapter, verse: verse.verse)
-            verseKeys.append(verseKey)
-            
-            // Reset flags after using them
-            isFirstVerseOfChapter = false
-            if isFirstOfBook { isFirstOfBook = false }
-            
-            // Move to next verse if we consumed the full verse
-            if carryOverText == nil {
-                currentVerseIndex += 1
-            } else {
-                // We displayed the remainder of a split verse
-                carryOverText = nil
-                currentVerseIndex += 1
-            }
-        }
-        
-        guard !verseKeys.isEmpty else { return nil }
-        
-        // Fixed: Correctly check if first/last verses of book
-        let firstVerseKey = verseKeys.first!
-        let lastVerseKey = verseKeys.last!
-        let isFirst = await isFirstVerseOfBook(firstVerseKey)
-        let isLast = await isLastVerseOfBook(lastVerseKey)
-        
-        return OptimizedPageSlice(
-            content: currentContent,
-            verseKeys: verseKeys,
-            startVerse: firstVerseKey,
-            endVerse: lastVerseKey,
-            navigationContext: PageNavigationContext(
-                isFirstVerseOfBook: isFirst,
-                isLastVerseOfBook: isLast
-            )
+    nonisolated private func generatePageContent(startingAt startKey: VerseKey) async -> GeneratedPage? {
+        print("🔍 generatePageContent start for \(startKey)")
+        let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
+            book: startKey.book,
+            chapter: startKey.chapter
         )
+        
+        guard let chapterContent = chapterContent else {
+            print("⚠️ No chapter content found for \(startKey)")
+            return nil
+        }
+        
+        var pageVerses: [VerseContent] = []
+        // If the view reports an initial height of zero, still render at least
+        // one verse so the page is not empty. This helps when GeometryReader
+        // sizes are not available on first appearance.
+        let maxCount = max(Int(pageSize.height / estimatedLineHeight), 1)
+        var currentVerseIndex = chapterContent.verses.firstIndex { $0.verse == startKey.verse } ?? 0
+        
+        while currentVerseIndex < chapterContent.verses.count && pageVerses.count < maxCount {
+            let verse = chapterContent.verses[currentVerseIndex]
+            print("📝 Adding verse \(startKey.book) \(startKey.chapter):\(verse.verse) at index \(currentVerseIndex)")
+            pageVerses.append(verse)
+            currentVerseIndex += 1
+        }
+        
+        guard !pageVerses.isEmpty else {
+            print("⚠️ No verses collected for \(startKey)")
+            return nil
+        }
+
+        print("📄 generatePageContent returning \(pageVerses.count) verses for \(startKey)")
+
+        // Determine navigation context
+        let firstKey = pageVerses.first.map { VerseKey(book: startKey.book, chapter: startKey.chapter, verse: $0.verse) } ?? startKey
+        let lastKey = pageVerses.last.map { VerseKey(book: startKey.book, chapter: startKey.chapter, verse: $0.verse) } ?? startKey
+        let navContext = PageNavigationContext(
+            isFirstVerseOfBook: await isFirstVerseOfBook(firstKey),
+            isLastVerseOfBook: await isLastVerseOfBook(lastKey)
+        )
+
+        return GeneratedPage(verses: pageVerses, startKey: startKey, navigationContext: navContext)
     }
     
     // Helper methods for book boundaries
     private func isFirstVerseOfBook(_ verseKey: VerseKey) async -> Bool {
+        await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
         return verseKey.chapter == 1 && verseKey.verse == 1
     }
     
     private func isLastVerseOfBook(_ verseKey: VerseKey) async -> Bool {
-        guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return false }
-        
+        await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
+        guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { 
+            // Fallback: assume not last verse if metadata unavailable
+            print("⚠️ Warning: Metadata not available for boundary check")
+            return false
+        }
+
         guard let bookMeta = metadata.books.first(where: { $0.name == verseKey.book }) else {
             return false
         }
@@ -359,12 +169,12 @@ class OnDemandPageGenerator: ObservableObject {
     // Find the first verse of the next book
     private func findFirstVerseOfNextBook(after bookName: String) async -> VerseKey? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
-        
+
         guard let currentBookIndex = metadata.books.firstIndex(where: { $0.name == bookName }),
               currentBookIndex + 1 < metadata.books.count else {
             return nil
         }
-        
+
         let nextBook = metadata.books[currentBookIndex + 1].name
         return VerseKey(book: nextBook, chapter: 1, verse: 1)
     }
@@ -372,12 +182,12 @@ class OnDemandPageGenerator: ObservableObject {
     // Find the last verse of the previous book
     private func findLastVerseOfPreviousBook(before bookName: String) async -> VerseKey? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
-        
+
         guard let currentBookIndex = metadata.books.firstIndex(where: { $0.name == bookName }),
               currentBookIndex > 0 else {
             return nil
         }
-        
+
         let prevBookMeta = metadata.books[currentBookIndex - 1]
         let prevBook = prevBookMeta.name
         let lastChapter = prevBookMeta.chapterCount
@@ -393,27 +203,21 @@ class OnDemandPageGenerator: ObservableObject {
         return VerseKey(book: prevBook, chapter: lastChapter, verse: lastVerse)
     }
     
-    private func loadNextChapter(after book: String, chapter: Int) async -> ChapterContent? {
-        // First try next chapter in same book
-        if let nextChapter = await OptimizedBibleDataLoader.shared.loadChapterContent(
-            book: book, 
-            chapter: chapter + 1
-        ) {
-            return nextChapter
-        }
-        
-        // If no next chapter, try first chapter of next book
+    private func nextChapterKey(after book: String, chapter: Int) async -> (book: String, chapter: Int)? {
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else { return nil }
-        
-        if let currentBookIndex = metadata.books.firstIndex(where: { $0.name == book }),
-           currentBookIndex + 1 < metadata.books.count {
-            let nextBook = metadata.books[currentBookIndex + 1]
-            return await OptimizedBibleDataLoader.shared.loadChapterContent(
-                book: nextBook.name, 
-                chapter: 1
-            )
+
+        if let currentBook = metadata.books.first(where: { $0.name == book }) {
+            if chapter < currentBook.chapterCount {
+                return (book: book, chapter: chapter + 1)
+            }
         }
-        
+
+        if let currentIndex = metadata.books.firstIndex(where: { $0.name == book }),
+           currentIndex + 1 < metadata.books.count {
+            let nextBook = metadata.books[currentIndex + 1]
+            return (book: nextBook.name, chapter: 1)
+        }
+
         return nil
     }
     
@@ -429,8 +233,8 @@ class OnDemandPageGenerator: ObservableObject {
         }
         
         // Next chapter
-        if let nextChapter = await loadNextChapter(after: verse.book, chapter: verse.chapter) {
-            return VerseKey(book: nextChapter.book, chapter: nextChapter.chapter, verse: 1)
+        if let nextKey = await nextChapterKey(after: verse.book, chapter: verse.chapter) {
+            return VerseKey(book: nextKey.book, chapter: nextKey.chapter, verse: 1)
         }
         
         return nil
@@ -454,90 +258,6 @@ class OnDemandPageGenerator: ObservableObject {
         return nil
     }
 
-    private func splitVerse(
-        book: String,
-        chapter: Int,
-        verse: Int,
-        text: String,
-        existing: AttributedString,
-        showChapterHeader: Bool,
-        showBookTitle: Bool
-    ) -> (AttributedString, String) {
-        let words = text.split(separator: " ")
-        var fitted: [Substring] = []
-        var remainder = words
-        for (index, word) in words.enumerated() {
-            fitted.append(word)
-            let partial = JITTextFormatter.formatVerse(
-                book: book,
-                chapter: chapter,
-                verse: verse,
-                text: fitted.joined(separator: " "),
-                showChapterHeader: showChapterHeader,
-                showBookTitle: showBookTitle
-            )
-            let candidate = existing + partial
-            let size = JITTextFormatter.measureText(
-                candidate,
-                maxSize: CGSize(width: pageSize.width - 32, height: pageSize.height - 40)
-            )
-            if size.height <= pageSize.height - 40 {
-                remainder = Array(words.dropFirst(index + 1))
-            } else {
-                fitted.removeLast()
-                remainder = Array(words.dropFirst(index))
-                break
-            }
-        }
-
-        let partialAttr = JITTextFormatter.formatVerse(
-            book: book,
-            chapter: chapter,
-            verse: verse,
-            text: fitted.joined(separator: " "),
-            showChapterHeader: showChapterHeader,
-            showBookTitle: showBookTitle
-        )
-
-        let remainingText = remainder.joined(separator: " ")
-        return (partialAttr, remainingText)
-    }
-    
-    private func predictivelyLoadNextPage(from endVerse: VerseKey) async {
-        guard let nextVerse = await findNextVerse(after: endVerse) else { return }
-        
-        // Generate next page in background if not already cached
-        if pageCache.get(nextVerse) == nil {
-            let _ = await generatePageContent(startingAt: nextVerse)
-        }
-    }
-    
-    private func predictivelyLoadPreviousPage(from startVerse: VerseKey) async {
-        guard let prevVerse = await findPreviousVerse(before: startVerse) else { return }
-        
-        // Generate previous page in background if not already cached
-        if pageCache.get(prevVerse) == nil {
-            let _ = await generatePageContent(startingAt: prevVerse)
-        }
-    }
-    
-    private func predictiveNextChapters(from verseKey: VerseKey) async {
-        let book = verseKey.book
-        let chapter = verseKey.chapter
-        
-        async let nextChapter = OptimizedBibleDataLoader.shared.loadChapterContent(
-            book: book,
-            chapter: chapter + 1
-        )
-        async let prevChapter = OptimizedBibleDataLoader.shared.loadChapterContent(
-            book: book,
-            chapter: chapter - 1
-        )
-        
-        // Both will load in parallel and can be awaited when needed
-        _ = await nextChapter
-        _ = await prevChapter
-    }
     
     // MARK: - Memory Management
     
@@ -549,5 +269,44 @@ class OnDemandPageGenerator: ObservableObject {
         autoreleasepool {
             // Any memory-intensive cleanup can go here
         }
+    }
+}
+
+// MARK: - GeneratedPage Extensions
+
+extension GeneratedPage {
+    /// Convert GeneratedPage to OptimizedPageSlice for SwiftUI compatibility
+    func toOptimizedPageSlice() -> OptimizedPageSlice {
+        // Create AttributedString from verses
+        var content = AttributedString()
+        var verseKeys: [VerseKey] = []
+        
+        for verse in verses {
+            let verseKey = VerseKey(book: startKey.book, chapter: startKey.chapter, verse: verse.verse)
+            verseKeys.append(verseKey)
+            
+            // Format the verse content
+            let formatted = JITTextFormatter.formatVerse(
+                book: startKey.book,
+                chapter: startKey.chapter,
+                verse: verse.verse,
+                text: verse.text,
+                showChapterHeader: verse.verse == 1,
+                showBookTitle: startKey.chapter == 1 && verse.verse == 1
+            )
+            content += formatted
+        }
+        
+        // Calculate start and end verses
+        let startVerse = verseKeys.first ?? startKey
+        let endVerse = verseKeys.last ?? startKey
+        
+        return OptimizedPageSlice(
+            content: content,
+            verseKeys: verseKeys,
+            startVerse: startVerse,
+            endVerse: endVerse,
+            navigationContext: navigationContext
+        )
     }
 }

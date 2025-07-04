@@ -36,16 +36,11 @@ struct OptimizedBibleReaderView: View {
             VStack(spacing: 0) {
                 // Current location indicator with verse range
                 if !currentPageInfo.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text(currentPageInfo)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial)
-                        Spacer()
-                    }
+                    Text(currentPageInfo)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                        .frame(maxWidth: .infinity)
                 }
 
                 
@@ -55,7 +50,7 @@ struct OptimizedBibleReaderView: View {
                         ProgressView("Loading page...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let currentPage = pageGenerator.currentPage {
-                        pageView(currentPage)
+                        pageView(currentPage.toOptimizedPageSlice())
                     } else {
                         ProgressView("Preparing content...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -63,30 +58,6 @@ struct OptimizedBibleReaderView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                // Navigation controls
-                HStack {
-                    Button(action: { 
-                        Task { await pageGenerator.generatePreviousPage() }
-                    }) {
-                        Label("Previous", systemImage: "chevron.left")
-                            .labelStyle(.iconOnly)
-                            .padding()
-                    }
-                    .disabled(pageGenerator.isGenerating)
-                    
-                    Spacer()
-                    
-                    Button(action: { 
-                        Task { await pageGenerator.generateNextPage() }
-                    }) {
-                        Label("Next", systemImage: "chevron.right")
-                            .labelStyle(.iconOnly)
-                            .padding()
-                    }
-                    .disabled(pageGenerator.isGenerating)
-                }
-                .padding(.horizontal)
-                .background(.ultraThinMaterial)
             }
             
             // Performance overlay (development only)
@@ -127,8 +98,10 @@ struct OptimizedBibleReaderView: View {
             .padding(.vertical, 12)
             .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
-            .onChange(of: page) { newPage in
-                updateCurrentPageInfo(newPage)
+            .onChange(of: pageGenerator.currentPage?.startKey) { _ in
+                if let newPage = pageGenerator.currentPage {
+                    updateCurrentPageInfo(newPage.toOptimizedPageSlice())
+                }
             }
             .onAppear {
                 updateCurrentPageInfo(page)
@@ -193,8 +166,9 @@ struct OptimizedBibleReaderView: View {
                 .font(.headline)
             
             if let page = pageGenerator.currentPage {
-                Text("Current page: \(page.startVerse.description) to \(page.endVerse.description)")
-                Text("Verses in view: \(page.verseKeys.count)")
+                let slice = page.toOptimizedPageSlice()
+                Text("Current page: \(slice.startVerse.description) to \(slice.endVerse.description)")
+                Text("Verses in view: \(slice.verseKeys.count)")
             }
             
             Text("Memory: \(cacheStats.hitRate * 100, specifier: "%.1f")% hit rate")

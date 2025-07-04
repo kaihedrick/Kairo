@@ -7,6 +7,9 @@ import UIKit
 struct TextMeasurer {
     /// Returns the size required to render `text` within `maxSize`.
     static func measure(_ text: AttributedString, maxSize: CGSize) -> CGSize {
+        // Avoid CoreFoundation warnings when measuring empty strings
+        guard !text.characters.isEmpty else { return .zero }
+
         // Convert SwiftUI AttributedString → UIKit NSAttributedString
         let nsAttr = NSAttributedString(text)
 
