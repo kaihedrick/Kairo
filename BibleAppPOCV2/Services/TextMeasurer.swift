@@ -5,25 +5,21 @@ import Foundation
 import UIKit
 
 struct TextMeasurer {
-    /// Measure text using a TextKit 2 layout pipeline.
+    /// Returns the size required to render `text` within `maxSize`.
     static func measure(_ text: AttributedString, size: CGSize) -> CGSize {
         guard !text.characters.isEmpty else { return .zero }
 
         let nsAttr = NSAttributedString(text)
-        let storage = NSTextStorage(attributedString: nsAttr)
-        let content = NSTextContentStorage()
-        content.textStorage = storage
-        let layout = NSTextLayoutManager()
-        content.addTextLayoutManager(layout)
-        let container = NSTextContainer(size: CGSize(width: size.width, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
-        layout.textContainer = container
-        layout.ensureLayout(for: container)
-        let glyphRange = layout.glyphRange(for: container)
-        let rect = layout.boundingRect(forGlyphRange: glyphRange, in: container)
-        let width = min(size.width, ceil(rect.width))
-        let height = min(size.height, ceil(rect.height))
-        return CGSize(width: width, height: height)
+        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let drawingRect = nsAttr.boundingRect(
+            with: CGSize(width: size.width, height: .greatestFiniteMagnitude),
+            options: drawingOptions,
+            context: nil
+        )
+
+        let w = min(drawingRect.width, size.width)
+        let h = min(drawingRect.height, size.height)
+        return CGSize(width: ceil(w), height: ceil(h))
     }
 
     /// Split the text so the head fits within `size` and return the remainder.
@@ -32,15 +28,14 @@ struct TextMeasurer {
 
         let nsAttr = NSMutableAttributedString(attributedString: NSAttributedString(text))
         let storage = NSTextStorage(attributedString: nsAttr)
-        let content = NSTextContentStorage()
-        content.textStorage = storage
-        let layout = NSTextLayoutManager()
-        content.addTextLayoutManager(layout)
+        let layout = NSLayoutManager()
         let container = NSTextContainer(size: size)
         container.lineFragmentPadding = 0
-        layout.textContainer = container
-        layout.ensureLayout(for: container)
-        let glyphRange = layout.glyphRange(for: container)
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+
+        layout.glyphRange(for: container)
+        let glyphRange = layout.glyphRange(forBoundingRect: CGRect(origin: .zero, size: size), in: container)
         let charRange = layout.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
 
         let fit = nsAttr.attributedSubstring(from: charRange)

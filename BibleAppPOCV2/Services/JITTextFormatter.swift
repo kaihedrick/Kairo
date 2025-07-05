@@ -38,7 +38,7 @@ class JITTextFormatter {
         verseNumberAttr.font = Typography.verseNumber
         verseNumberAttr.foregroundColor = .secondary
 
-        var style = ParagraphStyle()
+        let style = NSMutableParagraphStyle()
         style.lineSpacing = Typography.lineSpacing
         var verseTextAttr = AttributedString("\(text) ")
         verseTextAttr.font = Typography.body
