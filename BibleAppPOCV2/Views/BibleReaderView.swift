@@ -1,6 +1,6 @@
 
 import SwiftUI
-
+import CoreGraphics
 struct BibleReaderView: View {
     @StateObject private var pageGenerator: OnDemandPageGenerator
     @State private var currentPageInfo: String = ""
@@ -43,7 +43,7 @@ struct BibleReaderView: View {
                         ProgressView("Loading page...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let currentPage = pageGenerator.currentPage {
-                        pageView(currentPage.toOptimizedPageSlice())
+                        pageView(currentPage)
                     } else if let error = pageGenerator.lastError {
                         errorView(error)
                     } else {
@@ -67,18 +67,17 @@ struct BibleReaderView: View {
 
     // MARK: - Helper Views
 
-    /// Displays a page of Bible text
+    /// Displays a page of Bible text without scrolling
     private func pageView(_ page: OptimizedPageSlice) -> some View {
-        ScrollView {
-            Text(page.content)
-                .padding(.horizontal, 16)  // Proper margins
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)  // Left alignment to prevent cutoff
-                .multilineTextAlignment(.leading)
-        }
-        .onChange(of: pageGenerator.currentPage?.startKey) { _ in
+        Text(page.content)
+            .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
+            .padding(.vertical, LayoutMetrics.verticalPagePadding)
+            .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
+            .multilineTextAlignment(.leading)
+            .clipped()
+        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
             if let newPage = pageGenerator.currentPage {
-                updateCurrentPageInfo(newPage.toOptimizedPageSlice())
+                updateCurrentPageInfo(newPage)
             }
         }
         .onAppear {
