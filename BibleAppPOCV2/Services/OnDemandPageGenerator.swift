@@ -177,7 +177,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     private func trimCacheToThreePages() async {
-        let allowed: Set<VerseKey> = [currentNode?.prev?.key, currentNode?.key, currentNode?.next?.key].compactMap { $0 }
+        let allowed: Set<VerseKey> = Set([currentNode?.prev?.key, currentNode?.key, currentNode?.next?.key].compactMap { $0 })
         let keys = await cache.keys
         for k in keys where !allowed.contains(k) {
             await cache.remove(k)
@@ -301,3 +301,4 @@ final class OnDemandPageGenerator: ObservableObject {
         return VerseKey(book: prevBook.name, chapter: lastChapter, verse: chapter.verses.count)
     }
 }
+
