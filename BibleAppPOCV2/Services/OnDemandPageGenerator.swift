@@ -156,7 +156,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     private func trimCacheToThreePages() async {
-        let allowed: Set<VerseKey> = [currentNode?.prev?.key, currentNode?.key, currentNode?.next?.key].compactMap { $0 }
+        let allowed = Set([currentNode?.prev?.key, currentNode?.key, currentNode?.next?.key].compactMap { $0 })
         let keys = await cache.keys
         for k in keys where !allowed.contains(k) {
             await cache.remove(k)
@@ -183,7 +183,7 @@ final class OnDemandPageGenerator: ObservableObject {
         var segments: [PageSegment] = []
         var curH: CGFloat = 0
 
-        if var rest = tail, !rest.characters.isEmpty {
+        if let rest = tail, !rest.characters.isEmpty {
             let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             if m.height > availH {
                 let parts = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
