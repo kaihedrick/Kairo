@@ -65,7 +65,10 @@ final class OnDemandPageGenerator: ObservableObject {
         let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         lastError = nil
         isGenerating = true
-        defer { isGenerating = false }
+        defer {
+            isGenerating = false
+            Task { await trimCacheToThreePages() }
+        }
 
         if let node = currentNode, node.key == key {
             currentNode = node
@@ -112,6 +115,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     func generateNextPage() async {
+        defer { Task { await trimCacheToThreePages() } }
         if let node = currentNode?.next {
             currentNode = node
             currentPage = node.slice
@@ -128,6 +132,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     func generatePreviousPage() async {
+        defer { Task { await trimCacheToThreePages() } }
         if let node = currentNode?.prev {
             currentNode = node
             currentPage = node.slice
@@ -152,12 +157,22 @@ final class OnDemandPageGenerator: ObservableObject {
 
     private func commitCurrentPage(_ slice: OptimizedPageSlice, key: VerseKey) async {
         await cache.set(key, slice)
-        await trimCacheToThreePages()
         let keys = await cache.keys
         if let cur = currentNode {
             print("cache keys:\t", keys)
             print("linked list: prev \(cur.prev != nil) – next \(cur.next != nil)")
         }
+    }
+
+    /// Append a verse key only after the text is committed to the page.
+    private func commit(
+        verseKey: VerseKey,
+        newContent: AttributedString,
+        currentContent: inout AttributedString,
+        verseKeys: inout [VerseKey]
+    ) {
+        currentContent = newContent
+        if verseKeys.last != verseKey { verseKeys.append(verseKey) }
     }
 
     private func trimCacheToThreePages() async {
@@ -187,15 +202,21 @@ final class OnDemandPageGenerator: ObservableObject {
         var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
         var curH: CGFloat = 0
+        var currentContent = AttributedString()
+        var verseKeys: [VerseKey] = []
 
         if var rest = tail, !rest.characters.isEmpty {
             let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             if m.height > availH {
                 let parts = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
+                let newContent = currentContent + parts.0
+                commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: parts.0, verseKey: key, isSplit: true))
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
                 return .success((page: page, remainder: (key, parts.1)))
             } else {
+                let newContent = currentContent + rest
+                commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: rest, verseKey: key, isSplit: true))
                 curH = m.height
                 idx += 1
@@ -218,7 +239,10 @@ final class OnDemandPageGenerator: ObservableObject {
             }
 
             if curH + verseSizeFull.height <= availH + 1 {
-                segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
+                let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+                let newContent = currentContent + formatted
+                commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
+                segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
                 curH += verseSizeFull.height
                 idx += 1
                 continue
@@ -227,7 +251,10 @@ final class OnDemandPageGenerator: ObservableObject {
             // Verse does not fully fit
             if segments.isEmpty {
                 let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: availH))
-                segments.append(PageSegment(attributed: parts.0, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), isSplit: true))
+                let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+                let newContent = currentContent + parts.0
+                commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
+                segments.append(PageSegment(attributed: parts.0, verseKey: verseKey, isSplit: true))
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
                 return .success((page: page, remainder: (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), parts.1)))
             } else {

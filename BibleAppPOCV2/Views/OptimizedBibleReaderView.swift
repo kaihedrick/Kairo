@@ -39,12 +39,8 @@ struct OptimizedBibleReaderView: View {
         }
         .navigationTitle(banner)
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: generator.currentPage?.startVerse) { _ in
-            if let page = generator.currentPage {
-                let s = page.startVerse
-                let e = page.endVerse
-                banner = "\(s.book.prefix(3)) \(s.chapter):\(s.verse)–\(e.chapter):\(e.verse)"
-            }
+        .onChange(of: generator.currentPage) { newPage in
+            banner = newPage?.navTitle ?? ""
         }
         .onChange(of: scenePhase) { phase in
             if phase == .background { generator.handleMemoryPressure() }

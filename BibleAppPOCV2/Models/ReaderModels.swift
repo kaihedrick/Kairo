@@ -74,3 +74,16 @@ extension GeneratedPage {
         )
     }
 }
+
+extension OptimizedPageSlice {
+    /// Human readable navigation title derived from this slice's verse range.
+    var navTitle: String {
+        guard let first = verseKeys.first, let last = verseKeys.last else { return "" }
+        let abbrev = first.book.prefix(3)
+        if first.chapter == last.chapter {
+            return "\(abbrev) \(first.chapter):\(first.verse)-\(last.verse)"
+        } else {
+            return "\(abbrev) \(first.chapter):\(first.verse)–\(last.chapter):\(last.verse)"
+        }
+    }
+}
