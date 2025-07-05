@@ -55,10 +55,14 @@ final class OnDemandPageGenerator: ObservableObject {
     func updatePageSize(_ new: CGSize) {
         guard size != new else { return }
         size = new
+        // Clear all cached state since layout calculations are now invalid
         pending = nil
         currentNode = nil
         currentPage = nil
-        Task { await cache.clear() }
+        Task { 
+            await cache.clear() 
+            print("📐 Page size updated to \(new), cache cleared")
+        }
     }
 
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
@@ -116,16 +120,22 @@ final class OnDemandPageGenerator: ObservableObject {
 
     func generateNextPage() async {
         defer { Task { await trimCacheToThreePages() } }
+        
+        // Check if we have a cached next page in the linked list
         if let node = currentNode?.next {
             currentNode = node
             currentPage = node.slice
             pending = nil
             return
         }
+        
+        // Priority 1: Handle pending remainder from current page
         if let remain = pending {
             await generatePage(startingAt: (remain.key.book, remain.key.chapter, remain.key.verse))
             return
         }
+        
+        // Priority 2: Find the next verse after the current page's end
         guard let last = currentNode?.slice.endVerse,
               let next = await findNextVerse(after: last) else { return }
         await generatePage(startingAt: (next.book, next.chapter, next.verse))
@@ -152,7 +162,10 @@ final class OnDemandPageGenerator: ObservableObject {
 
     func debugInfo() async -> String {
         let keys = await cache.keys
-        return "cur=\(currentNode?.key.description ?? "nil") pending=\(pending?.key.description ?? "nil") cache=\(keys)"
+        let pendingInfo = pending != nil ? "pending=\(pending!.key.description)" : "pending=nil"
+        let currentInfo = currentNode?.key.description ?? "nil"
+        let cacheInfo = keys.map { $0.description }.joined(separator: ", ")
+        return "cur=\(currentInfo) \(pendingInfo) cache=[\(cacheInfo)]"
     }
 
     private func commitCurrentPage(_ slice: OptimizedPageSlice, key: VerseKey) async {
@@ -200,13 +213,16 @@ final class OnDemandPageGenerator: ObservableObject {
         let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
         let availH = max(size.height - LayoutMetrics.verticalPagePadding * 2, 0)
         guard availW > 0 && availH > 0 else { return .failure(.layoutFailed(key)) }
+        
         var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
         var curH: CGFloat = 0
         var currentContent = AttributedString()
         var verseKeys: [VerseKey] = []
 
+        // Handle carry-over text from previous page
         if var rest = tail, !rest.characters.isEmpty {
+            print("🔄 Processing tail for \(key.description)")
             let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             if m.height > availH {
                 let parts = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
@@ -214,18 +230,24 @@ final class OnDemandPageGenerator: ObservableObject {
                 commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: parts.0, verseKey: key, isSplit: true))
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+                print("📄 Tail split again - page with tail partial, remainder still pending")
                 return .success((page: page, remainder: (key, parts.1)))
             } else {
                 let newContent = currentContent + rest
                 commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: rest, verseKey: key, isSplit: true))
                 curH = m.height
+                print("✅ Tail consumed for \(key.description), moving to next verse")
+                // Important: Move to next verse only after consuming the tail
                 idx += 1
             }
         }
 
+        // Process verses sequentially
         while idx < chapter.verses.count {
             let verse = chapter.verses[idx]
+            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            
             let formatted = JITTextFormatter.formatVerse(
                 book: key.book,
                 chapter: key.chapter,
@@ -234,32 +256,61 @@ final class OnDemandPageGenerator: ObservableObject {
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
                 showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
 
-            let verseSizeFull = TextMeasurer.measure(formatted, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+            // ✅ KEY FIX: Measure the COMBINED content, not individual verses
+            let candidateContent = currentContent + formatted
+            let combinedSize = TextMeasurer.measure(candidateContent, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+            
             if segments.isEmpty {
-                print("MEASURE  verse\tH=\(verseSizeFull.height) budget=\(availH)")
+                print("MEASURE  verse\tH=\(combinedSize.height) budget=\(availH) (combined measurement)")
             }
 
-            if curH + verseSizeFull.height <= availH + 1 {
-                let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            // Check if the COMBINED content fits
+            if combinedSize.height <= availH + 1 {
                 let newContent = currentContent + formatted
                 commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
-                curH += verseSizeFull.height
-                idx += 1
+                curH = combinedSize.height  // Update to actual combined height
+                print("✅ Added complete verse \(verseKey.description) - total verses: \(verseKeys.count), combined height: \(combinedSize.height)")
+                idx += 1  // Only increment after successfully adding the verse
                 continue
             }
 
-            // Verse does not fully fit
-            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            // Combined content doesn't fit - need to split current verse
             let headSpace = max(availH - curH, 1)
             let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: headSpace))
+            
             if !parts.0.characters.isEmpty {
                 let newContent = currentContent + parts.0
                 commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: parts.0, verseKey: verseKey, isSplit: true))
+                print("🔄 Split verse \(verseKey.description) - partial added, remainder pending")
+            } else {
+                print("⚠️ Verse \(verseKey.description) too large - full text moved to remainder")
             }
+            
+            // Create page with current segments and return remainder
             let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+            
+            // Important: Don't increment idx here - the remainder should continue from the same verse
+            print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
             return .success((page: page, remainder: (verseKey, parts.1)))
+        }
+
+        // Fallback: if no segments were created, force at least one verse
+        if segments.isEmpty && idx < chapter.verses.count {
+            let verse = chapter.verses[idx]
+            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            let formatted = JITTextFormatter.formatVerse(
+                book: key.book,
+                chapter: key.chapter,
+                verse: verse.verse,
+                text: verse.text,
+                showChapterHeader: verse.verse == 1,
+                showBookTitle: key.chapter == 1 && verse.verse == 1)
+            
+            let newContent = currentContent + formatted
+            commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
+            segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
         }
 
         guard !segments.isEmpty else { return .failure(.layoutFailed(key)) }
@@ -270,35 +321,74 @@ final class OnDemandPageGenerator: ObservableObject {
 
     private func findNextVerse(after verse: VerseKey) async -> VerseKey? {
         guard let chapter = await loader.loadChapterContent(book: verse.book, chapter: verse.chapter) else { return nil }
-        if verse.verse < chapter.verses.count {
-            return VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse + 1)
+        
+        // Find the current verse in the chapter's verse array
+        if let currentIndex = chapter.verses.firstIndex(where: { $0.verse == verse.verse }) {
+            // Check if there's a next verse in the same chapter
+            let nextIndex = currentIndex + 1
+            if nextIndex < chapter.verses.count {
+                let nextVerse = chapter.verses[nextIndex]
+                let result = VerseKey(book: verse.book, chapter: verse.chapter, verse: nextVerse.verse)
+                print("🔍 findNextVerse: \(verse.description) → \(result.description) (same chapter)")
+                return result
+            }
         }
+        
+        // No more verses in current chapter, try next chapter
         guard let meta = await loader.metadata,
-              let index = meta.books.firstIndex(where: { $0.name == verse.book }) else { return nil }
-        if verse.chapter < meta.books[index].chapterCount {
-            return VerseKey(book: verse.book, chapter: verse.chapter + 1, verse: 1)
+              let bookIndex = meta.books.firstIndex(where: { $0.name == verse.book }) else { return nil }
+        
+        // Try next chapter in same book
+        if verse.chapter < meta.books[bookIndex].chapterCount {
+            let result = VerseKey(book: verse.book, chapter: verse.chapter + 1, verse: 1)
+            print("🔍 findNextVerse: \(verse.description) → \(result.description) (next chapter)")
+            return result
         }
-        guard index + 1 < meta.books.count else { return nil }
-        let nextBook = meta.books[index + 1].name
-        return VerseKey(book: nextBook, chapter: 1, verse: 1)
+        
+        // Try first chapter of next book
+        guard bookIndex + 1 < meta.books.count else { return nil }
+        let nextBook = meta.books[bookIndex + 1].name
+        let result = VerseKey(book: nextBook, chapter: 1, verse: 1)
+        print("🔍 findNextVerse: \(verse.description) → \(result.description) (next book)")
+        return result
     }
 
     private func findPreviousVerse(before verse: VerseKey) async -> VerseKey? {
-        if verse.verse > 1 {
-            return VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse - 1)
+        guard let chapter = await loader.loadChapterContent(book: verse.book, chapter: verse.chapter) else { return nil }
+        
+        // Find the current verse in the chapter's verse array
+        if let currentIndex = chapter.verses.firstIndex(where: { $0.verse == verse.verse }) {
+            // Check if there's a previous verse in the same chapter
+            if currentIndex > 0 {
+                let prevVerse = chapter.verses[currentIndex - 1]
+                return VerseKey(book: verse.book, chapter: verse.chapter, verse: prevVerse.verse)
+            }
         }
+        
+        // No previous verse in current chapter, try previous chapter
         guard let meta = await loader.metadata,
-              let index = meta.books.firstIndex(where: { $0.name == verse.book }) else { return nil }
+              let bookIndex = meta.books.firstIndex(where: { $0.name == verse.book }) else { return nil }
+        
+        // Try previous chapter in same book
         if verse.chapter > 1 {
             let prevChapter = verse.chapter - 1
-            guard let chapter = await loader.loadChapterContent(book: verse.book, chapter: prevChapter) else { return nil }
-            return VerseKey(book: verse.book, chapter: prevChapter, verse: chapter.verses.count)
+            guard let prevChapterContent = await loader.loadChapterContent(book: verse.book, chapter: prevChapter) else { return nil }
+            // Get the last verse of the previous chapter
+            if let lastVerse = prevChapterContent.verses.last {
+                return VerseKey(book: verse.book, chapter: prevChapter, verse: lastVerse.verse)
+            }
         }
-        guard index > 0 else { return nil }
-        let prevBook = meta.books[index - 1]
+        
+        // Try last chapter of previous book
+        guard bookIndex > 0 else { return nil }
+        let prevBook = meta.books[bookIndex - 1]
         let lastChapter = prevBook.chapterCount
-        guard let chapter = await loader.loadChapterContent(book: prevBook.name, chapter: lastChapter) else { return nil }
-        return VerseKey(book: prevBook.name, chapter: lastChapter, verse: chapter.verses.count)
+        guard let lastChapterContent = await loader.loadChapterContent(book: prevBook.name, chapter: lastChapter) else { return nil }
+        if let lastVerse = lastChapterContent.verses.last {
+            return VerseKey(book: prevBook.name, chapter: lastChapter, verse: lastVerse.verse)
+        }
+        
+        return nil
     }
 }
 
