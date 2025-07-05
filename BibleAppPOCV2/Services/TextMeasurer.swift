@@ -5,27 +5,39 @@ import Foundation
 import UIKit
 
 struct TextMeasurer {
-    /// Returns the size required to render `text` within `maxSize`.
-    static func measure(_ text: AttributedString, maxSize: CGSize) -> CGSize {
-        // Avoid CoreFoundation warnings when measuring empty strings
+    /// Fast UILabel-based measurement for multiline text.
+    static func measure(_ text: AttributedString, size: CGSize) -> CGSize {
         guard !text.characters.isEmpty else { return .zero }
 
-        // Convert SwiftUI AttributedString → UIKit NSAttributedString
-        let nsAttr = NSAttributedString(text)
+        let label = UILabel()
+        label.numberOfLines = 0
+        label.attributedText = NSAttributedString(text)
+        let fitted = label.sizeThatFits(CGSize(width: size.width, height: .greatestFiniteMagnitude))
+        return CGSize(width: min(size.width, ceil(fitted.width)),
+                      height: min(size.height, ceil(fitted.height)))
+    }
 
-        // Create a bounding rect calculation with the same text container insets/padding as your UITextView
-        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-        let drawingRect = nsAttr.boundingRect(
-            with: CGSize(width: maxSize.width, height: .greatestFiniteMagnitude),
-            options: drawingOptions,
-            context: nil
-        )
-        
-        // Cap the height at maxSize.height
-        let h = min(drawingRect.height, maxSize.height)
-        // Width will never exceed maxSize.width when using boundingRect
-        let w = min(drawingRect.width, maxSize.width)
-        
-        return CGSize(width: ceil(w), height: ceil(h))
+    /// Split the text so the head fits within `size` and return the remainder.
+    static func split(_ text: AttributedString, size: CGSize) -> (AttributedString, AttributedString) {
+        if text.characters.isEmpty { return (.init(), .init()) }
+
+        let nsAttr = NSMutableAttributedString(attributedString: NSAttributedString(text))
+        let storage = NSTextStorage(attributedString: nsAttr)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: size)
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+
+        layout.glyphRange(for: container)
+        let glyphRange = layout.glyphRange(forBoundingRect: CGRect(origin: .zero, size: size), in: container)
+        let charRange = layout.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+
+        let fit = nsAttr.attributedSubstring(from: charRange)
+        let restLocation = charRange.location + charRange.length
+        let restLength = nsAttr.length - restLocation
+        let rest = restLength > 0 ? nsAttr.attributedSubstring(from: NSRange(location: restLocation, length: restLength)) : NSAttributedString()
+
+        return (AttributedString(fit), AttributedString(rest))
     }
 }
