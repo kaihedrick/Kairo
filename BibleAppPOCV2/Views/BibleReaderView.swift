@@ -43,7 +43,7 @@ struct BibleReaderView: View {
                         ProgressView("Loading page...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let currentPage = pageGenerator.currentPage {
-                        pageView(currentPage.toOptimizedPageSlice())
+                        pageView(currentPage)
                     } else if let error = pageGenerator.lastError {
                         errorView(error)
                     } else {
@@ -75,9 +75,9 @@ struct BibleReaderView: View {
             .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
-        .onChange(of: pageGenerator.currentPage?.startKey) { _, _ in
+        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
             if let newPage = pageGenerator.currentPage {
-                updateCurrentPageInfo(newPage.toOptimizedPageSlice())
+                updateCurrentPageInfo(newPage)
             }
         }
         .onAppear {

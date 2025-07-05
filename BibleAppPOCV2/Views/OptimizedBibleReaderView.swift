@@ -16,7 +16,7 @@ struct OptimizedBibleReaderView: View {
 
             ZStack {
                 if let page = generator.currentPage {
-                    pageView(page.toOptimizedPageSlice(), size: size)
+                    pageView(page, size: size)
                 } else {
                     ProgressView()
                 }
@@ -31,8 +31,8 @@ struct OptimizedBibleReaderView: View {
         }
         .navigationTitle(banner)
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: generator.currentPage?.startKey) { _ in
-            if let page = generator.currentPage?.toOptimizedPageSlice() {
+        .onChange(of: generator.currentPage?.startVerse) { _ in
+            if let page = generator.currentPage {
                 let s = page.startVerse
                 let e = page.endVerse
                 banner = "\(s.book.prefix(3)) \(s.chapter):\(s.verse)–\(e.chapter):\(e.verse)"

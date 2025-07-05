@@ -24,6 +24,13 @@ struct PageSegment: Identifiable {
     let id = UUID()
     let attributed: AttributedString
     let verseKey: VerseKey
+    let isSplit: Bool
+
+    init(attributed: AttributedString, verseKey: VerseKey, isSplit: Bool = false) {
+        self.attributed = attributed
+        self.verseKey = verseKey
+        self.isSplit = isSplit
+    }
 }
 
 /// A lightweight representation of visible Bible text.

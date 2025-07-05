@@ -3,10 +3,23 @@ import SwiftUI
 import CoreGraphics
 
 actor PageCache {
-    private let lru = LRUCache<VerseKey, GeneratedPage>(capacity: 15)
-    func get(_ k: VerseKey) -> GeneratedPage? { lru.get(k) }
-    func put(_ p: GeneratedPage) { lru.set(p.startKey, p) }
+    private let lru = LRUCache<VerseKey, OptimizedPageSlice>(capacity: 15)
+    var keys: [VerseKey] { lru.keys }
+    func get(_ k: VerseKey) -> OptimizedPageSlice? { lru.get(k) }
+    func set(_ key: VerseKey, _ slice: OptimizedPageSlice) { lru.set(key, slice) }
+    func remove(_ k: VerseKey) { lru.remove(k) }
     func clear() { lru.clear() }
+}
+
+final class PageNode {
+    let key: VerseKey
+    let slice: OptimizedPageSlice
+    weak var prev: PageNode?
+    weak var next: PageNode?
+    init(key: VerseKey, slice: OptimizedPageSlice) {
+        self.key = key
+        self.slice = slice
+    }
 }
 
 /// Errors that can occur while generating a page.
@@ -26,14 +39,14 @@ enum PageGenerationError: LocalizedError {
 
 @MainActor
 final class OnDemandPageGenerator: ObservableObject {
-    @Published private(set) var currentPage: GeneratedPage?
+    @Published private(set) var currentPage: OptimizedPageSlice?
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
     private let cache = PageCache()
     private let loader = OptimizedBibleDataLoader.shared
     private var size: CGSize
-    private var history: [VerseKey] = []
+    private var currentNode: PageNode?
     private var pending: (key: VerseKey, text: AttributedString)?
 
     init(pageSize: CGSize) { self.size = pageSize }
@@ -43,6 +56,8 @@ final class OnDemandPageGenerator: ObservableObject {
         guard size != new else { return }
         size = new
         pending = nil
+        currentNode = nil
+        currentPage = nil
         Task { await cache.clear() }
     }
 
@@ -51,20 +66,45 @@ final class OnDemandPageGenerator: ObservableObject {
         lastError = nil
         isGenerating = true
         defer { isGenerating = false }
-        if pending == nil, let cached = await cache.get(key) {
-            currentPage = cached
-            if history.last != key { history.append(key) }
+
+        if let node = currentNode, node.key == key {
+            currentNode = node
+            currentPage = node.slice
+            return
+        } else if let node = currentNode?.next, node.key == key {
+            currentNode = node
+            currentPage = node.slice
+            return
+        } else if let node = currentNode?.prev, node.key == key {
+            currentNode = node
+            currentPage = node.slice
             return
         }
+
+        if pending == nil, let cached = await cache.get(key) {
+            let newNode = PageNode(key: key, slice: cached)
+            currentNode?.next = newNode
+            newNode.prev = currentNode
+            currentNode = newNode
+            await commitCurrentPage(cached, key: key)
+            trimLinkedList()
+            currentPage = cached
+            return
+        }
+
         let tail = (pending?.key == key) ? pending?.text : nil
         pending = nil
         switch await generatePageContent(startingAt: key, tail: tail) {
         case .success(let result):
-            let page = result.page
-            currentPage = page
-            if history.last != key { history.append(key) }
+            let slice = result.page.toOptimizedPageSlice()
+            currentPage = slice
             pending = result.remainder
-            if result.remainder == nil { await cache.put(page) }
+            let newNode = PageNode(key: key, slice: slice)
+            currentNode?.next = newNode
+            newNode.prev = currentNode
+            currentNode = newNode
+            await commitCurrentPage(slice, key: key)
+            trimLinkedList()
         case .failure(let error):
             currentPage = nil
             lastError = error.localizedDescription
@@ -72,19 +112,30 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     func generateNextPage() async {
+        if let node = currentNode?.next {
+            currentNode = node
+            currentPage = node.slice
+            pending = nil
+            return
+        }
         if let remain = pending {
             await generatePage(startingAt: (remain.key.book, remain.key.chapter, remain.key.verse))
             return
         }
-        guard let last = currentPage?.segments.last?.verseKey,
+        guard let last = currentNode?.slice.endVerse,
               let next = await findNextVerse(after: last) else { return }
         await generatePage(startingAt: (next.book, next.chapter, next.verse))
     }
 
     func generatePreviousPage() async {
-        guard history.count >= 2 else { return }
-        history.removeLast()
-        let prev = history.last!
+        if let node = currentNode?.prev {
+            currentNode = node
+            currentPage = node.slice
+            pending = nil
+            return
+        }
+        guard let first = currentNode?.slice.startVerse,
+              let prev = await findPreviousVerse(before: first) else { return }
         await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
     }
 
@@ -92,6 +143,30 @@ final class OnDemandPageGenerator: ObservableObject {
         Task { await cache.clear() }
         JITTextFormatter.clearCache()
         autoreleasepool { }
+    }
+
+    private func commitCurrentPage(_ slice: OptimizedPageSlice, key: VerseKey) async {
+        await cache.set(key, slice)
+        await trimCacheToThreePages()
+        let keys = await cache.keys
+        if let cur = currentNode {
+            print("cache keys:\t", keys)
+            print("linked list: prev \(cur.prev != nil) – next \(cur.next != nil)")
+        }
+    }
+
+    private func trimCacheToThreePages() async {
+        let allowed: Set<VerseKey> = [currentNode?.prev?.key, currentNode?.key, currentNode?.next?.key].compactMap { $0 }
+        let keys = await cache.keys
+        for k in keys where !allowed.contains(k) {
+            await cache.remove(k)
+        }
+    }
+
+    private func trimLinkedList() {
+        guard let cur = currentNode else { return }
+        if let p2 = cur.prev?.prev { p2.next = nil; p2.prev = nil }
+        if let n2 = cur.next?.next { n2.prev = nil; n2.next = nil }
     }
 
     private func generatePageContent(
@@ -112,7 +187,7 @@ final class OnDemandPageGenerator: ObservableObject {
             let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             if m.height > availH {
                 let parts = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
-                segments.append(PageSegment(attributed: parts.0, verseKey: key))
+                segments.append(PageSegment(attributed: parts.0, verseKey: key, isSplit: true))
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
                 return .success((page: page, remainder: (key, parts.1)))
             } else {
@@ -132,11 +207,11 @@ final class OnDemandPageGenerator: ObservableObject {
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
                 showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
 
-            let verseSize = TextMeasurer.measure(formatted, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+            let verseSizeFull = TextMeasurer.measure(formatted, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
 
-            if curH + verseSize.height <= availH {
+            if curH + verseSizeFull.height <= availH {
                 segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
-                curH += verseSize.height
+                curH += verseSizeFull.height
                 idx += 1
                 continue
             }
@@ -144,9 +219,7 @@ final class OnDemandPageGenerator: ObservableObject {
             // Verse does not fully fit
             if segments.isEmpty {
                 let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: availH))
-                if !parts.0.characters.isEmpty {
-                    segments.append(PageSegment(attributed: parts.0, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
-                }
+                segments.append(PageSegment(attributed: parts.0, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), isSplit: true))
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
                 return .success((page: page, remainder: (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), parts.1)))
             } else {
@@ -174,5 +247,23 @@ final class OnDemandPageGenerator: ObservableObject {
         guard index + 1 < meta.books.count else { return nil }
         let nextBook = meta.books[index + 1].name
         return VerseKey(book: nextBook, chapter: 1, verse: 1)
+    }
+
+    private func findPreviousVerse(before verse: VerseKey) async -> VerseKey? {
+        if verse.verse > 1 {
+            return VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse - 1)
+        }
+        guard let meta = await loader.metadata,
+              let index = meta.books.firstIndex(where: { $0.name == verse.book }) else { return nil }
+        if verse.chapter > 1 {
+            let prevChapter = verse.chapter - 1
+            guard let chapter = await loader.loadChapterContent(book: verse.book, chapter: prevChapter) else { return nil }
+            return VerseKey(book: verse.book, chapter: prevChapter, verse: chapter.verses.count)
+        }
+        guard index > 0 else { return nil }
+        let prevBook = meta.books[index - 1]
+        let lastChapter = prevBook.chapterCount
+        guard let chapter = await loader.loadChapterContent(book: prevBook.name, chapter: lastChapter) else { return nil }
+        return VerseKey(book: prevBook.name, chapter: lastChapter, verse: chapter.verses.count)
     }
 }
