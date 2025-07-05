@@ -32,6 +32,12 @@ struct OptimizedBibleReaderView: View {
             }
             .onChange(of: size) { newSize in
                 generator.updatePageSize(newSize)
+                // Regenerate current page with new size
+                if let currentStart = generator.currentPage?.startVerse {
+                    Task { 
+                        await generator.generatePage(startingAt: (currentStart.book, currentStart.chapter, currentStart.verse)) 
+                    }
+                }
             }
         }
         .navigationTitle(generator.currentPage?.navTitle ?? "")
