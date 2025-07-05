@@ -9,6 +9,21 @@ actor PageCache {
     func clear() { lru.clear() }
 }
 
+/// Errors that can occur while generating a page.
+enum PageGenerationError: LocalizedError {
+    case missingChapter(VerseKey)
+    case layoutFailed(VerseKey)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingChapter(let key):
+            return "Missing chapter for \(key.book) \(key.chapter)"
+        case .layoutFailed(let key):
+            return "Could not layout verse at \(key.book) \(key.chapter):\(key.verse)"
+        }
+    }
+}
+
 @MainActor
 final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentPage: GeneratedPage?
@@ -43,15 +58,17 @@ final class OnDemandPageGenerator: ObservableObject {
         }
         let tail = (pending?.key == key) ? pending?.text : nil
         pending = nil
-        guard let (page, rem) = await generatePageContent(startingAt: key, tail: tail) else {
+        switch await generatePageContent(startingAt: key, tail: tail) {
+        case .success(let result):
+            let page = result.page
+            currentPage = page
+            if history.last != key { history.append(key) }
+            pending = result.remainder
+            if result.remainder == nil { await cache.put(page) }
+        case .failure(let error):
             currentPage = nil
-            lastError = "Could not generate page for \(key.book) \(key.chapter):\(key.verse)"
-            return
+            lastError = error.localizedDescription
         }
-        currentPage = page
-        if history.last != key { history.append(key) }
-        pending = rem
-        if rem == nil { await cache.put(page) }
     }
 
     func generateNextPage() async {
@@ -77,26 +94,29 @@ final class OnDemandPageGenerator: ObservableObject {
         autoreleasepool { }
     }
 
-    private func generatePageContent(startingAt key: VerseKey, tail: AttributedString?) async -> (GeneratedPage, (key: VerseKey, text: AttributedString)?)? {
-        guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else { return nil }
+    private func generatePageContent(
+        startingAt key: VerseKey,
+        tail: AttributedString?
+    ) async -> Result<(page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?), PageGenerationError> {
+        guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
+            return .failure(.missingChapter(key))
+        }
         let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
         let availH = max(size.height - LayoutMetrics.verticalPagePadding * 2, 0)
-        guard availW > 0 && availH > 0 else { return nil }
+        guard availW > 0 && availH > 0 else { return .failure(.layoutFailed(key)) }
         var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
-        var composed = AttributedString()
         var curH: CGFloat = 0
 
         if var rest = tail, !rest.characters.isEmpty {
             let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             if m.height > availH {
-                let (fit, remain) = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
-                segments.append(PageSegment(attributed: fit, verseKey: key))
+                let parts = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
+                segments.append(PageSegment(attributed: parts.0, verseKey: key))
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-                return (page, (key, remain))
+                return .success((page: page, remainder: (key, parts.1)))
             } else {
                 segments.append(PageSegment(attributed: rest, verseKey: key))
-                composed += rest
                 curH = m.height
                 idx += 1
             }
@@ -112,34 +132,33 @@ final class OnDemandPageGenerator: ObservableObject {
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
                 showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
 
-            let proposed = composed + formatted
-            let proposedSize = TextMeasurer.measure(proposed, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+            let verseSize = TextMeasurer.measure(formatted, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
 
-            if proposedSize.height > availH {
-                let remaining = max(availH - curH, 0)
-                var tailPart = formatted
-                var head = AttributedString()
-                if remaining > 0 {
-                    let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: remaining))
-                    head = parts.0
-                    tailPart = parts.1
-                }
-                if !head.characters.isEmpty {
-                    segments.append(PageSegment(attributed: head, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
-                    composed += head
+            if curH + verseSize.height <= availH {
+                segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
+                curH += verseSize.height
+                idx += 1
+                continue
+            }
+
+            // Verse does not fully fit
+            if segments.isEmpty {
+                let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: availH))
+                if !parts.0.characters.isEmpty {
+                    segments.append(PageSegment(attributed: parts.0, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
                 }
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-                return (page, (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), tailPart))
+                return .success((page: page, remainder: (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), parts.1)))
             } else {
-                segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
-                composed = proposed
-                curH = proposedSize.height
-                idx += 1
+                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+                return .success((page: page, remainder: (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), formatted)))
             }
         }
 
+        guard !segments.isEmpty else { return .failure(.layoutFailed(key)) }
+
         let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-        return (page, nil)
+        return .success((page: page, remainder: nil))
     }
 
     private func findNextVerse(after verse: VerseKey) async -> VerseKey? {
