@@ -6,13 +6,11 @@ struct OptimizedBibleReaderView: View {
     @State private var banner = ""
     @Environment(\.scenePhase) private var scenePhase
 
-    @Environment(\.safeAreaInsets) private var safeInsets
-
     var body: some View {
         GeometryReader { geo in
             let size = CGSize(
                 width: geo.size.width,
-                height: geo.size.height - safeInsets.top - safeInsets.bottom
+                height: geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom
             )
 
             ZStack {
