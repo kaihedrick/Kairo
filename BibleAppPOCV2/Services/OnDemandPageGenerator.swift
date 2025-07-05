@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import CoreGraphics
 
 actor PageCache {
     private let lru = LRUCache<VerseKey, GeneratedPage>(capacity: 15)
@@ -22,7 +23,13 @@ final class OnDemandPageGenerator: ObservableObject {
 
     init(pageSize: CGSize) { self.size = pageSize }
 
-    func updatePageSize(_ new: CGSize) { size = new }
+    /// Update the size used for pagination and clear stale state.
+    func updatePageSize(_ new: CGSize) {
+        guard size != new else { return }
+        size = new
+        pending = nil
+        Task { await cache.clear() }
+    }
 
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
@@ -72,8 +79,9 @@ final class OnDemandPageGenerator: ObservableObject {
 
     private func generatePageContent(startingAt key: VerseKey, tail: AttributedString?) async -> (GeneratedPage, (key: VerseKey, text: AttributedString)?)? {
         guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else { return nil }
-        let availW = max(size.width - 32, 0)
-        let availH = max(size.height - 24, 0)
+        let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
+        let availH = max(size.height - LayoutMetrics.verticalPagePadding * 2, 0)
+        guard availW > 0 && availH > 0 else { return nil }
         var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
         var composed = AttributedString()
@@ -103,21 +111,18 @@ final class OnDemandPageGenerator: ObservableObject {
                 text: verse.text,
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
                 showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
-            let testComposed = composed + formatted
-            let sz = TextMeasurer.measure(testComposed, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
-            if sz.height <= availH {
-                segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
-                composed = testComposed
-                curH = sz.height
-                idx += 1
-            } else {
-                let remainHeight = max(availH - curH, 0)
+
+            let proposed = composed + formatted
+            let proposedSize = TextMeasurer.measure(proposed, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+
+            if proposedSize.height > availH {
+                let remaining = max(availH - curH, 0)
                 var tailPart = formatted
                 var head = AttributedString()
-                if remainHeight > 0 {
-                    let split = TextMeasurer.split(formatted, size: CGSize(width: availW, height: remainHeight))
-                    head = split.0
-                    tailPart = split.1
+                if remaining > 0 {
+                    let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: remaining))
+                    head = parts.0
+                    tailPart = parts.1
                 }
                 if !head.characters.isEmpty {
                     segments.append(PageSegment(attributed: head, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
@@ -125,6 +130,11 @@ final class OnDemandPageGenerator: ObservableObject {
                 }
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
                 return (page, (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), tailPart))
+            } else {
+                segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
+                composed = proposed
+                curH = proposedSize.height
+                idx += 1
             }
         }
 

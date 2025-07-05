@@ -1,6 +1,6 @@
 
 import SwiftUI
-
+import CoreGraphics
 struct BibleReaderView: View {
     @StateObject private var pageGenerator: OnDemandPageGenerator
     @State private var currentPageInfo: String = ""
@@ -70,8 +70,8 @@ struct BibleReaderView: View {
     /// Displays a page of Bible text without scrolling
     private func pageView(_ page: OptimizedPageSlice) -> some View {
         Text(page.content)
-            .padding(.horizontal, 16)  // Proper margins
-            .padding(.vertical, 12)
+            .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
+            .padding(.vertical, LayoutMetrics.verticalPagePadding)
             .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()

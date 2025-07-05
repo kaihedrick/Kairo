@@ -5,16 +5,20 @@ import Foundation
 import UIKit
 
 struct TextMeasurer {
-    /// Fast UILabel-based measurement for multiline text.
+    /// Measure an attributed string using TextKit 1 APIs.
     static func measure(_ text: AttributedString, size: CGSize) -> CGSize {
         guard !text.characters.isEmpty else { return .zero }
 
-        let label = UILabel()
-        label.numberOfLines = 0
-        label.attributedText = NSAttributedString(text)
-        let fitted = label.sizeThatFits(CGSize(width: size.width, height: .greatestFiniteMagnitude))
-        return CGSize(width: min(size.width, ceil(fitted.width)),
-                      height: min(size.height, ceil(fitted.height)))
+        let nsAttr = NSAttributedString(text)
+        let options: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let rect = nsAttr.boundingRect(
+            with: CGSize(width: size.width, height: .greatestFiniteMagnitude),
+            options: options,
+            context: nil
+        )
+        let width = min(size.width, ceil(rect.width))
+        let height = min(size.height, ceil(rect.height))
+        return CGSize(width: width, height: height)
     }
 
     /// Split the text so the head fits within `size` and return the remainder.
