@@ -21,46 +21,53 @@ struct BibleReaderView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Background
-            Color(.systemBackground)
-                .ignoresSafeArea()
+        GeometryReader { geo in
+            let size = geo.size
+            ZStack {
+                // Background
+                Color(.systemBackground)
+                    .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Current location indicator with verse range
-                if !currentPageInfo.isEmpty {
-                    Text(currentPageInfo)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-                        .padding(.vertical, 4)
-                        .background(.ultraThinMaterial)
+                VStack(spacing: 0) {
+                    if !currentPageInfo.isEmpty {
+                        Text(currentPageInfo)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial)
+                    }
+
+                    ZStack {
+                        if pageGenerator.isGenerating {
+                            ProgressView("Loading page...")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if let currentPage = pageGenerator.currentPage {
+                            pageView(currentPage, size: size)
+                        } else if let error = pageGenerator.lastError {
+                            errorView(error)
+                        } else {
+                            ProgressView("Preparing content...")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-
-                // Main content area
-                ZStack {
-                    if pageGenerator.isGenerating {
-                        ProgressView("Loading page...")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let currentPage = pageGenerator.currentPage {
-                        pageView(currentPage)
-                    } else if let error = pageGenerator.lastError {
-                        errorView(error)
-                    } else {
-                        ProgressView("Preparing content...")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationBarTitleDisplayMode(.inline)
+                .task {
+                    if pageGenerator.currentPage == nil {
+                        pageGenerator.updatePageSize(size)
+                        await pageGenerator.generatePage(startingAt: initialVerse)
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .task { // Use .task instead of .onAppear for async work
-                if pageGenerator.currentPage == nil {
-                    await pageGenerator.generatePage(startingAt: initialVerse)
+                .onChange(of: size) { newSize in
+                    pageGenerator.updatePageSize(newSize)
+                    let start = pageGenerator.currentPage?.startVerse ?? VerseKey(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)
+                    Task { await pageGenerator.generatePage(startingAt: (start.book, start.chapter, start.verse)) }
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-                pageGenerator.handleMemoryPressure()
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    pageGenerator.handleMemoryPressure()
+                }
             }
         }
     }
@@ -68,14 +75,14 @@ struct BibleReaderView: View {
     // MARK: - Helper Views
 
     /// Displays a page of Bible text without scrolling
-    private func pageView(_ page: OptimizedPageSlice) -> some View {
+    private func pageView(_ page: OptimizedPageSlice, size: CGSize) -> some View {
         Text(page.content)
             .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
             .padding(.vertical, LayoutMetrics.verticalPagePadding)
-            .frame(width: pageSize.width, height: pageSize.height, alignment: .topLeading)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
-        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
+        .onChange(of: pageGenerator.currentPage?.startVerse) { _ in
             if let newPage = pageGenerator.currentPage {
                 updateCurrentPageInfo(newPage)
             }
@@ -116,26 +123,7 @@ struct BibleReaderView: View {
 
     /// Updates the current page info display
     private func updateCurrentPageInfo(_ page: OptimizedPageSlice) {
-        let start = page.startVerse
-        let end = page.endVerse
-
-        if start.book == end.book {
-            if start.chapter == end.chapter {
-                if start.verse == end.verse {
-                    // Single verse
-                    currentPageInfo = "\(start.book) \(start.chapter):\(start.verse)"
-                } else {
-                    // Verse range in same chapter
-                    currentPageInfo = "\(start.book) \(start.chapter):\(start.verse)-\(end.verse)"
-                }
-            } else {
-                // Spans multiple chapters in same book
-                currentPageInfo = "\(start.book) \(start.chapter):\(start.verse) - \(end.chapter):\(end.verse)"
-            }
-        } else {
-            // Spans multiple books
-            currentPageInfo = "\(start.book) \(start.chapter):\(start.verse) - \(end.book) \(end.chapter):\(end.verse)"
-        }
+        currentPageInfo = page.navTitle
     }
 
     /// Displays an error message
