@@ -250,18 +250,16 @@ final class OnDemandPageGenerator: ObservableObject {
             }
 
             // Verse does not fully fit
-            if segments.isEmpty {
-                let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: availH))
-                let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            let headSpace = max(availH - curH, 1)
+            let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: headSpace))
+            if !parts.0.characters.isEmpty {
                 let newContent = currentContent + parts.0
                 commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: parts.0, verseKey: verseKey, isSplit: true))
-                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-                return .success((page: page, remainder: (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), parts.1)))
-            } else {
-                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-                return .success((page: page, remainder: (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), formatted)))
             }
+            let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+            return .success((page: page, remainder: (verseKey, parts.1)))
         }
 
         guard !segments.isEmpty else { return .failure(.layoutFailed(key)) }
