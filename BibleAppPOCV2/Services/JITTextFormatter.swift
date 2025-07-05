@@ -3,6 +3,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Formats verses for on-demand pagination and caches measurements.
 class JITTextFormatter {
@@ -21,24 +22,27 @@ class JITTextFormatter {
 
         if showBookTitle {
             var bookAttr = AttributedString("\(book)\n\n")
-            bookAttr.font = .system(size: 32, weight: .bold)
+            bookAttr.font = Typography.bookTitle
             bookAttr.foregroundColor = .primary
             attributed.append(bookAttr)
         }
 
         if showChapterHeader {
             var chapterAttr = AttributedString("\(chapter) ")
-            chapterAttr.font = .system(size: 28, weight: .bold)
+            chapterAttr.font = Typography.chapter
             chapterAttr.foregroundColor = .primary
             attributed.append(chapterAttr)
         }
 
         var verseNumberAttr = AttributedString("\(verse) ")
-        verseNumberAttr.font = .system(size: 12, weight: .semibold)
+        verseNumberAttr.font = Typography.verseNumber
         verseNumberAttr.foregroundColor = .secondary
 
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = Typography.lineSpacing
         var verseTextAttr = AttributedString("\(text) ")
-        verseTextAttr.font = .body
+        verseTextAttr.font = Typography.body
+        verseTextAttr.paragraphStyle = style
         verseTextAttr.foregroundColor = .primary
 
         attributed.append(verseNumberAttr)
@@ -74,5 +78,40 @@ class JITTextFormatter {
     /// Clear cached measurement results.
     static func clearCache() {
         measurementCache.clear()
+    }
+
+    /// Split an attributed string into the portion that fits within the given size
+    /// and the remaining text.
+    static func split(
+        attributed: AttributedString,
+        maxSize: CGSize
+    ) -> (fitting: AttributedString, remainder: AttributedString) {
+        if attributed.characters.isEmpty { return (.init(), .init()) }
+
+        let nsAttr = NSMutableAttributedString(attributed)
+        let storage = NSTextStorage(attributedString: nsAttr)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: maxSize)
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layout)
+        layout.addTextContainer(container)
+
+        // Force layout calculation
+        layout.glyphRange(for: container)
+        let glyphRange = layout.glyphRange(forBoundingRect: CGRect(origin: .zero, size: maxSize), in: container)
+        let charRange = layout.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+
+        let fitting = nsAttr.attributedSubstring(from: charRange)
+
+        let remainderLocation = charRange.location + charRange.length
+        let remainderLength = nsAttr.length - remainderLocation
+        let remainder: NSAttributedString
+        if remainderLength > 0 {
+            remainder = nsAttr.attributedSubstring(from: NSRange(location: remainderLocation, length: remainderLength))
+        } else {
+            remainder = NSAttributedString()
+        }
+
+        return (AttributedString(fitting), AttributedString(remainder))
     }
 }

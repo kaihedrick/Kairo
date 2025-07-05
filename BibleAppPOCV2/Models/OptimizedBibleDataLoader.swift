@@ -105,13 +105,23 @@ class LRUCache<Key: Hashable, Value> {
         }
     }
     
+    func remove(_ key: Key) {
+        guard let node = cache[key] else { return }
+        if node === head { head = node.next }
+        if node === tail { tail = node.prev }
+        node.prev?.next = node.next
+        node.next?.prev = node.prev
+        cache.removeValue(forKey: key)
+    }
+
     func clear() {
         cache.removeAll()
         head = nil
         tail = nil
     }
-    
-    // Add public accessor
+
+    var keys: [Key] { Array(cache.keys) }
+
     var cacheCapacity: Int {
         return capacity
     }
