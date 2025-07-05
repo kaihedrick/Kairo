@@ -76,6 +76,7 @@ final class OnDemandPageGenerator: ObservableObject {
         let availH = max(size.height - 24, 0)
         var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
+        var composed = AttributedString()
         var curH: CGFloat = 0
 
         if var rest = tail, !rest.characters.isEmpty {
@@ -87,7 +88,8 @@ final class OnDemandPageGenerator: ObservableObject {
                 return (page, (key, remain))
             } else {
                 segments.append(PageSegment(attributed: rest, verseKey: key))
-                curH += m.height
+                composed += rest
+                curH = m.height
                 idx += 1
             }
         }
@@ -101,19 +103,28 @@ final class OnDemandPageGenerator: ObservableObject {
                 text: verse.text,
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
                 showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
-            let sz = TextMeasurer.measure(formatted, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
-            if curH + sz.height <= availH {
+            let testComposed = composed + formatted
+            let sz = TextMeasurer.measure(testComposed, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+            if sz.height <= availH {
                 segments.append(PageSegment(attributed: formatted, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
-                curH += sz.height
+                composed = testComposed
+                curH = sz.height
                 idx += 1
-            } else if segments.isEmpty {
-                let (head, tailPart) = TextMeasurer.split(formatted, size: CGSize(width: availW, height: availH))
-                segments.append(PageSegment(attributed: head, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
+            } else {
+                let remainHeight = max(availH - curH, 0)
+                var tailPart = formatted
+                var head = AttributedString()
+                if remainHeight > 0 {
+                    let split = TextMeasurer.split(formatted, size: CGSize(width: availW, height: remainHeight))
+                    head = split.0
+                    tailPart = split.1
+                }
+                if !head.characters.isEmpty {
+                    segments.append(PageSegment(attributed: head, verseKey: VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)))
+                    composed += head
+                }
                 let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
                 return (page, (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), tailPart))
-            } else {
-                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-                return (page, (VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse), formatted))
             }
         }
 
