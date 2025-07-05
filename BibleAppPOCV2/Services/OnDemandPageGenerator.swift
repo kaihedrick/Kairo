@@ -11,6 +11,9 @@ actor PageCache {
 @MainActor
 final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentPage: GeneratedPage?
+    @Published private(set) var isGenerating = false
+    @Published private(set) var lastError: String?
+
     private let cache = PageCache()
     private let loader = OptimizedBibleDataLoader.shared
     private var size: CGSize
@@ -23,6 +26,9 @@ final class OnDemandPageGenerator: ObservableObject {
 
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
+        lastError = nil
+        isGenerating = true
+        defer { isGenerating = false }
         if pending == nil, let cached = await cache.get(key) {
             currentPage = cached
             if history.last != key { history.append(key) }
@@ -32,6 +38,7 @@ final class OnDemandPageGenerator: ObservableObject {
         pending = nil
         guard let (page, rem) = await generatePageContent(startingAt: key, tail: tail) else {
             currentPage = nil
+            lastError = "Could not generate page for \(key.book) \(key.chapter):\(key.verse)"
             return
         }
         currentPage = page
@@ -55,6 +62,12 @@ final class OnDemandPageGenerator: ObservableObject {
         history.removeLast()
         let prev = history.last!
         await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
+    }
+
+    func handleMemoryPressure() {
+        Task { await cache.clear() }
+        JITTextFormatter.clearCache()
+        autoreleasepool { }
     }
 
     private func generatePageContent(startingAt key: VerseKey, tail: AttributedString?) async -> (GeneratedPage, (key: VerseKey, text: AttributedString)?)? {

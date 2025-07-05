@@ -49,3 +49,21 @@ struct GeneratedPage {
     let startKey: VerseKey
     let navigationContext: PageNavigationContext
 }
+
+extension GeneratedPage {
+    func toOptimizedPageSlice() -> OptimizedPageSlice {
+        let content = segments.reduce(into: AttributedString()) { result, seg in
+            result += seg.attributed
+        }
+        let verseKeys = segments.map { $0.verseKey }
+        let startVerse = verseKeys.first ?? startKey
+        let endVerse = verseKeys.last ?? startKey
+        return OptimizedPageSlice(
+            content: content,
+            verseKeys: verseKeys,
+            startVerse: startVerse,
+            endVerse: endVerse,
+            navigationContext: navigationContext
+        )
+    }
+}
