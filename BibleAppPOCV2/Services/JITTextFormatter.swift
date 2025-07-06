@@ -86,7 +86,10 @@ class JITTextFormatter {
     
     /// Perform actual measurement without caching
     private static func performFreshMeasurement(_ text: AttributedString, maxSize: CGSize) -> CGSize {
-        print("🔍 FRESH measurement for text: \(text.characters.prefix(50))... maxSize: \(maxSize)")
+        // Only log for very short text or every 10th measurement
+        if text.characters.count < 50 || Int.random(in: 1...10) == 1 {
+            print("🔍 FRESH measurement for text: \(text.characters.prefix(50))... maxSize: \(maxSize)")
+        }
         
         // Convert to NSAttributedString for measurement
         let nsAttr = NSAttributedString(text)
@@ -102,7 +105,9 @@ class JITTextFormatter {
         )
         
         let size = CGSize(width: ceil(suggestedSize.width), height: ceil(suggestedSize.height))
-        print("🔍 FRESH result: \(size)")
+        if text.characters.count < 50 || Int.random(in: 1...10) == 1 {
+            print("🔍 FRESH result: \(size)")
+        }
         return size
     }
 

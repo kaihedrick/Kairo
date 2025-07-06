@@ -74,6 +74,19 @@ final class OnDemandPageGenerator: ObservableObject {
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         lastError = nil
+        
+        // Prevent duplicate generation if we're already generating this key
+        if isGenerating {
+            print("⚠️ Already generating page, skipping duplicate request for \(key.description)")
+            return
+        }
+        
+        // Check if we already have this page loaded
+        if let current = currentPage, current.startVerse == key {
+            print("✅ Page \(key.description) already loaded, skipping generation")
+            return
+        }
+        
         isGenerating = true
         defer {
             isGenerating = false
@@ -160,33 +173,40 @@ final class OnDemandPageGenerator: ObservableObject {
         await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
     }
 
+    /// Handle memory pressure by clearing caches
     func handleMemoryPressure() {
-        Task { await cache.clear() }
-        JITTextFormatter.clearCache()
-        autoreleasepool { }
-    }
-
-    func debugInfo() async -> String {
-        let keys = await cache.keys
-        let pendingInfo = pending != nil ? "pending=\(pending!.key.description)" : "pending=nil"
-        let currentInfo = currentNode?.key.description ?? "nil"
-        let cacheInfo = keys.map { $0.description }.joined(separator: ", ")
-        return "cur=\(currentInfo) \(pendingInfo) cache=[\(cacheInfo)]"
-    }
-    
-    /// Called by the view when rendered content doesn't match predicted measurements
-    func reportOverflow(actualHeight: CGFloat, availableHeight: CGFloat, segmentCount: Int) async {
-        print("🔍 OVERFLOW FEEDBACK: predicted fit, but actual=\(actualHeight) > available=\(availableHeight)")
-        print("   Segments: \(segmentCount), overflow: \(actualHeight - availableHeight)pts")
-        
-        // This indicates our measurement is wrong - we could adjust the budget
-        // or implement a corrective regeneration, but for now just log the discrepancy
-        let discrepancy = actualHeight - availableHeight
-        if discrepancy > 50 {
-            print("⚠️ SIGNIFICANT DISCREPANCY: \(discrepancy)pts - measurement logic may need adjustment")
+        Task {
+            await cache.clear()
+            print("🧹 Memory pressure: Cleared page cache")
         }
     }
 
+    /// Report content overflow for debugging
+    func reportOverflow(actualHeight: CGFloat, availableHeight: CGFloat, segmentCount: Int) {
+        print("📊 OVERFLOW REPORT:")
+        print("   Actual height: \(actualHeight)")
+        print("   Available height: \(availableHeight)")  
+        print("   Overflow by: \(actualHeight - availableHeight)")
+        print("   Segment count: \(segmentCount)")
+        print("   Page size: \(size)")
+        
+        // This is mainly for debugging - we don't auto-regenerate to avoid loops
+        // The user can swipe to regenerate if needed
+    }
+    
+    /// Debug information about current state
+    func debugInfo() async -> String {
+        let cacheKeys = await cache.keys
+        return """
+        📊 PAGE GENERATOR DEBUG:
+        Current page: \(currentPage?.startVerse.description ?? "none") - \(currentPage?.endVerse.description ?? "none")
+        Page size: \(size)
+        Cache keys: \(cacheKeys.map { $0.description }.joined(separator: ", "))
+        Is generating: \(isGenerating)
+        Has pending: \(pending != nil)
+        """
+    }
+    
     private func commitCurrentPage(_ slice: OptimizedPageSlice, key: VerseKey) async {
         await cache.set(key, slice)
         await trimCacheToThreePages()
@@ -303,8 +323,8 @@ final class OnDemandPageGenerator: ObservableObject {
             )
             #endif
             
-            // Debug: Print every 5 verses to see the height progression
-            if verseKeys.count % 5 == 0 || verseKeys.count < 5 {
+            // Debug: Print every 10 verses to see the height progression
+            if verseKeys.count % 10 == 0 || verseKeys.count < 3 {
                 print("📏 Verse \(verseKey.description): actualH=\(actualSize.height) vs containerH=\(size.height)")
             }
 
@@ -335,11 +355,34 @@ final class OnDemandPageGenerator: ObservableObject {
                     print("🔄 Split verse \(verseKey.description) - partial added, remainder pending")
                 }
 
-                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-                let remainder = parts.1.characters.isEmpty ? nil : (key: verseKey, text: parts.1)
-                
-                print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
-                return .success((page: page, remainder: remainder))
+        let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+        let remainder = parts.1.characters.isEmpty ? nil : (key: verseKey, text: parts.1)
+        
+        print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
+        
+        // Final validation: check if the complete page content actually fits
+        let finalContent = page.segments.reduce(AttributedString()) { result, segment in
+            result + segment.attributed
+        }
+        let finalSize = JITTextFormatter.measureActualRender(
+            finalContent,
+            containerSize: size,
+            padding: EdgeInsets(
+                top: LayoutMetrics.verticalPagePadding,
+                leading: LayoutMetrics.horizontalPagePadding,
+                bottom: LayoutMetrics.verticalPagePadding,
+                trailing: LayoutMetrics.horizontalPagePadding
+            )
+        )
+        
+        if finalSize.height > size.height + 10 { // 10pt tolerance
+            print("⚠️ FINAL VALIDATION: Page content (\(finalSize.height)) exceeds container (\(size.height))")
+            print("🔍 Consider reducing verse count or improving splitting logic")
+        } else {
+            print("✅ FINAL VALIDATION: Page content fits perfectly (\(finalSize.height) <= \(size.height))")
+        }
+        
+        return .success((page: page, remainder: remainder))
             }
         }
 
@@ -363,6 +406,29 @@ final class OnDemandPageGenerator: ObservableObject {
         guard !segments.isEmpty else { return .failure(.layoutFailed(key)) }
 
         let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+        
+        // Final validation: check if the complete page content actually fits
+        let finalContent = page.segments.reduce(AttributedString()) { result, segment in
+            result + segment.attributed
+        }
+        let finalSize = JITTextFormatter.measureActualRender(
+            finalContent,
+            containerSize: size,
+            padding: EdgeInsets(
+                top: LayoutMetrics.verticalPagePadding,
+                leading: LayoutMetrics.horizontalPagePadding,
+                bottom: LayoutMetrics.verticalPagePadding,
+                trailing: LayoutMetrics.horizontalPagePadding
+            )
+        )
+        
+        if finalSize.height > size.height + 10 { // 10pt tolerance
+            print("⚠️ FINAL VALIDATION: Page content (\(finalSize.height)) exceeds container (\(size.height))")
+            print("🔍 Consider reducing verse count or improving splitting logic")
+        } else {
+            print("✅ FINAL VALIDATION: Page content fits perfectly (\(finalSize.height) <= \(size.height))")
+        }
+        
         return .success((page: page, remainder: nil))
     }
 
@@ -438,3 +504,4 @@ final class OnDemandPageGenerator: ObservableObject {
         return nil
     }
 }
+

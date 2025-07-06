@@ -4,6 +4,7 @@ struct OptimizedBibleReaderView: View {
     @StateObject private var generator = OnDemandPageGenerator(pageSize: .zero)
     let initialVerse: (book: String, chapter: Int, verse: Int)
     @Environment(\.scenePhase) private var scenePhase
+    @State private var sizeChangeTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geo in
@@ -35,33 +36,33 @@ struct OptimizedBibleReaderView: View {
 #endif
             }
             .onAppear {
-                // Don't generate page here - wait for size to be calculated
-                print("📐 View appeared, waiting for size calculation...")
-                
-                // Fallback: if size is already reasonable, generate immediately
-                Task {
-                    // Small delay to ensure layout is complete
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                    if size.width > 100 && size.height > 100 && generator.currentPage == nil {
-                        print("📖 Fallback: Generating page with size: \(size)")
-                        generator.updatePageSize(size)
-                        await generator.generatePage(startingAt: initialVerse)
-                    }
-                }
+                print("📐 View appeared, size: \(size)")
+                // Size change handler will trigger page generation
             }
             .onChange(of: size) { _, newSize in
                 print("📐 Size changed to: \(newSize)")
-                generator.updatePageSize(newSize)
                 
-                // ALWAYS regenerate on size change - don't rely on cached pages
-                if newSize.width > 100 && newSize.height > 100 {
-                    Task { 
-                        print("📖 FORCE generating fresh page with size: \(newSize)")
-                        // Get current position, then force regenerate
-                        let currentStart = generator.currentPage?.startVerse ?? 
-                            VerseKey(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)
-                        await generator.generatePage(startingAt: (currentStart.book, currentStart.chapter, currentStart.verse))
-                    }
+                // Only generate if size is reasonable
+                guard newSize.width > 100 && newSize.height > 100 else { return }
+                
+                // Cancel any pending size change task
+                sizeChangeTask?.cancel()
+                
+                // Debounce size changes to prevent duplicate generation
+                sizeChangeTask = Task {
+                    // Wait a short time to see if more size changes come in
+                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                    
+                    // Check if task was cancelled (another size change occurred)
+                    guard !Task.isCancelled else { return }
+                    
+                    print("📖 DEBOUNCED: Generating fresh page with size: \(newSize)")
+                    generator.updatePageSize(newSize)
+                    
+                    // Get current position, then force regenerate
+                    let currentStart = generator.currentPage?.startVerse ?? 
+                        VerseKey(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)
+                    await generator.generatePage(startingAt: (currentStart.book, currentStart.chapter, currentStart.verse))
                 }
             }
         }
@@ -69,6 +70,9 @@ struct OptimizedBibleReaderView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { generator.handleMemoryPressure() }
+        }
+        .onDisappear {
+            sizeChangeTask?.cancel()
         }
     }
 
@@ -86,6 +90,7 @@ struct OptimizedBibleReaderView: View {
                             let actualContentHeight = textGeo.size.height
                             let availableHeight = size.height
                             print("📏 ACTUAL RENDER: content=\(actualContentHeight) vs available=\(availableHeight)")
+                            print("📊 VERSE COUNT: Page contains \(page.verseKeys.count) verses from \(page.startVerse.description) to \(page.endVerse.description)")
                             
                             // If content overflows significantly, we need to regenerate
                             if actualContentHeight > availableHeight + 10 { // 10pt tolerance
@@ -94,7 +99,7 @@ struct OptimizedBibleReaderView: View {
                                 
                                 // Provide feedback to generator about actual fit
                                 Task {
-                                    await generator.reportOverflow(
+                                    generator.reportOverflow(
                                         actualHeight: actualContentHeight,
                                         availableHeight: availableHeight,
                                         segmentCount: page.verseKeys.count
@@ -102,6 +107,7 @@ struct OptimizedBibleReaderView: View {
                                 }
                             } else {
                                 print("✅ FITS: Content fits within available space")
+                                print("📏 FINAL: \(page.verseKeys.count) verses fit perfectly in \(availableHeight) pts")
                             }
                         }
                         .onChange(of: textGeo.size.height) { _, newHeight in
