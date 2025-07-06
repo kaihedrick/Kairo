@@ -4,15 +4,6 @@
 import Foundation
 import SwiftUI
 
-/// Identifies a single verse in the Bible.
-struct VerseKey: Hashable, Codable {
-    let book: String
-    let chapter: Int
-    let verse: Int
-
-    var description: String { "\(book) \(chapter):\(verse)" }
-}
-
 /// Additional context about where a page sits in a book.
 struct PageNavigationContext: Equatable {
     let isFirstVerseOfBook: Bool
