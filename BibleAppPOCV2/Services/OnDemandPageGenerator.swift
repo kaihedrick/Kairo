@@ -54,14 +54,20 @@ final class OnDemandPageGenerator: ObservableObject {
     /// Update the size used for pagination and clear stale state.
     func updatePageSize(_ new: CGSize) {
         guard size != new else { return }
+        let oldSize = size
         size = new
-        // Clear all cached state since layout calculations are now invalid
+        
+        // Clear ALL cached state since layout calculations are now invalid
         pending = nil
         currentNode = nil
         currentPage = nil
+        
+        // Force clear text formatter cache too
+        JITTextFormatter.clearCache()
+        
         Task { 
             await cache.clear() 
-            print("📐 Page size updated to \(new), cache cleared")
+            print("📐 Page size updated from \(oldSize) to \(new), ALL caches cleared")
         }
     }
 
@@ -275,18 +281,27 @@ final class OnDemandPageGenerator: ObservableObject {
 
             let candidateContent = currentContent + formatted
             
-            // Use the new actual render measurement that matches the view
+            // Use debug measurement for better visibility
             let padding = EdgeInsets(
                 top: LayoutMetrics.verticalPagePadding,
                 leading: LayoutMetrics.horizontalPagePadding,
                 bottom: LayoutMetrics.verticalPagePadding,
                 trailing: LayoutMetrics.horizontalPagePadding
             )
+            
+            #if DEBUG
+            let (actualSize, _) = JITTextFormatter.debugMeasurement(
+                candidateContent,
+                containerSize: size,
+                padding: padding
+            )
+            #else
             let actualSize = JITTextFormatter.measureActualRender(
                 candidateContent,
                 containerSize: size,
                 padding: padding
             )
+            #endif
             
             // Debug: Print every 5 verses to see the height progression
             if verseKeys.count % 5 == 0 || verseKeys.count < 5 {
