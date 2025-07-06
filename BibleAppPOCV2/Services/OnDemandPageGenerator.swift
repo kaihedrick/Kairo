@@ -272,7 +272,15 @@ final class OnDemandPageGenerator: ObservableObject {
                 let newContent = currentContent + parts.0
                 commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: parts.0, verseKey: key, isSplit: true))
-                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+                let startVisible = verseKeys.first ?? key
+                let endVisible = verseKeys.last ?? key
+                let page = GeneratedPage(
+                    segments: segments,
+                    startKey: key,
+                    navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false),
+                    startVisibleVerse: startVisible,
+                    endVisibleVerse: endVisible
+                )
                 print("📄 Tail split again - page with tail partial, remainder still pending")
                 return .success((page: page, remainder: (key, parts.1)))
             } else {
@@ -355,7 +363,15 @@ final class OnDemandPageGenerator: ObservableObject {
                     print("🔄 Split verse \(verseKey.description) - partial added, remainder pending")
                 }
 
-        let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+        let startVisible = verseKeys.first ?? key
+        let endVisible = verseKeys.last ?? key
+        let page = GeneratedPage(
+            segments: segments,
+            startKey: key,
+            navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false),
+            startVisibleVerse: startVisible,
+            endVisibleVerse: endVisible
+        )
         let remainder = parts.1.characters.isEmpty ? nil : (key: verseKey, text: parts.1)
         
         print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
@@ -405,7 +421,15 @@ final class OnDemandPageGenerator: ObservableObject {
 
         guard !segments.isEmpty else { return .failure(.layoutFailed(key)) }
 
-        let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+        let startVisible = verseKeys.first ?? key
+        let endVisible = verseKeys.last ?? key
+        let page = GeneratedPage(
+            segments: segments,
+            startKey: key,
+            navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false),
+            startVisibleVerse: startVisible,
+            endVisibleVerse: endVisible
+        )
         
         // Final validation: check if the complete page content actually fits
         let finalContent = page.segments.reduce(AttributedString()) { result, segment in
