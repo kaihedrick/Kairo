@@ -167,6 +167,19 @@ final class OnDemandPageGenerator: ObservableObject {
         let cacheInfo = keys.map { $0.description }.joined(separator: ", ")
         return "cur=\(currentInfo) \(pendingInfo) cache=[\(cacheInfo)]"
     }
+    
+    /// Called by the view when rendered content doesn't match predicted measurements
+    func reportOverflow(actualHeight: CGFloat, availableHeight: CGFloat, segmentCount: Int) async {
+        print("🔍 OVERFLOW FEEDBACK: predicted fit, but actual=\(actualHeight) > available=\(availableHeight)")
+        print("   Segments: \(segmentCount), overflow: \(actualHeight - availableHeight)pts")
+        
+        // This indicates our measurement is wrong - we could adjust the budget
+        // or implement a corrective regeneration, but for now just log the discrepancy
+        let discrepancy = actualHeight - availableHeight
+        if discrepancy > 50 {
+            print("⚠️ SIGNIFICANT DISCREPANCY: \(discrepancy)pts - measurement logic may need adjustment")
+        }
+    }
 
     private func commitCurrentPage(_ slice: OptimizedPageSlice, key: VerseKey) async {
         await cache.set(key, slice)
@@ -210,9 +223,13 @@ final class OnDemandPageGenerator: ObservableObject {
         guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
             return .failure(.missingChapter(key))
         }
+        // compute available space
         let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
         let availH = max(size.height - LayoutMetrics.verticalPagePadding * 2, 0)
         guard availW > 0 && availH > 0 else { return .failure(.layoutFailed(key)) }
+        
+        // Debug: Print budget calculation
+        print("💰 Budget calc: inputSize=\(size), availW=\(availW), availH=\(availH), hPad=\(LayoutMetrics.horizontalPagePadding), vPad=\(LayoutMetrics.verticalPagePadding)")
         
         var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
@@ -221,7 +238,7 @@ final class OnDemandPageGenerator: ObservableObject {
         var verseKeys: [VerseKey] = []
 
         // Handle carry-over text from previous page
-        if var rest = tail, !rest.characters.isEmpty {
+        if let rest = tail, !rest.characters.isEmpty {
             print("🔄 Processing tail for \(key.description)")
             let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             if m.height > availH {
@@ -237,7 +254,7 @@ final class OnDemandPageGenerator: ObservableObject {
                 commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
                 segments.append(PageSegment(attributed: rest, verseKey: key, isSplit: true))
                 curH = m.height
-                print("✅ Tail consumed for \(key.description), moving to next verse")
+                print("✅ Tail consumed for \(key.description), verse count: \(verseKeys.count)")
                 // Important: Move to next verse only after consuming the tail
                 idx += 1
             }
@@ -256,44 +273,59 @@ final class OnDemandPageGenerator: ObservableObject {
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
                 showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
 
-            // ✅ KEY FIX: Measure the COMBINED content, not individual verses
             let candidateContent = currentContent + formatted
-            let combinedSize = TextMeasurer.measure(candidateContent, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
             
-            if segments.isEmpty {
-                print("MEASURE  verse\tH=\(combinedSize.height) budget=\(availH) (combined measurement)")
+            // Use the new actual render measurement that matches the view
+            let padding = EdgeInsets(
+                top: LayoutMetrics.verticalPagePadding,
+                leading: LayoutMetrics.horizontalPagePadding,
+                bottom: LayoutMetrics.verticalPagePadding,
+                trailing: LayoutMetrics.horizontalPagePadding
+            )
+            let actualSize = JITTextFormatter.measureActualRender(
+                candidateContent,
+                containerSize: size,
+                padding: padding
+            )
+            
+            // Debug: Print every 5 verses to see the height progression
+            if verseKeys.count % 5 == 0 || verseKeys.count < 5 {
+                print("📏 Verse \(verseKey.description): actualH=\(actualSize.height) vs containerH=\(size.height)")
             }
 
-            // Check if the COMBINED content fits
-            if combinedSize.height <= availH + 1 {
-                let newContent = currentContent + formatted
-                commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
+            // Check if the ACTUAL rendered size fits in the container
+            if actualSize.height <= size.height {
+                // fits on this page
+                currentContent = candidateContent
+                curH = actualSize.height
+                if verseKeys.last != verseKey { verseKeys.append(verseKey) }
                 segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
-                curH = combinedSize.height  // Update to actual combined height
-                print("✅ Added complete verse \(verseKey.description) - total verses: \(verseKeys.count), combined height: \(combinedSize.height)")
-                idx += 1  // Only increment after successfully adding the verse
-                continue
-            }
+                idx += 1 // Move to next verse
+                print("✅ Added complete verse \(verseKey.description) - total verses: \(verseKeys.count)")
 
-            // Combined content doesn't fit - need to split current verse
-            let headSpace = max(availH - curH, 1)
-            let parts = TextMeasurer.split(formatted, size: CGSize(width: availW, height: headSpace))
-            
-            if !parts.0.characters.isEmpty {
-                let newContent = currentContent + parts.0
-                commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
-                segments.append(PageSegment(attributed: parts.0, verseKey: verseKey, isSplit: true))
-                print("🔄 Split verse \(verseKey.description) - partial added, remainder pending")
             } else {
-                print("⚠️ Verse \(verseKey.description) too large - full text moved to remainder")
+                // split the verse exactly at the remaining space
+                let remainingSpace = max(size.height - curH, 0)
+                let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
+                let parts = JITTextFormatter.split(
+                    attributed: formatted,
+                    maxSize: CGSize(width: availW, height: remainingSpace)
+                )
+
+                // parts.0 is what fits, parts.1 is the tail
+                if !parts.0.characters.isEmpty {
+                    currentContent += parts.0
+                    if verseKeys.last != verseKey { verseKeys.append(verseKey) }
+                    segments.append(PageSegment(attributed: parts.0, verseKey: verseKey, isSplit: true))
+                    print("🔄 Split verse \(verseKey.description) - partial added, remainder pending")
+                }
+
+                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+                let remainder = parts.1.characters.isEmpty ? nil : (key: verseKey, text: parts.1)
+                
+                print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
+                return .success((page: page, remainder: remainder))
             }
-            
-            // Create page with current segments and return remainder
-            let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
-            
-            // Important: Don't increment idx here - the remainder should continue from the same verse
-            print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
-            return .success((page: page, remainder: (verseKey, parts.1)))
         }
 
         // Fallback: if no segments were created, force at least one verse
@@ -391,4 +423,3 @@ final class OnDemandPageGenerator: ObservableObject {
         return nil
     }
 }
-
