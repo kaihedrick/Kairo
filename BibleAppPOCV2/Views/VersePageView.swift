@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VersePageView: View {
-    let verses: [Verse]
+    let verses: [RenderVerse]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

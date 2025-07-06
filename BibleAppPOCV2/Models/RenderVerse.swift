@@ -1,13 +1,13 @@
 import Foundation
 
-struct Verse {
+struct RenderVerse {
     let key: VerseKey
     let attributedText: NSAttributedString
     var fitsOnPage: Bool = true
 }
 
-extension Verse {
-    func withFitStatus(_ fits: Bool) -> Verse {
+extension RenderVerse {
+    func withFitStatus(_ fits: Bool) -> RenderVerse {
         var copy = self
         copy.fitsOnPage = fits
         return copy
