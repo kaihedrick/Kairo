@@ -35,13 +35,34 @@ struct OptimizedBibleReaderView: View {
 #endif
             }
             .onAppear {
-                generator.updatePageSize(size)
-                Task { await generator.generatePage(startingAt: initialVerse) }
+                // Don't generate page here - wait for size to be calculated
+                print("📐 View appeared, waiting for size calculation...")
+                
+                // Fallback: if size is already reasonable, generate immediately
+                Task {
+                    // Small delay to ensure layout is complete
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    if size.width > 100 && size.height > 100 && generator.currentPage == nil {
+                        print("📖 Fallback: Generating page with size: \(size)")
+                        generator.updatePageSize(size)
+                        await generator.generatePage(startingAt: initialVerse)
+                    }
+                }
             }
             .onChange(of: size) { _, newSize in
+                print("📐 Size changed to: \(newSize)")
                 generator.updatePageSize(newSize)
-                // Note: updatePageSize already clears cache and will regenerate on next access
-                // No need to explicitly regenerate here as it causes duplicate generation
+                
+                // ALWAYS regenerate on size change - don't rely on cached pages
+                if newSize.width > 100 && newSize.height > 100 {
+                    Task { 
+                        print("📖 FORCE generating fresh page with size: \(newSize)")
+                        // Get current position, then force regenerate
+                        let currentStart = generator.currentPage?.startVerse ?? 
+                            VerseKey(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)
+                        await generator.generatePage(startingAt: (currentStart.book, currentStart.chapter, currentStart.verse))
+                    }
+                }
             }
         }
         .navigationTitle(generator.currentPage?.navTitle ?? "")

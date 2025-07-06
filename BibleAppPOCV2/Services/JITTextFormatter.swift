@@ -4,10 +4,14 @@
 import Foundation
 import SwiftUI
 import UIKit
+import CoreText
 
 /// Formats verses for on-demand pagination and caches measurements.
 class JITTextFormatter {
     private static let measurementCache = LRUCache<String, CGSize>(capacity: 100)
+    
+    // Debug flag to disable all caching for accurate measurements
+    private static let disableCaching = true
 
     /// Format a single verse into an attributed string with optional headers.
     static func formatVerse(
@@ -61,19 +65,44 @@ class JITTextFormatter {
     static func measureText(_ text: AttributedString, maxSize: CGSize) -> CGSize {
         if text.characters.isEmpty { return .zero }
         
-        // For critical page generation, skip caching to ensure accurate measurements
-        // TODO: Implement proper content-based caching later
+        // Force fresh measurement if caching is disabled
+        if disableCaching {
+            return performFreshMeasurement(text, maxSize: maxSize)
+        }
+        
+        // Create a proper cache key using content and size
+        let contentStr = String(text.characters)
+        let contentHash = contentStr.hash
+        let cacheKey = "\(contentHash):\(maxSize.width):\(maxSize.height)"
+        if let cached = measurementCache.get(cacheKey) { 
+            print("📋 Using cached measurement for \(text.characters.prefix(20))...")
+            return cached 
+        }
+        
+        let size = performFreshMeasurement(text, maxSize: maxSize)
+        measurementCache.set(cacheKey, size)
+        return size
+    }
+    
+    /// Perform actual measurement without caching
+    private static func performFreshMeasurement(_ text: AttributedString, maxSize: CGSize) -> CGSize {
+        print("🔍 FRESH measurement for text: \(text.characters.prefix(50))... maxSize: \(maxSize)")
+        
+        // Convert to NSAttributedString for measurement
         let nsAttr = NSAttributedString(text)
-        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-        let drawingRect = nsAttr.boundingRect(
-            with: CGSize(width: maxSize.width, height: .greatestFiniteMagnitude),
-            options: drawingOptions,
-            context: nil
+        
+        // Use CTFramesetter for more accurate measurement that matches SwiftUI Text
+        let framesetter = CTFramesetterCreateWithAttributedString(nsAttr)
+        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: nsAttr.length),
+            nil, // no additional attributes
+            CGSize(width: maxSize.width, height: .greatestFiniteMagnitude),
+            nil  // don't need the range that fits
         )
-
-        let size = CGSize(width: ceil(drawingRect.width), height: ceil(drawingRect.height))
-        // Skip caching for now to ensure accurate measurements
-        // measurementCache.set(cacheKey, size)
+        
+        let size = CGSize(width: ceil(suggestedSize.width), height: ceil(suggestedSize.height))
+        print("🔍 FRESH result: \(size)")
         return size
     }
 
@@ -95,19 +124,41 @@ class JITTextFormatter {
         let availableWidth = max(containerSize.width - padding.leading - padding.trailing, 0)
         let nsAttr = NSAttributedString(text)
         
-        // Use the same drawing options as the measurement function
-        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-        let drawingRect = nsAttr.boundingRect(
-            with: CGSize(width: availableWidth, height: .greatestFiniteMagnitude),
-            options: drawingOptions,
-            context: nil
+        // Use CTFramesetter for measurement that matches SwiftUI Text rendering
+        let framesetter = CTFramesetterCreateWithAttributedString(nsAttr)
+        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: nsAttr.length),
+            nil,
+            CGSize(width: availableWidth, height: .greatestFiniteMagnitude),
+            nil
         )
         
         // Add padding back to get total size
-        let totalWidth = ceil(drawingRect.width) + padding.leading + padding.trailing
-        let totalHeight = ceil(drawingRect.height) + padding.top + padding.bottom
+        let totalWidth = ceil(suggestedSize.width) + padding.leading + padding.trailing
+        let totalHeight = ceil(suggestedSize.height) + padding.top + padding.bottom
         
         return CGSize(width: totalWidth, height: totalHeight)
+    }
+    
+    /// Debug method to compare our measurement with SwiftUI's actual rendering
+    static func debugMeasurement(_ text: AttributedString, containerSize: CGSize, padding: EdgeInsets) -> (predicted: CGSize, shouldBeAccurate: Bool) {
+        let predicted = measureActualRender(text, containerSize: containerSize, padding: padding)
+        
+        // Additional validation: check if our measurement logic is reasonable
+        let contentHeight = predicted.height - padding.top - padding.bottom
+        let containerHeight = containerSize.height
+        
+        let isReasonable = contentHeight > 0 && contentHeight <= containerHeight + 50 // 50pt tolerance
+        
+        print("🔬 MEASUREMENT DEBUG:")
+        print("   Container: \(containerSize)")
+        print("   Padding: top=\(padding.top), bottom=\(padding.bottom)")
+        print("   Predicted total: \(predicted)")
+        print("   Content height: \(contentHeight)")
+        print("   Reasonable: \(isReasonable)")
+        
+        return (predicted, isReasonable)
     }
 
     /// Split an attributed string into the portion that fits within the given size
