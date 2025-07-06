@@ -60,7 +60,7 @@ struct BibleReaderView: View {
                         await pageGenerator.generatePage(startingAt: initialVerse)
                     }
                 }
-                .onChange(of: size) { newSize in
+                .onChange(of: size) { _, newSize in
                     pageGenerator.updatePageSize(newSize)
                     let start = pageGenerator.currentPage?.startVerse ?? VerseKey(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)
                     Task { await pageGenerator.generatePage(startingAt: (start.book, start.chapter, start.verse)) }
@@ -82,7 +82,7 @@ struct BibleReaderView: View {
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
-        .onChange(of: pageGenerator.currentPage?.startVerse) { _ in
+        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
             if let newPage = pageGenerator.currentPage {
                 updateCurrentPageInfo(newPage)
             }

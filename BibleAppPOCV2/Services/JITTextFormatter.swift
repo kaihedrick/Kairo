@@ -38,12 +38,18 @@ class JITTextFormatter {
         verseNumberAttr.font = Typography.verseNumber
         verseNumberAttr.foregroundColor = .secondary
 
+        // Create verse text with line spacing using NSAttributedString first, then convert
         let style = NSMutableParagraphStyle()
         style.lineSpacing = Typography.lineSpacing
-        var verseTextAttr = AttributedString("\(text) ")
-        verseTextAttr.font = Typography.body
-        verseTextAttr.paragraphStyle = style
-        verseTextAttr.foregroundColor = .primary
+        
+        let nsAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.preferredFont(forTextStyle: .body),
+            .paragraphStyle: style,
+            .foregroundColor: UIColor.label
+        ]
+        
+        let nsVerseText = NSAttributedString(string: "\(text) ", attributes: nsAttributes)
+        let verseTextAttr = AttributedString(nsVerseText)
 
         attributed.append(verseNumberAttr)
         attributed.append(verseTextAttr)
@@ -54,9 +60,9 @@ class JITTextFormatter {
     /// Measure the rendered size of an attributed string.
     static func measureText(_ text: AttributedString, maxSize: CGSize) -> CGSize {
         if text.characters.isEmpty { return .zero }
-        let cacheKey = "\(text.characters.count):\(maxSize.width):\(maxSize.height)"
-        if let cached = measurementCache.get(cacheKey) { return cached }
-
+        
+        // For critical page generation, skip caching to ensure accurate measurements
+        // TODO: Implement proper content-based caching later
         let nsAttr = NSAttributedString(text)
         let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
         let drawingRect = nsAttr.boundingRect(
@@ -66,7 +72,8 @@ class JITTextFormatter {
         )
 
         let size = CGSize(width: ceil(drawingRect.width), height: ceil(drawingRect.height))
-        measurementCache.set(cacheKey, size)
+        // Skip caching for now to ensure accurate measurements
+        // measurementCache.set(cacheKey, size)
         return size
     }
 
@@ -78,6 +85,29 @@ class JITTextFormatter {
     /// Clear cached measurement results.
     static func clearCache() {
         measurementCache.clear()
+    }
+    
+    /// Measure text as it would actually render in a Text view with padding
+    static func measureActualRender(_ text: AttributedString, containerSize: CGSize, padding: EdgeInsets) -> CGSize {
+        if text.characters.isEmpty { return .zero }
+        
+        // Account for padding in available space
+        let availableWidth = max(containerSize.width - padding.leading - padding.trailing, 0)
+        let nsAttr = NSAttributedString(text)
+        
+        // Use the same drawing options as the measurement function
+        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let drawingRect = nsAttr.boundingRect(
+            with: CGSize(width: availableWidth, height: .greatestFiniteMagnitude),
+            options: drawingOptions,
+            context: nil
+        )
+        
+        // Add padding back to get total size
+        let totalWidth = ceil(drawingRect.width) + padding.leading + padding.trailing
+        let totalHeight = ceil(drawingRect.height) + padding.top + padding.bottom
+        
+        return CGSize(width: totalWidth, height: totalHeight)
     }
 
     /// Split an attributed string into the portion that fits within the given size
