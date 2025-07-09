@@ -15,6 +15,25 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Explicit Model Selection for Loader
+// Use OptimizedBibleModels types to avoid ambiguity
+import struct OptimizedBibleModels.BibleMetadata
+import struct OptimizedBibleModels.BookMetadata
+
+typealias LoaderBibleMetadata = OptimizedBibleModels.BibleMetadata
+typealias LoaderBookMetadata = OptimizedBibleModels.BookMetadata
+
+// MARK: - Type Aliases for disambiguation
+// These aliases ensure we use the correct types from OptimizedBibleModels.swift
+// Note: We directly reference the types defined in OptimizedBibleModels.swift since they are in the same module
+
+// Import legacy types for fallback (using the renamed types from BibleDataLoader.swift)
+// No typealias needed - we'll reference LegacyBibleDataLoader directly
+
+// We need to use specific type paths to avoid ambiguity
+// BibleMetadata, BookMetadata come from OptimizedBibleModels.swift
+// OptimizedBible.ChapterContent, OptimizedBible.Verse come from OptimizedBibleModels.swift
+
 // MARK: - Optimized Data Models
 
 // Note: The core data models (BibleMetadata, BookMetadata, ChapterContent, VerseContent) 
@@ -132,11 +151,11 @@ class LRUCache<Key: Hashable, Value> {
 actor OptimizedBibleDataLoader {
     static let shared = OptimizedBibleDataLoader()
     
-    private var _metadata: BibleMetadata?
+    private var _metadata: LoaderBibleMetadata?
     private let chapterCache = LRUCache<String, OptimizedBible.ChapterContent>(capacity: 20)
     private let loadingTasks: NSMutableSet = NSMutableSet()
     
-    var metadata: BibleMetadata? {
+    var metadata: LoaderBibleMetadata? {
         return _metadata
     }
     
@@ -161,20 +180,20 @@ actor OptimizedBibleDataLoader {
         
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
-        _metadata = try decoder.decode(BibleMetadata.self, from: data)
+        _metadata = try decoder.decode(LoaderBibleMetadata.self, from: data)
     }
     
     private func generateMetadataFromFullBible() async {
         // If no metadata file exists, generate from full Bible (slower fallback)
-        let bibleResult = BibleDataLoader.loadBible()
+        let bibleResult = LegacyBibleDataLoader.loadBible()
         guard case let .success(bible) = bibleResult else {
-            _metadata = BibleMetadata(books: [])
+            _metadata = LoaderBibleMetadata(books: [])
             return
         }
         let bookMetadata = bible.books.map { book in
-            BookMetadata(name: book.name, chapterCount: book.chapters.count)
+            LoaderBookMetadata(name: book.name, chapterCount: book.chapters.count)
         }
-        _metadata = BibleMetadata(books: bookMetadata)
+        _metadata = LoaderBibleMetadata(books: bookMetadata)
     }
     
     // MARK: - Chapter Content Loading (Cached)
@@ -231,7 +250,7 @@ actor OptimizedBibleDataLoader {
                 
                 let chapterVerses = bookData.chapters[chapterIndex]
                 let verses = chapterVerses.map { verse in
-                    VerseContent(verse: verse.verse, text: verse.text)
+                    OptimizedBible.Verse(verse: verse.verse, text: verse.text)
                 }
                 
                 let content = OptimizedBible.ChapterContent(book: book, chapter: chapter, verses: verses)
@@ -243,7 +262,7 @@ actor OptimizedBibleDataLoader {
             }
             
             // Fall back to legacy structure
-            guard case let .success(bible) = BibleDataLoader.loadBible() else {
+            guard case let .success(bible) = LegacyBibleDataLoader.loadBible() else {
                 print("❌ Failed to load Bible data using legacy loader")
                 return nil
             }
@@ -263,7 +282,7 @@ actor OptimizedBibleDataLoader {
             }
             
             let verses = chapterData.verses.map { verse in
-                VerseContent(verse: verse.verse, text: verse.text)
+                OptimizedBible.Verse(verse: verse.verse, text: verse.text)
             }
             
             let content = OptimizedBible.ChapterContent(book: book, chapter: chapter, verses: verses)
@@ -292,3 +311,4 @@ actor OptimizedBibleDataLoader {
         return (hitRate: 0.85, size: chapterCache.cacheCapacity)
     }
 }
+

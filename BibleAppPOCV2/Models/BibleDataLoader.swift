@@ -13,8 +13,8 @@ enum BibleLoadError: Error {
     case decodingFailed(Error)
 }
 
-class BibleDataLoader {
-    static func loadBible(named fileName: String = "KJV.json") -> Result<Bible, BibleLoadError> {
+class LegacyBibleDataLoader {
+    static func loadBible(named fileName: String = "KJV.json") -> Result<LegacyBible, BibleLoadError> {
         // Allow loading future translations by passing a different filename
         let ns = fileName as NSString
         let name = ns.deletingPathExtension
@@ -27,7 +27,7 @@ class BibleDataLoader {
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
-            let bible = try decoder.decode(Bible.self, from: data)
+            let bible = try decoder.decode(LegacyBible.self, from: data)
             return .success(bible)
         } catch {
             return .failure(.decodingFailed(error))
@@ -35,22 +35,22 @@ class BibleDataLoader {
     }
 }
 
-// Ensure these match your existing models or provide compatible interfaces
-struct Bible: Codable {
-    let books: [Book]
+// Legacy types with unique names to avoid conflicts with other model files
+struct LegacyBible: Codable {
+    let books: [LegacyBook]
 }
 
-struct Book: Codable {
+struct LegacyBook: Codable {
     let name: String
-    let chapters: [Chapter]
+    let chapters: [LegacyChapter]
 }
 
-struct Chapter: Codable {
+struct LegacyChapter: Codable {
     let chapter: Int
-    let verses: [Verse]
+    let verses: [LegacyVerse]
 }
 
-struct Verse: Codable {
+struct LegacyVerse: Codable {
     let verse: Int
     let text: String
 }

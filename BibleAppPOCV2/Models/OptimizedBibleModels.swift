@@ -51,4 +51,6 @@ extension OptimizedBible {
 
 // MARK: - Type Aliases
 
-typealias VerseContent = OptimizedBible.Verse
+enum OptimizedBibleAliases {
+    typealias VerseContent = OptimizedBible.Verse
+}
