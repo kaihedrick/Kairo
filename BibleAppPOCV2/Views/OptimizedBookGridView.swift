@@ -12,10 +12,8 @@ struct OptimizedBookGridView: View {
     @State private var lastMetadataHash: Int = 0
     
     // PERFORMANCE: Lazy grid configuration for smooth scrolling
-// To:
-private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
-private let gridItemSize: CGFloat = 70
-
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
+    private let gridItemSize: CGFloat = 70
     
     // PERFORMANCE: Testament name sets for faster lookups
     private let oldTestamentSet = Set([
