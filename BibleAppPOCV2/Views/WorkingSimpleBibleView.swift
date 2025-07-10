@@ -9,7 +9,7 @@ import SwiftUI
 
 struct WorkingSimpleBibleView: View {
     @StateObject private var viewModel = OptimizedBibleViewModel()
-    @State private var selectedBook: BookMetadata?
+    @State private var selectedBook: OptimizedBibleModels.BookMetadata?
     @State private var selectedChapter: Int = 1
     @State private var showingBookSelector = false
     @State private var showingChapterSelector = false
@@ -226,7 +226,7 @@ struct WorkingSimpleBibleView: View {
     
     // MARK: - Actions
     
-    private func selectBook(_ book: BookMetadata) {
+    private func selectBook(_ book: OptimizedBibleModels.BookMetadata) {
         selectedBook = book
         selectedChapter = 1
         loadChapter()

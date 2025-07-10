@@ -70,7 +70,8 @@ class PerformanceMonitor: ObservableObject {
 
 @MainActor
 class OptimizedBibleViewModel: ObservableObject {
-    @Published var metadata: BibleMetadata?
+    // Use the optimized namespaced models explicitly to avoid type ambiguity
+    @Published var metadata: OptimizedBibleModels.BibleMetadata?
     @Published var isInitializing = true
     @Published var initializationProgress: Double = 0.0
     @Published var errorMessage: String?
@@ -149,7 +150,7 @@ class OptimizedBibleViewModel: ObservableObject {
     }
 
     /// Search books with improved architecture
-    func searchBooksImproved(query: String) async -> [BookMetadata] {
+    func searchBooksImproved(query: String) async -> [OptimizedBibleModels.BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         // Use better filtering with validation
