@@ -20,7 +20,7 @@ extension OptimizedBibleViewModel {
     }
     
     /// Search books with new architecture (demonstration)
-    func searchBooksImproved(query: String) async -> [BookMetadata] {
+    func searchBooksImproved(query: String) async -> [OptimizedBibleModels.BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         return metadata.books.filter { book in
@@ -33,8 +33,8 @@ extension OptimizedBibleViewModel {
 
 /// Adapter to bridge existing OptimizedBibleDataLoader with new protocols
 class LegacyBibleServiceAdapter: BibleServiceProtocol {
-    
-    func getMetadata() async throws -> BibleMetadata {
+
+    func getMetadata() async throws -> OptimizedBibleModels.BibleMetadata {
         await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else {
             throw BibleError.dataNotFound("Bible metadata")
@@ -42,25 +42,24 @@ class LegacyBibleServiceAdapter: BibleServiceProtocol {
         return metadata
     }
     
-    func loadChapter(book: String, chapter: Int) async throws -> Chapter {
+    func loadChapter(book: String, chapter: Int) async throws -> ImprovedBibleModels.Chapter {
         guard let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(book: book, chapter: chapter) else {
             throw BibleError.dataNotFound("Chapter \(book) \(chapter)")
         }
         
         // Convert existing data structures to new domain models
         let verses = chapterContent.verses.map { verseContent in
-            let reference = VerseReference(
+            let reference = ImprovedBibleModels.VerseReference(
                 unsafeBook: book,
                 unsafeChapter: chapter,
                 unsafeVerse: verseContent.verse
             )
-            return Verse(reference: reference, text: verseContent.text)
+            return ImprovedBibleModels.Verse(reference: reference, text: verseContent.text)
         }
-        
-        return Chapter(book: book, number: chapter, verses: verses)
+        return ImprovedBibleModels.Chapter(book: book, number: chapter, verses: verses)
     }
-    
-    func searchBooks(query: String) async -> [BookMetadata] {
+
+    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata] {
         do {
             let metadata = try await getMetadata()
             return metadata.books.filter { 
@@ -77,21 +76,21 @@ class LegacyBibleServiceAdapter: BibleServiceProtocol {
 extension OptimizedPageSlice {
     
     /// Convert to new PageContent model
-    func toPageContent() -> PageContent {
-        return PageContent(
+    func toPageContent() -> ImprovedBibleModels.PageContent {
+        return ImprovedBibleModels.PageContent(
             attributedText: self.content,
-            startReference: VerseReference(
+            startReference: ImprovedBibleModels.VerseReference(
                 unsafeBook: self.startVerse.book,
                 unsafeChapter: self.startVerse.chapter,
                 unsafeVerse: self.startVerse.verse
             ),
-            endReference: VerseReference(
+            endReference: ImprovedBibleModels.VerseReference(
                 unsafeBook: self.endVerse.book,
                 unsafeChapter: self.endVerse.chapter,
                 unsafeVerse: self.endVerse.verse
             ),
             references: self.verseKeys.map { key in
-                VerseReference(
+                ImprovedBibleModels.VerseReference(
                     unsafeBook: key.book,
                     unsafeChapter: key.chapter,
                     unsafeVerse: key.verse
@@ -104,8 +103,8 @@ extension OptimizedPageSlice {
 extension VerseKey {
     
     /// Convert to new VerseReference
-    var asVerseReference: VerseReference {
-        VerseReference(
+    var asVerseReference: ImprovedBibleModels.VerseReference {
+        ImprovedBibleModels.VerseReference(
             unsafeBook: self.book,
             unsafeChapter: self.chapter,
             unsafeVerse: self.verse

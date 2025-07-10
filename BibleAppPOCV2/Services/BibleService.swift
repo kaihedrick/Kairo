@@ -10,9 +10,9 @@ import Foundation
 // MARK: - Bible Service Protocol
 
 protocol BibleServiceProtocol: Actor {
-    func getMetadata() async throws -> BibleMetadata
-    func loadChapter(book: String, chapter: Int) async throws -> Chapter
-    func searchBooks(query: String) async -> [BookMetadata]
+    func getMetadata() async throws -> ImprovedBibleModels.BibleMetadata
+    func loadChapter(book: String, chapter: Int) async throws -> ImprovedBibleModels.Chapter
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata]
 }
 
 // MARK: - Bible Service Implementation
@@ -26,10 +26,10 @@ actor BibleService: BibleServiceProtocol {
         self.cache = cache
     }
     
-    func getMetadata() async throws -> BibleMetadata {
+    func getMetadata() async throws -> ImprovedBibleModels.BibleMetadata {
         let cacheKey = "bible_metadata"
         
-        if let cached: BibleMetadata = await cache.get(key: cacheKey) {
+        if let cached: ImprovedBibleModels.BibleMetadata = await cache.get(key: cacheKey) {
             return cached
         }
         
@@ -39,10 +39,10 @@ actor BibleService: BibleServiceProtocol {
         return metadata
     }
     
-    func loadChapter(book: String, chapter: Int) async throws -> Chapter {
+    func loadChapter(book: String, chapter: Int) async throws -> ImprovedBibleModels.Chapter {
         let cacheKey = "\(book):\(chapter)"
         
-        if let cached: Chapter = await cache.get(key: cacheKey) {
+        if let cached: ImprovedBibleModels.Chapter = await cache.get(key: cacheKey) {
             return cached
         }
         
@@ -52,7 +52,7 @@ actor BibleService: BibleServiceProtocol {
         return chapterData
     }
     
-    func searchBooks(query: String) async -> [BookMetadata] {
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         do {
             let metadata = try await getMetadata()
             return metadata.books.filter { 
