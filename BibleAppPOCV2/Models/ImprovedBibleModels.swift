@@ -264,3 +264,25 @@ struct NavigationContext {
         self.totalVerses = totalVerses
     }
 }
+
+
+// MARK: - Namespaced Access for Migration Compatibility
+/// Provides namespaced access to the improved models. This helps avoid
+/// type name collisions while migrating legacy code. Each alias refers to
+/// the corresponding top-level type defined in this file.
+enum ImprovedBibleModels {
+    /// Sorted aliases for easier discovery and consistency
+    typealias Bible             = BibleAppPOCV2.Bible
+    typealias BibleConstants    = BibleAppPOCV2.BibleConstants
+    typealias BibleError        = BibleAppPOCV2.BibleError
+    typealias BibleMetadata     = BibleAppPOCV2.BibleMetadata
+    typealias Book              = BibleAppPOCV2.Book
+    typealias BookMetadata      = BibleAppPOCV2.BookMetadata
+    typealias Chapter           = BibleAppPOCV2.Chapter
+    typealias NavigationContext = BibleAppPOCV2.NavigationContext
+    typealias PageContent       = BibleAppPOCV2.PageContent
+    typealias ServiceResult<T>  = BibleAppPOCV2.ServiceResult<T>
+    typealias Verse             = BibleAppPOCV2.Verse
+    typealias VerseRange        = BibleAppPOCV2.VerseRange
+    typealias VerseReference    = BibleAppPOCV2.VerseReference
+}
