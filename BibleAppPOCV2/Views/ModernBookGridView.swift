@@ -308,11 +308,3 @@ struct ModernReaderView: View {
             .navigationBarTitleDisplayMode(.inline)
     }
 }
-
-// MARK: - Supporting Types
-
-enum Testament: String, CaseIterable {
-    case all = "All"
-    case old = "Old Testament"
-    case new = "New Testament"
-}

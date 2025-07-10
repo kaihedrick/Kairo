@@ -18,21 +18,12 @@ extension OptimizedBibleViewModel {
         // For now, return a wrapper around existing functionality
         return LegacyBibleServiceAdapter()
     }
-    
-    /// Search books with new architecture (demonstration)
-    func searchBooksImproved(query: String) async -> [ImprovedBibleModels.BookMetadata] {
-        guard let metadata = metadata else { return [] }
-        
-        return metadata.books.filter { book in
-            book.name.localizedCaseInsensitiveContains(query)
-        }
-    }
 }
 
 // MARK: - Legacy Adapter Pattern
 
 /// Adapter to bridge existing OptimizedBibleDataLoader with new protocols
-class LegacyBibleServiceAdapter: BibleServiceProtocol {
+actor LegacyBibleServiceAdapter: BibleServiceProtocol {
 
     func getMetadata() async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.BibleMetadata> {
         await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
@@ -60,13 +51,55 @@ class LegacyBibleServiceAdapter: BibleServiceProtocol {
         return .success(chapterModel)
     }
 
-    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
+    func loadVerse(reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.Verse> {
+        let chapterResult = await loadChapter(book: reference.book, chapter: reference.chapter)
+        switch chapterResult {
+        case .success(let chapter):
+            if let verse = chapter.verses.first(where: { $0.reference.verse == reference.verse }) {
+                return .success(verse)
+            } else {
+                return .failure(.dataNotFound("Verse \(reference)"))
+            }
+        case .failure(let error):
+            return .failure(error)
+        }
+    }
+
+    func searchBooks(query: String) async -> ImprovedBibleModels.ServiceResult<[ImprovedBibleModels.BookMetadata]> {
         let result = await getMetadata()
         switch result {
         case .success(let metadata):
-            return metadata.books.filter { $0.name.localizedCaseInsensitiveContains(query) }
-        case .failure:
-            return []
+            let filteredBooks = metadata.books.filter { $0.name.localizedCaseInsensitiveContains(query) }
+            return .success(filteredBooks)
+        case .failure(let error):
+            return .failure(error)
+        }
+    }
+
+    func getNavigationContext(for reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.NavigationContext> {
+        let metadataResult = await getMetadata()
+        switch metadataResult {
+        case .success(let metadata):
+            guard let book = metadata.books.first(where: { $0.name == reference.book }) else {
+                return .failure(.dataNotFound("Book \(reference.book)"))
+            }
+            
+            // Get chapter content to determine total verses
+            let chapterResult = await loadChapter(book: reference.book, chapter: reference.chapter)
+            switch chapterResult {
+            case .success(let chapter):
+                let context = ImprovedBibleModels.NavigationContext(
+                    currentChapter: reference.chapter,
+                    currentVerse: reference.verse,
+                    totalChapters: book.chapterCount,
+                    totalVerses: chapter.verseCount
+                )
+                return .success(context)
+            case .failure(let error):
+                return .failure(error)
+            }
+        case .failure(let error):
+            return .failure(error)
         }
     }
 }

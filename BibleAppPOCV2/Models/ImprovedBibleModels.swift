@@ -10,13 +10,20 @@ import SwiftUI
 
 // MARK: - Domain Models (Business Logic Layer)
 
+/// Testament enumeration for filtering books
+public enum Testament: String, CaseIterable {
+    case all = "All"
+    case old = "Old Testament"
+    case new = "New Testament"
+}
+
 /// Core verse identifier - immutable value object
 public struct VerseReference: Hashable, Codable, CustomStringConvertible {
     let book: String
     let chapter: Int
     let verse: Int
     
-    var description: String { "\(book) \(chapter):\(verse)" }
+    public var description: String { "\(book) \(chapter):\(verse)" }
     
     // Validation
     public init?(book: String, chapter: Int, verse: Int) {
@@ -36,7 +43,7 @@ public struct VerseReference: Hashable, Codable, CustomStringConvertible {
 
 /// Represents a single verse with its content
 public struct Verse: Hashable, Identifiable {
-    let id = UUID()
+    public let id = UUID()
     let reference: VerseReference
     let text: String
     
@@ -48,7 +55,7 @@ public struct Verse: Hashable, Identifiable {
 
 /// Represents a chapter containing multiple verses
 public struct Chapter: Hashable, Identifiable {
-    let id = UUID()
+    public let id = UUID()
     let book: String
     let number: Int
     let verses: [Verse]
@@ -64,7 +71,7 @@ public struct Chapter: Hashable, Identifiable {
 
 /// Represents a book containing multiple chapters
 public struct Book: Hashable, Identifiable {
-    let id = UUID()
+    public let id = UUID()
     let name: String
     let chapters: [Chapter]
     
@@ -117,13 +124,13 @@ public struct BibleMetadata: Codable {
 
 /// Page of formatted content for display
 public struct PageContent: Identifiable, Equatable {
-    let id = UUID()
+    public let id = UUID()
     let attributedText: AttributedString
     let startReference: VerseReference
     let endReference: VerseReference
     let references: [VerseReference]
     
-    static func == (lhs: PageContent, rhs: PageContent) -> Bool {
+    public static func == (lhs: PageContent, rhs: PageContent) -> Bool {
         lhs.id == rhs.id &&
         lhs.startReference == rhs.startReference &&
         lhs.endReference == rhs.endReference
@@ -185,7 +192,7 @@ public enum BibleError: LocalizedError, Equatable {
     case networkError(String)
     case cacheError(String)
     
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .dataNotFound(let item):
             return "Could not find \(item)"
@@ -200,7 +207,7 @@ public enum BibleError: LocalizedError, Equatable {
         }
     }
     
-    var recoverySuggestion: String? {
+    public var recoverySuggestion: String? {
         switch self {
         case .dataNotFound:
             return "Please check your internet connection and try again."

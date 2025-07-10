@@ -110,7 +110,7 @@ class OptimizedBibleViewModel: ObservableObject {
     // MARK: - Improved Architecture Methods
 
     /// Improved initialization with better error handling
-    private func initializeDataImproved() async {
+    func initializeDataImproved() async {
         do {
             // Start with metadata loading
             initializationProgress = 0.1
