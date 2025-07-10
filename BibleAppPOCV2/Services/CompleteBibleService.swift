@@ -24,25 +24,25 @@ enum BibleTypeAliases {
 
 /// Main Bible service protocol with all operations
 protocol BibleServiceProtocol: Actor {
-    func getMetadata() async -> ServiceResult<BibleMetadata>
-    func loadChapter(book: String, chapter: Int) async -> ServiceResult<Chapter>
-    func loadVerse(reference: VerseReference) async -> ServiceResult<Verse>
-    func searchBooks(query: String) async -> ServiceResult<[BookMetadata]>
-    func getNavigationContext(for reference: VerseReference) async -> ServiceResult<NavigationContext>
+    func getMetadata() async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.BibleMetadata>
+    func loadChapter(book: String, chapter: Int) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.Chapter>
+    func loadVerse(reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.Verse>
+    func searchBooks(query: String) async -> ImprovedBibleModels.ServiceResult<[ImprovedBibleModels.BookMetadata]>
+    func getNavigationContext(for reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.NavigationContext>
 }
 
 /// Page generation service protocol
 protocol PageServiceProtocol: Actor {
-    func generatePage(startingAt reference: VerseReference, pageSize: CGSize) async -> ServiceResult<PageContent>
-    func getNextPage(from current: PageContent) async -> ServiceResult<PageContent?>
-    func getPreviousPage(from current: PageContent) async -> ServiceResult<PageContent?>
+    func generatePage(startingAt reference: ImprovedBibleModels.VerseReference, pageSize: CGSize) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.PageContent>
+    func getNextPage(from current: ImprovedBibleModels.PageContent) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.PageContent?>
+    func getPreviousPage(from current: ImprovedBibleModels.PageContent) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.PageContent?>
 }
 
 /// Text formatting service protocol
 protocol TextServiceProtocol {
-    func formatVerse(_ verse: Verse, showChapterHeader: Bool, showBookTitle: Bool) -> AttributedString
+    func formatVerse(_ verse: ImprovedBibleModels.Verse, showChapterHeader: Bool, showBookTitle: Bool) -> AttributedString
     func measureText(_ text: AttributedString, containerSize: CGSize) -> CGSize
-    func formatVerseRange(_ verses: [Verse]) -> AttributedString
+    func formatVerseRange(_ verses: [ImprovedBibleModels.Verse]) -> AttributedString
 }
 
 // MARK: - Complete Bible Service Implementation
@@ -55,7 +55,7 @@ actor CompleteBibleService: BibleServiceProtocol {
         self.dataLoader = dataLoader
     }
     
-    func getMetadata() async -> ServiceResult<BibleMetadata> {
+    func getMetadata() async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.BibleMetadata> {
         do {
             await dataLoader.ensureMetadataLoaded()
             guard let metadata = await dataLoader.metadata else {
@@ -67,7 +67,7 @@ actor CompleteBibleService: BibleServiceProtocol {
         }
     }
     
-    func loadChapter(book: String, chapter: Int) async -> ServiceResult<Chapter> {
+    func loadChapter(book: String, chapter: Int) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.Chapter> {
         // Validate input
         guard !book.isEmpty, chapter > 0 else {
             return .failure(.invalidInput("Invalid book or chapter"))
@@ -79,17 +79,17 @@ actor CompleteBibleService: BibleServiceProtocol {
         
         // Convert to domain model
         let verses = chapterContent.verses.compactMap { verseContent in
-            guard let reference = VerseReference(book: book, chapter: chapter, verse: verseContent.verse) else {
+            guard let reference = ImprovedBibleModels.VerseReference(book: book, chapter: chapter, verse: verseContent.verse) else {
                 return nil
             }
-            return Verse(reference: reference, text: verseContent.text)
+            return ImprovedBibleModels.Verse(reference: reference, text: verseContent.text)
         }
-        
-        let domainChapter = Chapter(book: book, number: chapter, verses: verses)
+
+        let domainChapter = ImprovedBibleModels.Chapter(book: book, number: chapter, verses: verses)
         return .success(domainChapter)
     }
     
-    func loadVerse(reference: VerseReference) async -> ServiceResult<Verse> {
+    func loadVerse(reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.Verse> {
         let chapterResult = await loadChapter(book: reference.book, chapter: reference.chapter)
         
         switch chapterResult {
@@ -104,7 +104,7 @@ actor CompleteBibleService: BibleServiceProtocol {
         }
     }
     
-    func searchBooks(query: String) async -> ServiceResult<[BookMetadata]> {
+    func searchBooks(query: String) async -> ImprovedBibleModels.ServiceResult<[ImprovedBibleModels.BookMetadata]> {
         guard !query.isEmpty else {
             return .failure(.invalidInput("Empty search query"))
         }
@@ -121,7 +121,7 @@ actor CompleteBibleService: BibleServiceProtocol {
         }
     }
     
-    func getNavigationContext(for reference: VerseReference) async -> ServiceResult<NavigationContext> {
+    func getNavigationContext(for reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.NavigationContext> {
         let metadataResult = await getMetadata()
         
         switch metadataResult {
@@ -133,7 +133,7 @@ actor CompleteBibleService: BibleServiceProtocol {
             let chapterResult = await loadChapter(book: reference.book, chapter: reference.chapter)
             switch chapterResult {
             case .success(let chapter):
-                let context = NavigationContext(
+                let context = ImprovedBibleModels.NavigationContext(
                     currentChapter: reference.chapter,
                     currentVerse: reference.verse,
                     totalChapters: bookMeta.chapterCount,
@@ -152,8 +152,8 @@ actor CompleteBibleService: BibleServiceProtocol {
 // MARK: - Text Formatting Service Implementation
 
 class TextFormattingService: TextServiceProtocol {
-    
-    func formatVerse(_ verse: Verse, showChapterHeader: Bool = false, showBookTitle: Bool = false) -> AttributedString {
+
+    func formatVerse(_ verse: ImprovedBibleModels.Verse, showChapterHeader: Bool = false, showBookTitle: Bool = false) -> AttributedString {
         var attributed = AttributedString()
         
         if showBookTitle {
@@ -189,7 +189,7 @@ class TextFormattingService: TextServiceProtocol {
         return TextMeasurer.measure(text, size: containerSize)
     }
     
-    func formatVerseRange(_ verses: [Verse]) -> AttributedString {
+    func formatVerseRange(_ verses: [ImprovedBibleModels.Verse]) -> AttributedString {
         var result = AttributedString()
         
         for (index, verse) in verses.enumerated() {
