@@ -17,8 +17,7 @@ import SwiftUI
 
 // MARK: - Explicit Model Selection for Loader
 // Use OptimizedBibleModels types to avoid ambiguity
-import struct OptimizedBibleModels.BibleMetadata
-import struct OptimizedBibleModels.BookMetadata
+// The optimized models live in this module; no separate import needed
 
 typealias LoaderBibleMetadata = OptimizedBibleModels.BibleMetadata
 typealias LoaderBookMetadata = OptimizedBibleModels.BookMetadata

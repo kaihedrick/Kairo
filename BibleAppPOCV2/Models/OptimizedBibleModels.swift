@@ -54,3 +54,16 @@ extension OptimizedBible {
 enum OptimizedBibleAliases {
     typealias VerseContent = OptimizedBible.Verse
 }
+
+// MARK: - Namespaced Access
+/// Provides convenient namespaced access to the optimized models.
+/// Each alias references the corresponding top-level type defined in this file.
+enum OptimizedBibleModels {
+    /// Sorted aliases for clarity and consistency
+    typealias Bible          = BibleAppPOCV2.OptimizedBible
+    typealias BibleMetadata  = BibleAppPOCV2.BibleMetadata
+    typealias Book           = BibleAppPOCV2.OptimizedBible.Book
+    typealias BookMetadata   = BibleAppPOCV2.BookMetadata
+    typealias ChapterContent = BibleAppPOCV2.OptimizedBible.ChapterContent
+    typealias Verse          = BibleAppPOCV2.OptimizedBible.Verse
+}

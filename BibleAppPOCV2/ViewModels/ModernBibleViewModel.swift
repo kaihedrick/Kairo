@@ -13,10 +13,10 @@ import SwiftUI
 @MainActor
 final class ModernBibleViewModel: ObservableObject {
     // MARK: - Published Properties
-    @Published var metadata: BibleMetadata?
+    @Published var metadata: ImprovedBibleModels.BibleMetadata?
     @Published var isInitializing = true
     @Published var initializationProgress: Double = 0.0
-    @Published var lastError: BibleError?
+    @Published var lastError: ImprovedBibleModels.BibleError?
     @Published var isLoading = false
     
     // MARK: - Services (Dependency Injection)
@@ -66,7 +66,7 @@ final class ModernBibleViewModel: ObservableObject {
         }
     }
     
-    func searchBooks(query: String) async -> [BookMetadata] {
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         guard !query.isEmpty else { return metadata?.books ?? [] }
         
         isLoading = true
@@ -82,7 +82,7 @@ final class ModernBibleViewModel: ObservableObject {
         }
     }
     
-    func loadChapter(book: String, chapter: Int) async -> Chapter? {
+    func loadChapter(book: String, chapter: Int) async -> ImprovedBibleModels.Chapter? {
         isLoading = true
         let result = await bibleService.loadChapter(book: book, chapter: chapter)
         isLoading = false
@@ -96,7 +96,7 @@ final class ModernBibleViewModel: ObservableObject {
         }
     }
     
-    func getNavigationContext(for reference: VerseReference) async -> NavigationContext? {
+    func getNavigationContext(for reference: ImprovedBibleModels.VerseReference) async -> ImprovedBibleModels.NavigationContext? {
         let result = await bibleService.getNavigationContext(for: reference)
         
         switch result {
@@ -132,11 +132,11 @@ final class ModernBibleViewModel: ObservableObject {
         lastError?.recoverySuggestion ?? ""
     }
     
-    var oldTestamentBooks: [BookMetadata] {
+    var oldTestamentBooks: [ImprovedBibleModels.BookMetadata] {
         metadata?.oldTestamentBooks ?? []
     }
     
-    var newTestamentBooks: [BookMetadata] {
+    var newTestamentBooks: [ImprovedBibleModels.BookMetadata] {
         metadata?.newTestamentBooks ?? []
     }
 }
@@ -146,10 +146,10 @@ final class ModernBibleViewModel: ObservableObject {
 @MainActor
 final class ModernChapterViewModel: ObservableObject {
     // MARK: - Published Properties
-    @Published var chapter: Chapter?
+    @Published var chapter: ImprovedBibleModels.Chapter?
     @Published var isLoading = true
-    @Published var lastError: BibleError?
-    @Published var navigationContext: NavigationContext?
+    @Published var lastError: ImprovedBibleModels.BibleError?
+    @Published var navigationContext: ImprovedBibleModels.NavigationContext?
     
     // MARK: - Properties
     let bookName: String
@@ -235,10 +235,10 @@ final class ModernChapterViewModel: ObservableObject {
 @MainActor
 final class ModernReaderViewModel: ObservableObject {
     // MARK: - Published Properties
-    @Published var currentPage: PageContent?
+    @Published var currentPage: ImprovedBibleModels.PageContent?
     @Published var isGenerating = false
-    @Published var lastError: BibleError?
-    @Published var navigationContext: NavigationContext?
+    @Published var lastError: ImprovedBibleModels.BibleError?
+    @Published var navigationContext: ImprovedBibleModels.NavigationContext?
     
     // MARK: - Properties
     private var pageSize: CGSize
@@ -260,7 +260,7 @@ final class ModernReaderViewModel: ObservableObject {
     
     // MARK: - Public Methods
     
-    func generatePage(startingAt reference: VerseReference) async {
+    func generatePage(startingAt reference: ImprovedBibleModels.VerseReference) async {
         isGenerating = true
         lastError = nil
         
@@ -280,7 +280,7 @@ final class ModernReaderViewModel: ObservableObject {
             let verse = chapter.verses[startIndex]
             let attributedText = textService.formatVerse(verse, showChapterHeader: true)
             
-            currentPage = PageContent(
+            currentPage = ImprovedBibleModels.PageContent(
                 attributedText: attributedText,
                 startReference: verse.reference,
                 endReference: verse.reference,
