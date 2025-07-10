@@ -25,14 +25,10 @@ class SimpleBibleViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        do {
-            if let metadata = await service.getMetadata() {
-                books = metadata.books
-            } else {
-                errorMessage = "Could not load Bible books"
-            }
-        } catch {
-            errorMessage = error.localizedDescription
+        if let metadata = await service.getMetadata() {
+            books = metadata.books
+        } else {
+            errorMessage = "Could not load Bible books"
         }
         
         isLoading = false
@@ -46,13 +42,9 @@ class SimpleBibleViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        do {
-            chapterContent = await service.loadChapter(book: book.name, chapter: selectedChapter)
-            if chapterContent == nil {
-                errorMessage = "Could not load chapter \(selectedChapter) of \(book.name)"
-            }
-        } catch {
-            errorMessage = error.localizedDescription
+        chapterContent = await service.loadChapter(book: book.name, chapter: selectedChapter)
+        if chapterContent == nil {
+            errorMessage = "Could not load chapter \(selectedChapter) of \(book.name)"
         }
         
         isLoading = false

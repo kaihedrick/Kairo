@@ -14,7 +14,7 @@ actor OptimizedBibleRepository: BibleRepositoryProtocol {
     
     func loadMetadata() async throws -> ImprovedBibleModels.BibleMetadata {
         try await dataLoader.loadBibleMetadata()
-        guard let existingMetadata = dataLoader.metadata else {
+        guard let existingMetadata = await dataLoader.metadata else {
             throw BibleError.dataNotFound("Bible metadata")
         }
         

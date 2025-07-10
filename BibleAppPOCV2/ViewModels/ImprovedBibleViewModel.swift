@@ -82,7 +82,7 @@ final class ImprovedBibleViewModel: ObservableObject {
             initializationProgress = 0.6
             
             // Get metadata with better error handling
-            guard let loadedMetadata = dataLoader.metadata else {
+            guard let loadedMetadata = await dataLoader.metadata else {
                 throw ImprovedBibleError.dataNotFound("Bible metadata")
             }
             
