@@ -8,7 +8,7 @@ struct OptimizedBookGridView: View {
     @State private var searchText = ""
     
     // PERFORMANCE: Cache testament classifications
-    @State private var cachedGroups: [String: [OptimizedBibleModels.BookMetadata]] = [:]
+    @State private var cachedGroups: [String: [ImprovedBibleModels.BookMetadata]] = [:]
     @State private var lastMetadataHash: Int = 0
     
     // PERFORMANCE: Lazy grid configuration for smooth scrolling
@@ -121,7 +121,7 @@ struct OptimizedBookGridView: View {
         .navigationTitle("📖 Select a Book")
     }
     
-    private var filteredBookGroups: [String: [OptimizedBibleModels.BookMetadata]] {
+    private var filteredBookGroups: [String: [ImprovedBibleModels.BookMetadata]] {
         guard let metadata = viewModel.metadata else { return [:] }
         
         // Check if metadata has changed
@@ -140,8 +140,8 @@ struct OptimizedBookGridView: View {
         }
         
         // PERFORMANCE: Single-pass classification for efficiency
-        var oldTestament = [OptimizedBibleModels.BookMetadata]()
-        var newTestament = [OptimizedBibleModels.BookMetadata]()
+        var oldTestament = [ImprovedBibleModels.BookMetadata]()
+        var newTestament = [ImprovedBibleModels.BookMetadata]()
         
         for book in metadata.books {
             if oldTestamentSet.contains(book.name) {

@@ -29,7 +29,7 @@ class BibleFormatter {
         return result
     }
     
-    static func flattenOptimizedBible(metadata: OptimizedBibleModels.BibleMetadata, chapters: [String: OptimizedBible.ChapterContent]) -> [FlattenedVerse] {
+    static func flattenOptimizedBible(metadata: ImprovedBibleModels.BibleMetadata, chapters: [String: OptimizedBible.ChapterContent]) -> [FlattenedVerse] {
         var result: [FlattenedVerse] = []
         
         for book in metadata.books {

@@ -177,8 +177,8 @@ struct EnhancedBookGridView: View {
     
     // MARK: - Computed Properties
     
-    private var filteredBooks: [OptimizedBibleModels.BookMetadata] {
-        let booksToFilter: [OptimizedBibleModels.BookMetadata]
+    private var filteredBooks: [ImprovedBibleModels.BookMetadata] {
+        let booksToFilter: [ImprovedBibleModels.BookMetadata]
         
         switch selectedTestament {
         case .all:
@@ -201,7 +201,7 @@ struct EnhancedBookGridView: View {
 // MARK: - Enhanced Book Tile View
 
 struct EnhancedBookTileView: View {
-    let book: OptimizedBibleModels.BookMetadata
+    let book: ImprovedBibleModels.BookMetadata
     @State private var isPressed = false
     
     var body: some View {

@@ -10,8 +10,8 @@ import Foundation
 // MARK: - Repository Protocols
 
 protocol BibleRepositoryProtocol: Actor {
-    func loadMetadata() async throws -> UnifiedBibleMetadata
-    func loadChapter(book: String, chapter: Int) async throws -> UnifiedChapter
+    func loadMetadata() async throws -> ImprovedBibleModels.BibleMetadata
+    func loadChapter(book: String, chapter: Int) async throws -> ImprovedBibleModels.Chapter
 }
 
 protocol CacheServiceProtocol: Actor {

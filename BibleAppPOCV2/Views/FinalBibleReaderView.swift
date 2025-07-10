@@ -10,7 +10,7 @@ import SwiftUI
 /// A final, working Bible reader that uses only the existing types without any conflicts
 struct FinalBibleReaderView: View {
     @StateObject private var viewModel = OptimizedBibleViewModel()
-    @State private var selectedBook: OptimizedBibleModels.BookMetadata?
+    @State private var selectedBook: ImprovedBibleModels.BookMetadata?
     @State private var selectedChapter: Int = 1
     @State private var showingBookSelector = false
     @State private var showingChapterSelector = false
@@ -227,7 +227,7 @@ struct FinalBibleReaderView: View {
     
     // MARK: - Actions
     
-    private func selectBook(_ book: OptimizedBibleModels.BookMetadata) {
+    private func selectBook(_ book: ImprovedBibleModels.BookMetadata) {
         selectedBook = book
         selectedChapter = 1
         loadChapter()

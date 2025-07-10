@@ -14,8 +14,8 @@ enum BibleTypeAliases {
     // This allows gradual migration without breaking existing code
     
     // Use existing types from current codebase
-    typealias ExistingBibleMetadata = BibleMetadata  // From OptimizedBibleModels.swift
-    typealias ExistingBookMetadata = BookMetadata    // From OptimizedBibleModels.swift
+    typealias ExistingBibleMetadata = BibleMetadata
+    typealias ExistingBookMetadata = BookMetadata
     typealias ExistingChapterContent = OptimizedBible.ChapterContent
     typealias ExistingVerseContent = OptimizedBible.Verse
 }

@@ -20,7 +20,7 @@ extension OptimizedBibleViewModel {
     }
     
     /// Search books with new architecture (demonstration)
-    func searchBooksImproved(query: String) async -> [OptimizedBibleModels.BookMetadata] {
+    func searchBooksImproved(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         return metadata.books.filter { book in
@@ -34,17 +34,17 @@ extension OptimizedBibleViewModel {
 /// Adapter to bridge existing OptimizedBibleDataLoader with new protocols
 class LegacyBibleServiceAdapter: BibleServiceProtocol {
 
-    func getMetadata() async throws -> OptimizedBibleModels.BibleMetadata {
+    func getMetadata() async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.BibleMetadata> {
         await OptimizedBibleDataLoader.shared.ensureMetadataLoaded()
         guard let metadata = await OptimizedBibleDataLoader.shared.metadata else {
-            throw BibleError.dataNotFound("Bible metadata")
+            return .failure(.dataNotFound("Bible metadata"))
         }
-        return metadata
+        return .success(metadata)
     }
-    
-    func loadChapter(book: String, chapter: Int) async throws -> ImprovedBibleModels.Chapter {
+
+    func loadChapter(book: String, chapter: Int) async -> ImprovedBibleModels.ServiceResult<ImprovedBibleModels.Chapter> {
         guard let chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(book: book, chapter: chapter) else {
-            throw BibleError.dataNotFound("Chapter \(book) \(chapter)")
+            return .failure(.dataNotFound("Chapter \(book) \(chapter)"))
         }
         
         // Convert existing data structures to new domain models
@@ -56,16 +56,16 @@ class LegacyBibleServiceAdapter: BibleServiceProtocol {
             )
             return ImprovedBibleModels.Verse(reference: reference, text: verseContent.text)
         }
-        return ImprovedBibleModels.Chapter(book: book, number: chapter, verses: verses)
+        let chapterModel = ImprovedBibleModels.Chapter(book: book, number: chapter, verses: verses)
+        return .success(chapterModel)
     }
 
-    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata] {
-        do {
-            let metadata = try await getMetadata()
-            return metadata.books.filter { 
-                $0.name.localizedCaseInsensitiveContains(query) 
-            }
-        } catch {
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
+        let result = await getMetadata()
+        switch result {
+        case .success(let metadata):
+            return metadata.books.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        case .failure:
             return []
         }
     }
