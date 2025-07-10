@@ -25,7 +25,7 @@ actor CleanBibleService: CleanBibleServiceProtocol {
     
     func getMetadata() async -> ImprovedBibleModels.BibleMetadata? {
         await dataLoader.ensureMetadataLoaded()
-        return dataLoader.metadata
+        return await dataLoader.metadata
     }
     
     func loadChapter(book: String, chapter: Int) async -> OptimizedBible.ChapterContent? {
