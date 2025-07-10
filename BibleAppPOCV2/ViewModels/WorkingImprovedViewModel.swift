@@ -49,7 +49,7 @@ extension OptimizedBibleViewModel {
     
     // MARK: - Improved Error Handling
     
-    @Published var enhancedError: BibleViewModelError? {
+    var enhancedError: BibleViewModelError? {
         get { 
             // Convert existing errorMessage to typed error
             if let errorMessage = errorMessage {

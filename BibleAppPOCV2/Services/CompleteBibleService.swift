@@ -53,7 +53,7 @@ actor CompleteBibleService: BibleServiceProtocol {
         }
         
         // Convert to domain model
-        let verses = chapterContent.verses.compactMap { verseContent in
+        let verses: [ImprovedBibleModels.Verse] = chapterContent.verses.compactMap { verseContent in
             guard let reference = ImprovedBibleModels.VerseReference(book: book, chapter: chapter, verse: verseContent.verse) else {
                 return nil
             }

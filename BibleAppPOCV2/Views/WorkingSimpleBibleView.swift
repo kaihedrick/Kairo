@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct WorkingSimpleBibleView: View {
-    @StateObject private var viewModel = OptimizedBibleViewModel()
+    @StateObject private var viewModel = SimpleBibleViewModel()
     @State private var selectedBook: ImprovedBibleModels.BookMetadata?
     @State private var selectedChapter: Int = 1
     @State private var showingBookSelector = false
@@ -26,7 +26,7 @@ struct WorkingSimpleBibleView: View {
             .navigationTitle("Bible Reader")
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                await viewModel.loadBooksAsync()
+                await viewModel.loadBooks()
             }
             .sheet(isPresented: $showingBookSelector) {
                 bookSelectorView

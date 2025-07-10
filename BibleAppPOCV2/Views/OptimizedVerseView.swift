@@ -76,7 +76,7 @@ struct OptimizedVerseView: View {
     }
     
     @ViewBuilder
-    private func destinationView(verse: VerseContent) -> some View {
+    private func destinationView(verse: OptimizedBible.Verse) -> some View {
         GeometryReader { geometry in
             if geometry.size.height > 50 {
                 BibleReaderView(

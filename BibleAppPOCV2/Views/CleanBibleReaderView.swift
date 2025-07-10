@@ -197,7 +197,7 @@ struct CleanBibleReaderView: View {
             
             Text("Choose a book from the Bible to start reading")
                 .font(.subheadline)
-                .foregroundColor(.tertiary)
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

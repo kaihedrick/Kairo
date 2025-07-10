@@ -184,12 +184,6 @@ struct ImprovedBookGridView: View {
     }
 }
 
-// MARK: - Supporting Types
-
-enum Testament: CaseIterable {
-    case all, old, new
-}
-
 // MARK: - Improved Book Tile View
 
 struct ImprovedBookTileView: View {

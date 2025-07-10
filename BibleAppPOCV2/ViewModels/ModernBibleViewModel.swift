@@ -278,7 +278,7 @@ final class ModernReaderViewModel: ObservableObject {
             
             // For now, show one verse per page (can be enhanced for multi-verse pages)
             let verse = chapter.verses[startIndex]
-            let attributedText = textService.formatVerse(verse, showChapterHeader: true)
+            let attributedText = textService.formatVerse(verse, showChapterHeader: true, showBookTitle: false)
             
             currentPage = ImprovedBibleModels.PageContent(
                 attributedText: attributedText,

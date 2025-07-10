@@ -197,7 +197,7 @@ struct SimpleBibleReaderView: View {
             
             Text("Choose a book from the Bible to start reading")
                 .font(.subheadline)
-                .foregroundColor(.tertiary)
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -238,9 +238,11 @@ extension SimpleBibleReaderView {
                 }
             }
         }
-        .sheet(isPresented: $showingChapterSelector) {
-            chapterSelectorSheet
-        }
+    }
+    
+    // MARK: - Chapter Selector Sheet
+    
+    private var chapterSelectorSheet: some View {
         NavigationView {
             if let book = viewModel.selectedBook {
                 ScrollView {
