@@ -13,9 +13,9 @@ import SwiftUI
 /// A clean service that works directly with existing OptimizedBible types
 /// This avoids all naming conflicts and ambiguities
 protocol CleanBibleServiceProtocol {
-    func getMetadata() async -> OptimizedBibleModels.BibleMetadata?
+    func getMetadata() async -> ImprovedBibleModels.BibleMetadata?
     func loadChapter(book: String, chapter: Int) async -> OptimizedBible.ChapterContent?
-    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata]
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata]
 }
 
 // MARK: - Implementation
@@ -23,7 +23,7 @@ protocol CleanBibleServiceProtocol {
 actor CleanBibleService: CleanBibleServiceProtocol {
     private let dataLoader = OptimizedBibleDataLoader.shared
     
-    func getMetadata() async -> OptimizedBibleModels.BibleMetadata? {
+    func getMetadata() async -> ImprovedBibleModels.BibleMetadata? {
         await dataLoader.ensureMetadataLoaded()
         return dataLoader.metadata
     }
@@ -32,7 +32,7 @@ actor CleanBibleService: CleanBibleServiceProtocol {
         return await dataLoader.loadChapterContent(book: book, chapter: chapter)
     }
     
-    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata] {
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         guard let metadata = await getMetadata() else { return [] }
         
         let lowercasedQuery = query.lowercased()
@@ -86,7 +86,7 @@ enum CleanServiceError: LocalizedError {
 // MARK: - Extended Service with Result Types
 
 extension CleanBibleService {
-    func getMetadataWithResult() async -> CleanServiceResult<OptimizedBibleModels.BibleMetadata> {
+    func getMetadataWithResult() async -> CleanServiceResult<ImprovedBibleModels.BibleMetadata> {
         if let metadata = await getMetadata() {
             return .success(metadata)
         } else {

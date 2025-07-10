@@ -51,7 +51,7 @@ enum ImprovedBibleError: LocalizedError, Equatable {
 
 @MainActor
 final class ImprovedBibleViewModel: ObservableObject {
-    @Published var metadata: OptimizedBibleModels.BibleMetadata?
+    @Published var metadata: ImprovedBibleModels.BibleMetadata?
     @Published var isInitializing = true
     @Published var initializationProgress: Double = 0.0
     @Published var lastError: ImprovedBibleError?
@@ -112,7 +112,7 @@ final class ImprovedBibleViewModel: ObservableObject {
     
     // MARK: - Improved Search with Validation
     
-    func searchBooksImproved(query: String) async -> [OptimizedBibleModels.BookMetadata] {
+    func searchBooksImproved(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return metadata?.books ?? []
         }
@@ -188,7 +188,7 @@ final class ImprovedBibleViewModel: ObservableObject {
         lastError?.recoverySuggestion ?? ""
     }
     
-    var oldTestamentBooks: [OptimizedBibleModels.BookMetadata] {
+    var oldTestamentBooks: [ImprovedBibleModels.BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         // Use your existing testament classification logic
@@ -206,7 +206,7 @@ final class ImprovedBibleViewModel: ObservableObject {
         }
     }
     
-    var newTestamentBooks: [OptimizedBibleModels.BookMetadata] {
+    var newTestamentBooks: [ImprovedBibleModels.BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         let newTestamentSet = Set([

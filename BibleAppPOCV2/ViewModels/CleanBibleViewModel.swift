@@ -10,8 +10,8 @@ import SwiftUI
 
 @MainActor
 class CleanBibleViewModel: ObservableObject {
-    @Published var books: [OptimizedBibleModels.BookMetadata] = []
-    @Published var selectedBook: OptimizedBibleModels.BookMetadata?
+    @Published var books: [ImprovedBibleModels.BookMetadata] = []
+    @Published var selectedBook: ImprovedBibleModels.BookMetadata?
     @Published var selectedChapter: Int = 1
     @Published var chapterContent: OptimizedBible.ChapterContent?
     @Published var isLoading = false
@@ -57,7 +57,7 @@ class CleanBibleViewModel: ObservableObject {
     
     // MARK: - Book Selection
     
-    func selectBook(_ book: OptimizedBibleModels.BookMetadata) {
+    func selectBook(_ book: ImprovedBibleModels.BookMetadata) {
         selectedBook = book
         selectedChapter = 1
         chapterContent = nil
@@ -98,7 +98,7 @@ class CleanBibleViewModel: ObservableObject {
     
     // MARK: - Search
     
-    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata] {
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         return await service.searchBooks(query: query)
     }
     
@@ -118,7 +118,7 @@ class CleanBibleViewModel: ObservableObject {
         return "\(book.name) \(selectedChapter)"
     }
     
-    var filteredBooks: [OptimizedBibleModels.BookMetadata] {
+    var filteredBooks: [ImprovedBibleModels.BookMetadata] {
         return books // Can add filtering logic here if needed
     }
 }

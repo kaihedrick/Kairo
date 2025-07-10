@@ -12,9 +12,9 @@ import SwiftUI
 
 /// A simplified service that works with existing types
 protocol SimpleBibleServiceProtocol {
-    func getMetadata() async -> OptimizedBibleModels.BibleMetadata?
+    func getMetadata() async -> ImprovedBibleModels.BibleMetadata?
     func loadChapter(book: String, chapter: Int) async -> OptimizedBible.ChapterContent?
-    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata]
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata]
 }
 
 // MARK: - Implementation
@@ -22,7 +22,7 @@ protocol SimpleBibleServiceProtocol {
 actor SimpleBibleService: SimpleBibleServiceProtocol {
     private let dataLoader = OptimizedBibleDataLoader.shared
     
-    func getMetadata() async -> OptimizedBibleModels.BibleMetadata? {
+    func getMetadata() async -> ImprovedBibleModels.BibleMetadata? {
         await dataLoader.ensureMetadataLoaded()
         return dataLoader.metadata
     }
@@ -31,7 +31,7 @@ actor SimpleBibleService: SimpleBibleServiceProtocol {
         return await dataLoader.loadChapterContent(book: book, chapter: chapter)
     }
     
-    func searchBooks(query: String) async -> [OptimizedBibleModels.BookMetadata] {
+    func searchBooks(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         guard let metadata = await getMetadata() else { return [] }
         
         let lowercasedQuery = query.lowercased()
@@ -58,7 +58,7 @@ enum AsyncResult<T> {
 // MARK: - Service Extensions for Better Error Handling
 
 extension SimpleBibleService {
-    func getMetadataWithResult() async -> AsyncResult<OptimizedBibleModels.BibleMetadata> {
+    func getMetadataWithResult() async -> AsyncResult<ImprovedBibleModels.BibleMetadata> {
         if let metadata = await getMetadata() {
             return .success(metadata)
         } else {
