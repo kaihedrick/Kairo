@@ -4,15 +4,6 @@
 import Foundation
 import SwiftUI
 
-/// Identifies a single verse in the Bible.
-struct VerseKey: Hashable, Codable {
-    let book: String
-    let chapter: Int
-    let verse: Int
-
-    var description: String { "\(book) \(chapter):\(verse)" }
-}
-
 /// Additional context about where a page sits in a book.
 struct PageNavigationContext: Equatable {
     let isFirstVerseOfBook: Bool
@@ -55,6 +46,10 @@ struct GeneratedPage {
     let segments: [PageSegment]
     let startKey: VerseKey
     let navigationContext: PageNavigationContext
+    /// The first verse actually visible on the rendered page
+    let startVisibleVerse: VerseKey
+    /// The last verse visible on the rendered page
+    let endVisibleVerse: VerseKey
 }
 
 extension GeneratedPage {
@@ -63,8 +58,9 @@ extension GeneratedPage {
             result += seg.attributed
         }
         let verseKeys = segments.map { $0.verseKey }
-        let startVerse = verseKeys.first ?? startKey
-        let endVerse = verseKeys.last ?? startKey
+        // Use the provided visible range if available, otherwise fall back to the first/last keys
+        let startVerse = startVisibleVerse
+        let endVerse = endVisibleVerse
         return OptimizedPageSlice(
             content: content,
             verseKeys: verseKeys,
