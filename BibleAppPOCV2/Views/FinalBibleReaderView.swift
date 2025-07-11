@@ -7,13 +7,14 @@
 
 import SwiftUI
 
-/// A final, working Bible reader that uses only the existing types without any conflicts
+/// A clean, working Bible reader that uses existing working components
 struct FinalBibleReaderView: View {
     @StateObject private var viewModel = OptimizedBibleViewModel()
     @State private var selectedBook: ImprovedBibleModels.BookMetadata?
     @State private var selectedChapter: Int = 1
     @State private var showingBookSelector = false
     @State private var showingChapterSelector = false
+    @State private var chapterContent: OptimizedBible.ChapterContent?
     
     var body: some View {
         NavigationView {
@@ -27,7 +28,7 @@ struct FinalBibleReaderView: View {
             .navigationTitle("Bible Reader")
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                await viewModel.loadBooksAsync()
+                await initializeData()
             }
             .sheet(isPresented: $showingBookSelector) {
                 bookSelectorView
@@ -36,6 +37,10 @@ struct FinalBibleReaderView: View {
                 chapterSelectorView
             }
         }
+    }
+    
+    private func initializeData() async {
+        await viewModel.initializeDataImproved()
     }
     
     // MARK: - Header
@@ -105,11 +110,11 @@ struct FinalBibleReaderView: View {
     
     private var contentView: some View {
         Group {
-            if viewModel.isLoading {
+            if viewModel.isInitializing {
                 ProgressView("Loading...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let chapterContent = viewModel.chapterContent {
-                chapterContentView(chapterContent)
+            } else if let content = chapterContent {
+                chapterContentView(content)
             } else {
                 placeholderView
             }
@@ -157,32 +162,36 @@ struct FinalBibleReaderView: View {
     
     private var bookSelectorView: some View {
         NavigationView {
-            List(viewModel.filteredBooks, id: \.name) { book in
-                Button(action: {
-                    selectBook(book)
-                    showingBookSelector = false
-                }) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(book.name)
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        Text("\(book.chapterCount) chapters")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-            }
-            .navigationTitle("Select Book")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
+            if let metadata = viewModel.metadata {
+                List(metadata.books, id: \.name) { book in
+                    Button(action: {
+                        selectBook(book)
                         showingBookSelector = false
+                    }) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(book.name)
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            Text("\(book.chapterCount) chapters")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .navigationTitle("Select Book")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Cancel") {
+                            showingBookSelector = false
+                        }
                     }
                 }
+            } else {
+                ProgressView("Loading books...")
             }
         }
     }
@@ -237,7 +246,12 @@ struct FinalBibleReaderView: View {
         guard let book = selectedBook else { return }
         
         Task {
-            await viewModel.loadChapterAsync(book: book.name, chapter: selectedChapter)
+            let dataLoader = OptimizedBibleDataLoader.shared
+            let content = await dataLoader.loadChapterContent(book: book.name, chapter: selectedChapter)
+            
+            await MainActor.run {
+                self.chapterContent = content
+            }
         }
     }
     

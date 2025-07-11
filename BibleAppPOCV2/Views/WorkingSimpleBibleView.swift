@@ -156,7 +156,7 @@ struct WorkingSimpleBibleView: View {
     
     private var bookSelectorView: some View {
         NavigationView {
-            List(viewModel.filteredBooks, id: \.name) { book in
+            List(viewModel.books, id: \.name) { book in
                 Button(action: {
                     selectBook(book)
                     showingBookSelector = false
@@ -235,8 +235,11 @@ struct WorkingSimpleBibleView: View {
     private func loadChapter() {
         guard let book = selectedBook else { return }
         
+        viewModel.selectBook(book)
+        viewModel.goToChapter(selectedChapter)
+        
         Task {
-            await viewModel.loadChapterAsync(book: book.name, chapter: selectedChapter)
+            await viewModel.loadChapter()
         }
     }
     
