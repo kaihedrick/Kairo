@@ -115,7 +115,7 @@ struct EnhancedBookGridView: View {
                 if !viewModel.enhancedErrorRecovery.isEmpty {
                     Text(viewModel.enhancedErrorRecovery)
                         .font(.caption)
-                        .foregroundColor(.tertiary)
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
                 }
@@ -220,7 +220,7 @@ struct EnhancedBookTileView: View {
             
             Text("\(book.chapterCount) ch")
                 .font(.system(size: 8, weight: .light))
-                .foregroundColor(.tertiary)
+                .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(8)

@@ -237,7 +237,7 @@ struct ModernBookTileView: View {
             // Chapter count
             Text("\(book.chapterCount) ch")
                 .font(.system(size: 8, weight: .light))
-                .foregroundColor(.tertiary)
+                .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(8)
