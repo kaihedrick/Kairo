@@ -7,33 +7,29 @@
 
 import SwiftUI
 
-struct BookTileView: View {
-    let abbreviation: String
-    let fullName: String
-
+struct BookTitleView: View {
+    let bookName: String
+    let chapterCount: Int
+    
     var body: some View {
-        VStack(spacing: 3) {  // Reduced spacing for smaller tiles
-            Text(abbreviation)
-                .font(.footnote.weight(.semibold))  // Reduced from .title3 to .footnote
+        VStack(spacing: 8) {
+            Text(bookName)
+                .font(.title2.weight(.bold))
                 .foregroundColor(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)  // Allow scaling if needed
-            
-            Text(fullName)
-                .font(.caption2)  // Reduced from .caption to .caption2
-                .foregroundColor(.secondary)
-                .lineLimit(1)  // Reduced from 2 lines to 1 for consistency
-                .minimumScaleFactor(0.8)
                 .multilineTextAlignment(.center)
+            
+            Text("\(chapterCount) chapters")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(6)  // Reduced padding from 10 to 6 for smaller tiles
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))  // Reduced corner radius from 12 to 8
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
         )
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)  // Reduced shadow for smaller tiles
     }
+}
+
+#Preview {
+    BookTitleView(bookName: "Genesis", chapterCount: 50)
 }

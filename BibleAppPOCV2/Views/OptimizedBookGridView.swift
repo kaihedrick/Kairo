@@ -27,17 +27,39 @@ struct OptimizedBookGridView: View {
     @State private var isLayoutCalculated = false
     @State private var lastKnownScreenSize: CGSize = .zero
     
-    // SCROLL TRACKING: For floating glass header with live blur
+    // SCROLL TRACKING: For dynamic header transition with enhanced glass effect
     @State private var scrollOffset: CGFloat = 0
-    private var headerOpacity: Double {
-        scrollOffset > 50 ? max(0, 1 - (scrollOffset - 50) / 80) : 1.0
-    }
+    @State private var lastScrollOffset: CGFloat = 0
+    @State private var isScrollingUp: Bool = false
+    
     private var shouldShowGlassEffect: Bool {
-        scrollOffset > 50
+        scrollOffset > 50 // Increased threshold for more natural trigger
     }
     
-    // Glass effect namespace for iOS 26+ blur
-    @Namespace private var glassHeaderNamespace
+    private var glassHeaderOpacity: Double {
+        if shouldShowGlassEffect {
+            let progress = min(1.0, (scrollOffset - 50) / 30) // Smooth fade-in over 30pt
+            return Double(progress)
+        }
+        return 0.0
+    }
+    
+    // Enhanced scroll direction tracking for better glass effect behavior
+    private var scrollDirection: ScrollDirection {
+        if scrollOffset > lastScrollOffset {
+            return .down
+        } else if scrollOffset < lastScrollOffset {
+            return .up
+        }
+        return .none
+    }
+    
+    private enum ScrollDirection {
+        case up, down, none
+    }
+    
+    // Glass effect namespace for native iOS 26+ blur
+    @Namespace private var glassNamespace
     
     // BOOK ABBREVIATIONS: Proper biblical abbreviations for readability - matching actual data names
     private let bookAbbreviations: [String: String] = [
@@ -80,24 +102,24 @@ struct OptimizedBookGridView: View {
     ])
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // Main content layer
-                ZStack {
-                    backgroundView
-                    
-                    if viewModel.isInitializing {
-                        initializationView
-                    } else if let error = viewModel.errorMessage {
-                        errorView(error)
-                    } else {
-                        mainContent
-                    }
-                }
-                
-                // Bottom search overlay layer
-                bottomSearchOverlay
+        ZStack(alignment: .top) {
+            // Background that extends to screen edges
+            Color.white.ignoresSafeArea()
+            
+            // Main content layer - ScrollView with book grid
+            if viewModel.isInitializing {
+                initializationView
+            } else if let error = viewModel.errorMessage {
+                errorView(error)
+            } else {
+                mainContent
             }
+            
+            // Glassy header overlay (appears on scroll)
+            glassyHeader
+            
+            // Bottom search overlay layer
+            bottomSearchOverlay
         }
         .navigationBarHidden(true)  // Hide navigation bar since we have custom header
         .onChange(of: isSearchActive) { _, _ in
@@ -164,90 +186,90 @@ struct OptimizedBookGridView: View {
     }
     
     private var mainContent: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Main scroll content
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        GeometryReader { scrollGeometry in
-                            Color.clear
-                                .preference(key: ScrollOffsetPreferenceKey.self, value: scrollGeometry.frame(in: .named("scrollView")).minY)
-                        }
-                        .frame(height: 0)
+        ScrollViewReader { proxy in
+            ScrollView {
+                GeometryReader { scrollGeometry in
+                    Color.clear
+                        .preference(key: ScrollOffsetPreferenceKey.self, value: scrollGeometry.frame(in: .named("scrollView")).minY)
+                }
+                .frame(height: 0)
+                
+                if !searchText.isEmpty && filteredBookGroups.isEmpty {
+                    searchEmptyState
+                        .padding(.top, 20)
+                } else {
+                    VStack(spacing: 16) {
+                        // Default header inside ScrollView (visible only when not scrolled)
+                        defaultHeader
                         
-                        if !searchText.isEmpty && filteredBookGroups.isEmpty {
-                            searchEmptyState
-                                .padding(.top, 110) // Adjusted for floating header height
-                        } else {
-                            VStack(spacing: 16) {
-                                // Spacer to account for floating glass header
-                                Spacer()
-                                    .frame(height: 110) // Adjusted for header + safe area + shadow
-                                    .id("scrollTop") // Add ID for scroll-to-top
-                                
-                                LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
-                                    ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
-                                        Section(header: sectionHeader(section)) {
-                                            ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
-                                                NavigationLink {
-                                                    OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
-                                                } label: {
-                                                    BookTileView(
-                                                        abbreviation: getBookAbbreviation(for: bookMeta.name),
-                                                        fullName: bookMeta.name
-                                                    )
-                                                    .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
-                                                    .glassTile(cornerRadius: 12, id: bookMeta.name, namespace: bookTileNamespace)
-                                                    .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
-                                                    .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
-                                                    .animation(.easeInOut(duration: 0.25), value: searchText)
-                                                }
-                                                .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
-                                            }
+                        LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
+                            ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
+                                Section(header: sectionHeader(section)) {
+                                    ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
+                                        NavigationLink {
+                                            OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
+                                        } label: {
+                                            BookTileView(
+                                                abbreviation: getBookAbbreviation(for: bookMeta.name),
+                                                fullName: bookMeta.name
+                                            )
+                                            .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
+                                            .glassTile(cornerRadius: 12, id: bookMeta.name, namespace: bookTileNamespace)
+                                            .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
+                                            .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
+                                            .animation(.easeInOut(duration: 0.25), value: searchText)
                                         }
+                                        .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
                                     }
                                 }
-                                .padding(.horizontal, stableGridLayout.horizontalPadding)
-                                .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
-                            }
-                            .padding(.top, stableGridLayout.verticalPadding)
-                        }
-                    }
-                    .coordinateSpace(name: "scrollView")
-                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                        scrollOffset = -value
-                    }
-                    .onAppear {
-                        calculateLayoutIfNeeded(geometry: geometry)
-                    }
-                    .onChange(of: geometry.size) { _, newSize in
-                        calculateLayoutIfNeeded(geometry: geometry)
-                    }
-                    .onChange(of: horizontalSizeClass) { _, _ in
-                        isLayoutCalculated = false
-                        calculateLayoutIfNeeded(geometry: geometry)
-                    }
-                    .onTapGesture {
-                        // Dismiss search when tapping main content
-                        if isSearchActive {
-                            isSearchFocused = false
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                isSearchActive = false
                             }
                         }
+                        .padding(.horizontal, stableGridLayout.horizontalPadding)
+                        .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
                     }
-                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ScrollToTop"))) { _ in
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            proxy.scrollTo("scrollTop", anchor: .top)
-                        }
-                    }
+                    .padding(.top, stableGridLayout.verticalPadding)
+                }
+            }
+            .coordinateSpace(name: "scrollView")
+            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                let newOffset = -value
+                
+                // Enhanced scroll tracking with direction and smoothing
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7, blendDuration: 0.1)) {
+                    lastScrollOffset = scrollOffset
+                    scrollOffset = newOffset
+                    
+                    // Track scroll direction for enhanced glass effect behavior
+                    isScrollingUp = newOffset < lastScrollOffset
                 }
                 
-                // Floating glass header overlay
-                floatingHeader
+                // Haptic feedback when glass effect transitions
+                if shouldShowGlassEffect && !shouldShowGlassEffect {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred(intensity: 0.6)
+                } else if !shouldShowGlassEffect && shouldShowGlassEffect {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .soft)
+                    impactFeedback.impactOccurred(intensity: 0.4)
+                }
+            }
+            .onAppear {
+                // Layout calculation will be handled by parent view if needed
+            }
+            .onTapGesture {
+                // Dismiss search when tapping main content
+                if isSearchActive {
+                    isSearchFocused = false
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        isSearchActive = false
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ScrollToTop"))) { _ in
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    proxy.scrollTo("scrollTop", anchor: .top)
+                }
             }
         }
-        .clipped()
     }
     
     // STABLE LAYOUT: Mobile-first grid structure with smaller tiles
@@ -363,80 +385,64 @@ struct OptimizedBookGridView: View {
         }
     }
     
-    // MARK: - Floating Glass Header with Live Blur
+    // MARK: - Default Header (inside ScrollView)
     
-    private var floatingHeader: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                // Header container with scroll-reactive glass effect
-                HStack {
-                    Spacer()
-                    
-                    Text("📖 Select a Book")
-                        .font(.title2.bold())
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
-                    
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, max(geometry.safeAreaInsets.top, 44) + 4)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(
-                    // Glass effect background - appears when scrolling
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .shadow(
-                            color: Color.black.opacity(0.2),
-                            radius: 8,
-                            x: 0,
-                            y: 2
-                        )
-                        .ignoresSafeArea(.container, edges: .top)
-                        .opacity(shouldShowGlassEffect ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.3), value: shouldShowGlassEffect)
-                )
-                .opacity(headerOpacity)
-                .animation(.easeInOut(duration: 0.25), value: headerOpacity)
-                .blur(radius: shouldShowGlassEffect ? min(scrollOffset / 30, 3) : 0)
-                .animation(.easeInOut(duration: 0.3), value: shouldShowGlassEffect)
-                .zIndex(3)
-                
-                Spacer()
-            }
+    private var defaultHeader: some View {
+        VStack(spacing: 0) {
+            Text("📖 Select a Book")
+                .font(.title2.bold())
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 60)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .id("scrollTop") // Add ID for scroll-to-top
         }
-        .allowsHitTesting(true)
-        .onTapGesture {
-            // Scroll to top when tapping glass header
-            scrollToTop()
-        }
+        .opacity(shouldShowGlassEffect ? 0.0 : 1.0)
+        .animation(.easeInOut(duration: 0.3), value: shouldShowGlassEffect)
     }
     
-    // MARK: - Screen-Aware Layout Calculation
+    // MARK: - Glassy Header (pinned at top, appears on scroll)
     
-    private func calculateLayoutIfNeeded(geometry: GeometryProxy) {
-        // Only calculate if layout hasn't been calculated or screen size changed significantly
-        let screenSize = geometry.size
-        let sizeChanged = abs(screenSize.width - lastKnownScreenSize.width) > 20 ||
-        abs(screenSize.height - lastKnownScreenSize.height) > 20
-        
-        // Also recalculate if search state changed
-        let searchStateChanged = isSearchActive != (stableGridLayout.searchTopPadding > stableGridLayout.verticalPadding)
-        
-        guard !isLayoutCalculated || sizeChanged || searchStateChanged else { return }
-        
-        // Calculate new layout with geometry proxy and search state
-        let newLayout = StableGridLayout(geometry: geometry, isSearchActive: isSearchActive)
-        
-        // Update state
-        stableGridLayout = newLayout
-        lastKnownScreenSize = screenSize
-        isLayoutCalculated = true
-        
-#if DEBUG
-        print("📱 Layout recalculated - Screen: \(screenSize), Search: \(isSearchActive)")
-#endif
+    private var glassyHeader: some View {
+        Group {
+            if shouldShowGlassEffect {
+                GeometryReader { geometry in
+                    VStack(spacing: 0) {
+                        Text("📖 Select a Book")
+                            .font(.title2.bold())
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, geometry.safeAreaInsets.top + 16)
+                            .padding(.bottom, 16)
+                            .padding(.horizontal, 20)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        // Native iOS glass effect background
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .background(.regularMaterial)
+                            .overlay(
+                                Rectangle()
+                                    .fill(.ultraThinMaterial)
+                                    .blendMode(.overlay)
+                            )
+                            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+                    )
+                    .ignoresSafeArea(edges: .top)
+                    .onTapGesture {
+                        scrollToTop()
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.95)),
+                    removal: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 1.05))
+                ))
+                .animation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0.1), value: shouldShowGlassEffect)
+                .zIndex(10)
+            }
+        }
     }
     
     // MARK: - Book Abbreviation Helper
@@ -529,10 +535,6 @@ struct OptimizedBookGridView: View {
         }
     }
     
-    private var backgroundView: some View {
-        Color.clear
-    }
-    
     private func sectionHeader(_ title: String) -> some View {
         let bookCount = filteredBookGroups[title]?.count ?? 0
         return Text("\(title) (\(bookCount) books)")
@@ -596,7 +598,6 @@ struct OptimizedBookGridView: View {
     }
     // MARK: - Bottom Search Overlay with Liquid Glass Design
     
-    @Namespace private var glassNamespace
     @Namespace private var headerGlassNamespace // Dedicated namespace for floating header
     @Namespace private var bookTileNamespace // Dedicated namespace for book tiles glass effect
 
