@@ -151,30 +151,40 @@ struct OptimizedBookGridView: View {
                     searchEmptyState
                         .padding(.top, 100)
                 } else {
-                    LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
-                        ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
-                            Section(header: sectionHeader(section)) {
-                                ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
-                                    NavigationLink {
-                                        OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
-                                    } label: {
-                                        BookTileView(
-                                            abbreviation: getBookAbbreviation(for: bookMeta.name),
-                                            fullName: bookMeta.name
-                                        )
-                                        .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
-                                        .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
-                                        .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
-                                        .animation(.easeInOut(duration: 0.25), value: searchText)
+                    VStack(spacing: 16) {
+                        // Select a Book header - restored at top of grid
+                        Text("Select a Book")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .padding(.top, 8)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        
+                        LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
+                            ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
+                                Section(header: sectionHeader(section)) {
+                                    ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
+                                        NavigationLink {
+                                            OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
+                                        } label: {
+                                            BookTileView(
+                                                abbreviation: getBookAbbreviation(for: bookMeta.name),
+                                                fullName: bookMeta.name
+                                            )
+                                            .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
+                                            .glassTile(cornerRadius: 12, id: bookMeta.name, namespace: bookTileNamespace)
+                                            .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
+                                            .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
+                                            .animation(.easeInOut(duration: 0.25), value: searchText)
+                                        }
+                                        .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
                                     }
-                                    .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
                                 }
                             }
                         }
+                        .padding(.horizontal, stableGridLayout.horizontalPadding)
+                        .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
                     }
-                    .padding(.horizontal, stableGridLayout.horizontalPadding)
                     .padding(.top, stableGridLayout.verticalPadding)
-                    .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
                 }
             }
             .onAppear {
@@ -497,6 +507,7 @@ struct OptimizedBookGridView: View {
     // MARK: - Bottom Search Overlay with Liquid Glass Design
     
     @Namespace private var glassNamespace
+    @Namespace private var bookTileNamespace // Dedicated namespace for book tiles glass effect
 
     private var bottomSearchOverlay: some View {
         GeometryReader { geometry in
@@ -514,37 +525,41 @@ struct OptimizedBookGridView: View {
                             .foregroundColor(.secondary)
                             .animation(.easeInOut(duration: 0.2), value: isSearchActive)
                         
-                        // Expanding search text field
+                        // Expanding search text field with enhanced liquid animation
                         if isSearchActive {
                             TextField("Search books", text: $searchText)
                                 .font(.system(size: 16, weight: .medium))
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .focused($isSearchFocused)
                                 .onChange(of: searchText) { _, newValue in
-                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8, blendDuration: 0.1)) {
                                         isSearchActive = !newValue.isEmpty || isSearchFocused
                                     }
                                 }
                                 .onChange(of: isSearchFocused) { _, focused in
                                     if focused {
-                                        // Subtle haptic feedback when search becomes focused
+                                        // Enhanced haptic feedback when search becomes focused
                                         let impactFeedback = UIImpactFeedbackGenerator(style: .soft)
                                         impactFeedback.impactOccurred()
                                     }
                                     
-                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7, blendDuration: 0.1)) {
                                         isSearchActive = focused || !searchText.isEmpty
                                     }
                                 }
-                                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .trailing)).combined(with: .scale(scale: 0.95)),
+                                    removal: .opacity.combined(with: .move(edge: .trailing)).combined(with: .scale(scale: 1.05))
+                                ))
                             
-                            // Clear button (X)
+                            // Clear button (X) with enhanced liquid animation
                             Button(action: {
-                                // Haptic feedback for clear action
+                                // Enhanced haptic feedback for clear action
                                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                                 impactFeedback.impactOccurred()
                                 
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                // Liquid-like spring animation for clearing
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7, blendDuration: 0.1)) {
                                     searchText = ""
                                     isSearchActive = false
                                     isSearchFocused = false
@@ -553,19 +568,30 @@ struct OptimizedBookGridView: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.secondary)
+                                    .scaleEffect(isSearchActive ? 1.0 : 0.8)
+                                    .opacity(isSearchActive ? 1.0 : 0.7)
                             }
                             .transition(.scale.combined(with: .opacity))
+                            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isSearchActive)
                         }
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
                     .glassedEffect(shape: Capsule(), interactive: true)
-                    .glassEffectUnion(id: "searchArea", namespace: glassNamespace)
+                    .glassEffectUnionSafe(id: "searchArea", namespace: glassNamespace)
                     .frame(width: isSearchActive ? min(geometry.size.width - 40, 400) : 56, height: 56)
+                    .scaleEffect(isSearchActive ? 1.0 : 0.95)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7, blendDuration: 0.1), value: isSearchActive)
                     .onTapGesture {
                         if !isSearchActive {
-                            isSearchActive = true
-                            isSearchFocused = true
+                            // Enhanced haptic feedback for activation
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                            impactFeedback.impactOccurred()
+                            
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1)) {
+                                isSearchActive = true
+                                isSearchFocused = true
+                            }
                         }
                     }
                     
