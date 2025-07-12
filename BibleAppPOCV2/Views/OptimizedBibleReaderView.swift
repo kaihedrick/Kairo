@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OptimizedBibleReaderView: View {
-    @StateObject private var generator = OnDemandPageGenerator(pageSize: .zero)
+    @StateObject private var generator = OnDemandPageGenerator(pageSize: CGSize.zero)
     let initialVerse: (book: String, chapter: Int, verse: Int)
     @Environment(\.scenePhase) private var scenePhase
     @State private var sizeChangeTask: Task<Void, Never>?
@@ -22,7 +22,9 @@ struct OptimizedBibleReaderView: View {
             #endif
 
             ZStack {
-                if let page = generator.currentPage {
+                if let fragmentedPage = generator.currentFragmentedPage {
+                    fragmentedPageView(fragmentedPage, size: size)
+                } else if let page = generator.currentPage {
                     pageView(page, size: size)
                 } else {
                     ProgressView()
@@ -56,17 +58,24 @@ struct OptimizedBibleReaderView: View {
                     // Check if task was cancelled (another size change occurred)
                     guard !Task.isCancelled else { return }
                     
-                    print("📖 DEBOUNCED: Generating fresh page with size: \(newSize)")
+                    print("📖 DEBOUNCED: Generating fresh fragmented page with size: \(newSize)")
                     generator.updatePageSize(newSize)
                     
-                    // Get current position, then force regenerate
-                    let currentStart = generator.currentPage?.startVerse ?? 
-                        VerseKey(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)
-                    await generator.generatePage(startingAt: (currentStart.book, currentStart.chapter, currentStart.verse))
+                    // Get current position, then force regenerate using fragment approach
+                    let currentStart: VerseReference
+                    if let fragmentedStart = generator.currentFragmentedPage?.startVerse {
+                        currentStart = fragmentedStart
+                    } else if let pageStart = generator.currentPage?.startVerse,
+                              let verseRef = VerseReference(book: pageStart.book, chapter: pageStart.chapter, verse: pageStart.verse) {
+                        currentStart = verseRef
+                    } else {
+                        currentStart = VerseReference(book: initialVerse.book, chapter: initialVerse.chapter, verse: initialVerse.verse)!
+                    }
+                    await generator.generateFragmentedPage(startingAt: (currentStart.book, currentStart.chapter, currentStart.verse))
                 }
             }
         }
-        .navigationTitle(generator.currentPage?.navTitle ?? "")
+        .navigationTitle(generator.currentFragmentedPage?.navTitle ?? generator.currentPage?.navTitle ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { generator.handleMemoryPressure() }
@@ -114,9 +123,63 @@ struct OptimizedBibleReaderView: View {
                 DragGesture(minimumDistance: 30)
                     .onEnded { value in
                         if value.translation.width < -50 {
-                            Task { await generator.generateNextPage() }
+                            Task { await generator.generateNextFragmentedPage() }
                         } else if value.translation.width > 50 {
-                            Task { await generator.generatePreviousPage() }
+                            Task { await generator.generatePreviousFragmentedPage() }
+                        }
+                    }
+            )
+    }
+    
+    private func fragmentedPageView(_ fragmentedPage: FragmentedPage, size: CGSize) -> some View {
+        Text(fragmentedPage.content)
+            .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
+            .padding(.vertical, LayoutMetrics.verticalPagePadding)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .multilineTextAlignment(.leading)
+            .clipped()
+            .background(
+                GeometryReader { textGeo in
+                    Color.clear
+                        .onAppear {
+                            let actualContentHeight = textGeo.size.height
+                            let availableHeight = size.height
+                            print("📏 FRAGMENT VERIFICATION: content=\(actualContentHeight) vs available=\(availableHeight)")
+                            print("📊 FRAGMENT STATS: \(fragmentedPage.debugDescription)")
+                            
+                            // Log fragment details
+                            for (index, fragment) in fragmentedPage.fragments.enumerated() {
+                                let continuationStatus = fragment.isContinuation ? "↪️" : "🆕"
+                                let completionStatus = fragment.hasMoreContent ? "➡️" : "✅"
+                                print("   Fragment \(index + 1): \(continuationStatus) \(fragment.reference.book) \(fragment.reference.chapter):\(fragment.reference.verse) \(completionStatus)")
+                            }
+                            
+                            // Fragment-based approach should have better fit
+                            if actualContentHeight > availableHeight + 10 { // Small tolerance
+                                print("⚠️ FRAGMENT OVERFLOW: Content is \(actualContentHeight - availableHeight)pts too tall")
+                                print("📝 Fragment system may need height measurement refinement")
+                            } else {
+                                print("✅ FRAGMENT SUCCESS: \(fragmentedPage.fragments.count) fragments fit perfectly")
+                                print("📏 VERIFIED: \(fragmentedPage.uniqueVerses.count) unique verses across fragments")
+                            }
+                        }
+                        .onChange(of: textGeo.size.height) { _, newHeight in
+                            print("📏 FRAGMENT CONTENT HEIGHT CHANGED: \(newHeight)")
+                        }
+                }
+            )
+#if DEBUG
+            .overlay(alignment: .bottom) { 
+                Color.green.frame(height: 4) // Green to distinguish from legacy pages
+            }
+#endif
+            .gesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        if value.translation.width < -50 {
+                            Task { await generator.generateNextFragmentedPage() }
+                        } else if value.translation.width > 50 {
+                            Task { await generator.generatePreviousFragmentedPage() }
                         }
                     }
             )
