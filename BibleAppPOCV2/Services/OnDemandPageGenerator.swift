@@ -40,6 +40,7 @@ enum PageGenerationError: LocalizedError {
 @MainActor
 final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentPage: OptimizedPageSlice?
+    @Published private(set) var currentFragmentedPage: FragmentedPage?
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
 
@@ -48,6 +49,7 @@ final class OnDemandPageGenerator: ObservableObject {
     private var size: CGSize
     private var currentNode: PageNode?
     private var pending: (key: VerseKey, text: AttributedString)?
+    private var fragmentPending: VerseFragment?
     
     // REMOVED: conservativeMultiplier - legacy prediction-based approach
     // WHY: Dynamic height measurement eliminates need for conservative estimation
@@ -437,6 +439,248 @@ final class OnDemandPageGenerator: ObservableObject {
         }
         
         return nil
+    }
+    
+    /// Generate a page using the new fragment-based approach
+    func generateFragmentedPage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
+        let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
+        lastError = nil
+        
+        // Prevent duplicate generation if we're already generating this key
+        if isGenerating {
+            print("⚠️ Already generating fragmented page, skipping duplicate request for \(key.description)")
+            return
+        }
+        
+        // Check if we already have this page loaded
+        if let current = currentFragmentedPage, current.startVerse.book == key.book && 
+           current.startVerse.chapter == key.chapter && current.startVerse.verse == key.verse {
+            print("✅ Fragmented page \(key.description) already loaded, skipping generation")
+            return
+        }
+        
+        isGenerating = true
+        defer { isGenerating = false }
+        
+        do {
+            let fragmentedPage = try await generateFragmentedPageContent(startingAt: key)
+            currentFragmentedPage = fragmentedPage
+            
+            // Also update the legacy currentPage for backward compatibility
+            currentPage = OptimizedPageSlice(
+                content: fragmentedPage.content,
+                verseKeys: fragmentedPage.verseKeys,
+                startVerse: VerseKey(
+                    book: fragmentedPage.startVerse.book,
+                    chapter: fragmentedPage.startVerse.chapter,
+                    verse: fragmentedPage.startVerse.verse
+                ),
+                endVerse: VerseKey(
+                    book: fragmentedPage.endVerse.book,
+                    chapter: fragmentedPage.endVerse.chapter,
+                    verse: fragmentedPage.endVerse.verse
+                ),
+                navigationContext: PageNavigationContext(
+                    isFirstVerseOfBook: fragmentedPage.startVerse.book == "Genesis" && fragmentedPage.startVerse.chapter == 1 && fragmentedPage.startVerse.verse == 1,
+                    isLastVerseOfBook: false // We'll set this properly later when we know the book structure
+                )
+            )
+            
+            print("📖 FRAGMENTED PAGE GENERATED: \(fragmentedPage.debugDescription)")
+            
+        } catch {
+            lastError = error.localizedDescription
+            print("❌ Failed to generate fragmented page: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Generate fragmented page content with cross-page verse continuation
+    private func generateFragmentedPageContent(startingAt key: VerseKey) async throws -> FragmentedPage {
+        guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
+            throw PageGenerationError.missingChapter(key)
+        }
+        
+        guard size.width > 0 && size.height > 0 else {
+            throw PageGenerationError.layoutFailed(key)
+        }
+        
+        print("📖 FRAGMENT GENERATION: Starting at \(key.description) with size \(size)")
+        
+        // Calculate available space for fragments
+        let conservativeMargin: CGFloat = 30 // Extra margin for fragment indicators
+        let availableHeight = size.height - (LayoutMetrics.verticalPagePadding * 2) - conservativeMargin
+        let maxSize = CGSize(width: size.width - (LayoutMetrics.horizontalPagePadding * 2), height: availableHeight)
+        
+        print("📏 FRAGMENT LAYOUT: available=\(availableHeight), maxWidth=\(maxSize.width)")
+        
+        var fragments: [VerseFragment] = []
+        var accumulatedHeight: CGFloat = 0
+        var currentVerseIndex = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
+        
+        // Handle pending fragment from previous page
+        if let pendingFragment = fragmentPending {
+            let fragmentHeight = measureFragmentHeight(pendingFragment, maxSize: maxSize)
+            if accumulatedHeight + fragmentHeight <= availableHeight * 0.95 {
+                fragments.append(pendingFragment)
+                accumulatedHeight += fragmentHeight
+                print("📏 Added pending fragment: height=\(fragmentHeight), total=\(accumulatedHeight)")
+            }
+            fragmentPending = nil
+        }
+        
+        // Process verses starting from the current position
+        while currentVerseIndex < chapter.verses.count {
+            let verse = chapter.verses[currentVerseIndex]
+            let verseRef = VerseReference(
+                unsafeBook: key.book,
+                unsafeChapter: key.chapter,
+                unsafeVerse: verse.verse
+            )
+            let domainVerse = Verse(reference: verseRef, text: verse.text)
+            
+            // Generate fragments for this verse
+            let remainingHeight = availableHeight * 0.95 - accumulatedHeight
+            let verseFragments = VerseFragmentGenerator.fragmentVerse(
+                verse: domainVerse,
+                availableHeight: remainingHeight,
+                maxSize: maxSize
+            )
+            
+            var addedFragments = 0
+            for fragment in verseFragments {
+                let fragmentHeight = measureFragmentHeight(fragment, maxSize: maxSize)
+                
+                if accumulatedHeight + fragmentHeight <= availableHeight * 0.95 {
+                    fragments.append(fragment)
+                    accumulatedHeight += fragmentHeight
+                    addedFragments += 1
+                    print("📏 Added fragment \(fragment.sequenceNumber + 1)/\(fragment.totalFragments): height=\(fragmentHeight), total=\(accumulatedHeight)")
+                } else {
+                    // This fragment doesn't fit, save it for next page
+                    fragmentPending = fragment
+                    print("🔄 Fragment \(fragment.sequenceNumber + 1)/\(fragment.totalFragments) saved for next page")
+                    break
+                }
+            }
+            
+            // If we added all fragments for this verse, move to next verse
+            if addedFragments == verseFragments.count {
+                currentVerseIndex += 1
+            } else {
+                // We have a pending fragment, stop here
+                break
+            }
+            
+            // Safety check to prevent infinite loops
+            if fragments.count > 50 {
+                print("⚠️ Safety break: too many fragments on one page")
+                break
+            }
+        }
+        
+        // Ensure we have at least one fragment
+        if fragments.isEmpty {
+            print("🚨 Emergency: No fragments fit, adding first verse as single fragment")
+            let verse = chapter.verses[currentVerseIndex]
+            let verseRef = VerseReference(
+                unsafeBook: key.book,
+                unsafeChapter: key.chapter,
+                unsafeVerse: verse.verse
+            )
+            
+            let emergencyFragment = VerseFragment(
+                reference: verseRef,
+                textFragment: verse.text,
+                isStartOfVerse: true,
+                isEndOfVerse: true,
+                fullVerseText: verse.text,
+                sequenceNumber: 0,
+                totalFragments: 1
+            )
+            fragments.append(emergencyFragment)
+        }
+        
+        // Generate the combined content
+        let combinedContent = VerseFragmentGenerator.combineFragments(fragments)
+        
+        // Create navigation title
+        let startVerse = fragments.first!.reference
+        let endVerse = fragments.last!.reference
+        let navTitle = if startVerse.book == endVerse.book && startVerse.chapter == endVerse.chapter {
+            if startVerse.verse == endVerse.verse {
+                "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse)"
+            } else {
+                "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse)-\(endVerse.verse)"
+            }
+        } else if startVerse.book == endVerse.book {
+            "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse) - \(endVerse.chapter):\(endVerse.verse)"
+        } else {
+            "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse) - \(endVerse.book) \(endVerse.chapter):\(endVerse.verse)"
+        }
+        
+        return FragmentedPage(
+            fragments: fragments,
+            navTitle: navTitle,
+            startVerse: startVerse,
+            endVerse: endVerse,
+            content: combinedContent,
+            measuredHeight: accumulatedHeight,
+            availableHeight: availableHeight
+        )
+    }
+    
+    /// Measure the height of a fragment for layout calculations
+    private func measureFragmentHeight(_ fragment: VerseFragment, maxSize: CGSize) -> CGFloat {
+        let formatted = JITTextFormatter.formatVerse(
+            book: fragment.reference.book,
+            chapter: fragment.reference.chapter,
+            verse: fragment.reference.verse,
+            text: fragment.displayText
+        )
+        
+        return JITTextFormatter.measureText(formatted, maxSize: maxSize).height
+    }
+    
+    /// Navigate to next page with fragment support
+    func generateNextFragmentedPage() async {
+        defer { Task { await trimCacheToThreePages() } }
+        
+        // If we have a pending fragment, generate page starting with it
+        if let pendingFragment = fragmentPending {
+            await generateFragmentedPage(startingAt: (
+                pendingFragment.reference.book,
+                pendingFragment.reference.chapter,
+                pendingFragment.reference.verse
+            ))
+            return
+        }
+        
+        // Find the next verse after the current page's end
+        guard let current = currentFragmentedPage,
+              let nextVerse = await findNextVerse(after: VerseKey(
+                book: current.endVerse.book,
+                chapter: current.endVerse.chapter,
+                verse: current.endVerse.verse
+              )) else { return }
+        
+        await generateFragmentedPage(startingAt: (nextVerse.book, nextVerse.chapter, nextVerse.verse))
+    }
+    
+    /// Navigate to previous page with fragment support
+    func generatePreviousFragmentedPage() async {
+        defer { Task { await trimCacheToThreePages() } }
+        
+        guard let current = currentFragmentedPage,
+              let prevVerse = await findPreviousVerse(before: VerseKey(
+                book: current.startVerse.book,
+                chapter: current.startVerse.chapter,
+                verse: current.startVerse.verse
+              )) else { return }
+        
+        // Clear any pending fragment when going backwards
+        fragmentPending = nil
+        
+        await generateFragmentedPage(startingAt: (prevVerse.book, prevVerse.chapter, prevVerse.verse))
     }
 }
 
