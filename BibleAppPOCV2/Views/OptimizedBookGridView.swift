@@ -32,14 +32,14 @@ struct OptimizedBookGridView: View {
     @State private var lastScrollOffset: CGFloat = 0
     @State private var isScrollingUp: Bool = false
     
-    private var shouldShowGlassEffect: Bool {
-        scrollOffset > 50 // Increased threshold for more natural trigger
+    private var shouldShowGlassHeader: Bool {
+        scrollOffset > 50 // Threshold for glass header activation
     }
     
-    private var glassHeaderOpacity: Double {
-        if shouldShowGlassEffect {
-            let progress = min(1.0, (scrollOffset - 50) / 30) // Smooth fade-in over 30pt
-            return Double(progress)
+    private var headerOpacity: Double {
+        if shouldShowGlassHeader {
+            let progress = max(0, min(1, (scrollOffset - 30) / 20)) // Smooth fade-in over 20pt
+            return progress
         }
         return 0.0
     }
@@ -102,26 +102,28 @@ struct OptimizedBookGridView: View {
     ])
     
     var body: some View {
-        ZStack(alignment: .top) {
-            // Background that extends to screen edges
-            Color.white.ignoresSafeArea()
-            
-            // Main content layer - ScrollView with book grid
-            if viewModel.isInitializing {
-                initializationView
-            } else if let error = viewModel.errorMessage {
-                errorView(error)
-            } else {
-                mainContent
+        NavigationStack {
+            ZStack(alignment: .top) {
+                // Background that extends to screen edges
+                Color.white.ignoresSafeArea()
+                
+                // Main content layer - ScrollView with book grid
+                if viewModel.isInitializing {
+                    initializationView
+                } else if let error = viewModel.errorMessage {
+                    errorView(error)
+                } else {
+                    mainContent
+                }
+                
+                // Glassy header overlay (appears on scroll)
+                glassyHeader
+                
+                // Bottom search overlay layer
+                bottomSearchOverlay
             }
-            
-            // Glassy header overlay (appears on scroll)
-            glassyHeader
-            
-            // Bottom search overlay layer
-            bottomSearchOverlay
+            .navigationBarHidden(true)  // Hide navigation bar since we have custom header
         }
-        .navigationBarHidden(true)  // Hide navigation bar since we have custom header
         .onChange(of: isSearchActive) { _, _ in
             // Recalculate layout when search state changes
             isLayoutCalculated = false
@@ -199,7 +201,7 @@ struct OptimizedBookGridView: View {
                         .padding(.top, 20)
                 } else {
                     VStack(spacing: 16) {
-                        // Default header inside ScrollView (visible only when not scrolled)
+                        // Default header inside ScrollView (visible before scroll threshold)
                         defaultHeader
                         
                         LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
@@ -220,6 +222,7 @@ struct OptimizedBookGridView: View {
                                             .animation(.easeInOut(duration: 0.25), value: searchText)
                                         }
                                         .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
+                                        .buttonStyle(PlainButtonStyle()) // Ensure proper tap behavior
                                     }
                                 }
                             }
@@ -243,13 +246,18 @@ struct OptimizedBookGridView: View {
                     isScrollingUp = newOffset < lastScrollOffset
                 }
                 
-                // Haptic feedback when glass effect transitions
-                if shouldShowGlassEffect && !shouldShowGlassEffect {
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred(intensity: 0.6)
-                } else if !shouldShowGlassEffect && shouldShowGlassEffect {
+                // Haptic feedback when glass header transitions
+                let previouslyShowing = lastScrollOffset > 50
+                let nowShowing = scrollOffset > 50
+                
+                if !previouslyShowing && nowShowing {
+                    // Glass header just appeared
                     let impactFeedback = UIImpactFeedbackGenerator(style: .soft)
                     impactFeedback.impactOccurred(intensity: 0.4)
+                } else if previouslyShowing && !nowShowing {
+                    // Glass header just disappeared
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred(intensity: 0.6)
                 }
             }
             .onAppear {
@@ -393,54 +401,60 @@ struct OptimizedBookGridView: View {
                 .font(.title2.bold())
                 .foregroundColor(.primary)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 60)
+                .padding(.top, 20)
+                .padding(.bottom, 12)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 8)
                 .id("scrollTop") // Add ID for scroll-to-top
         }
-        .opacity(shouldShowGlassEffect ? 0.0 : 1.0)
-        .animation(.easeInOut(duration: 0.3), value: shouldShowGlassEffect)
+        .opacity(shouldShowGlassHeader ? 0.0 : 1.0)
+        .animation(.easeInOut(duration: 0.3), value: shouldShowGlassHeader)
     }
     
     // MARK: - Glassy Header (pinned at top, appears on scroll)
     
     private var glassyHeader: some View {
         Group {
-            if shouldShowGlassEffect {
+            if shouldShowGlassHeader {
                 GeometryReader { geometry in
                     VStack(spacing: 0) {
                         Text("📖 Select a Book")
                             .font(.title2.bold())
                             .foregroundColor(.primary)
                             .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, geometry.safeAreaInsets.top + 16)
+                            .padding(.top, geometry.safeAreaInsets.top + 25)
                             .padding(.bottom, 16)
                             .padding(.horizontal, 20)
                     }
                     .frame(maxWidth: .infinity)
                     .background(
-                        // Native iOS glass effect background
-                        Rectangle()
+                        // Native iOS glass effect using available APIs
+                        RoundedRectangle(cornerRadius: 0)
                             .fill(.ultraThinMaterial)
                             .background(.regularMaterial)
                             .overlay(
-                                Rectangle()
-                                    .fill(.ultraThinMaterial)
+                                RoundedRectangle(cornerRadius: 0)
+                                    .fill(.ultraThinMaterial.opacity(0.3))
                                     .blendMode(.overlay)
                             )
-                            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+                            .shadow(
+                                color: Color.black.opacity(0.25),
+                                radius: 4,
+                                x: 0,
+                                y: 1
+                            )
                     )
                     .ignoresSafeArea(edges: .top)
                     .onTapGesture {
                         scrollToTop()
                     }
                 }
+                .opacity(headerOpacity)
                 .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.95)),
-                    removal: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 1.05))
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
                 ))
-                .animation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0.1), value: shouldShowGlassEffect)
-                .zIndex(10)
+                .animation(.easeInOut(duration: 0.3), value: shouldShowGlassHeader)
+                .zIndex(100)
             }
         }
     }
