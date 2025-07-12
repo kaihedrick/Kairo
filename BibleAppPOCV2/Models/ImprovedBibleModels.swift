@@ -10,16 +10,23 @@ import SwiftUI
 
 // MARK: - Domain Models (Business Logic Layer)
 
+/// Testament enumeration for filtering books
+public enum Testament: String, CaseIterable {
+    case all = "All"
+    case old = "Old Testament"
+    case new = "New Testament"
+}
+
 /// Core verse identifier - immutable value object
-struct VerseReference: Hashable, Codable, CustomStringConvertible {
+public struct VerseReference: Hashable, Codable, CustomStringConvertible {
     let book: String
     let chapter: Int
     let verse: Int
     
-    var description: String { "\(book) \(chapter):\(verse)" }
+    public var description: String { "\(book) \(chapter):\(verse)" }
     
     // Validation
-    init?(book: String, chapter: Int, verse: Int) {
+    public init?(book: String, chapter: Int, verse: Int) {
         guard !book.isEmpty, chapter > 0, verse > 0 else { return nil }
         self.book = book
         self.chapter = chapter
@@ -27,7 +34,7 @@ struct VerseReference: Hashable, Codable, CustomStringConvertible {
     }
     
     // Unsafe initializer for known-good data
-    init(unsafeBook: String, unsafeChapter: Int, unsafeVerse: Int) {
+    public init(unsafeBook: String, unsafeChapter: Int, unsafeVerse: Int) {
         self.book = unsafeBook
         self.chapter = unsafeChapter
         self.verse = unsafeVerse
@@ -35,27 +42,27 @@ struct VerseReference: Hashable, Codable, CustomStringConvertible {
 }
 
 /// Represents a single verse with its content
-struct Verse: Hashable, Identifiable {
-    let id = UUID()
+public struct Verse: Hashable, Identifiable {
+    public let id = UUID()
     let reference: VerseReference
     let text: String
     
-    init(reference: VerseReference, text: String) {
+    public init(reference: VerseReference, text: String) {
         self.reference = reference
         self.text = text
     }
 }
 
 /// Represents a chapter containing multiple verses
-struct Chapter: Hashable, Identifiable {
-    let id = UUID()
+public struct Chapter: Hashable, Identifiable {
+    public let id = UUID()
     let book: String
     let number: Int
     let verses: [Verse]
     
     var verseCount: Int { verses.count }
     
-    init(book: String, number: Int, verses: [Verse]) {
+    public init(book: String, number: Int, verses: [Verse]) {
         self.book = book
         self.number = number
         self.verses = verses
@@ -63,21 +70,21 @@ struct Chapter: Hashable, Identifiable {
 }
 
 /// Represents a book containing multiple chapters
-struct Book: Hashable, Identifiable {
-    let id = UUID()
+public struct Book: Hashable, Identifiable {
+    public let id = UUID()
     let name: String
     let chapters: [Chapter]
     
     var chapterCount: Int { chapters.count }
     
-    init(name: String, chapters: [Chapter]) {
+    public init(name: String, chapters: [Chapter]) {
         self.name = name
         self.chapters = chapters
     }
 }
 
 /// Complete Bible structure
-struct Bible {
+public struct Bible {
     let books: [Book]
     
     var bookCount: Int { books.count }
@@ -90,12 +97,12 @@ struct Bible {
 // MARK: - Presentation Models (View Layer)
 
 /// Lightweight metadata for UI display
-struct BookMetadata: Hashable, Codable {
+public struct BookMetadata: Hashable, Codable {
     let name: String
     let chapterCount: Int
     let abbreviation: String
     
-    init(name: String, chapterCount: Int) {
+    public init(name: String, chapterCount: Int) {
         self.name = name
         self.chapterCount = chapterCount
         self.abbreviation = String(name.prefix(3))
@@ -103,7 +110,7 @@ struct BookMetadata: Hashable, Codable {
 }
 
 /// Collection of book metadata for navigation
-struct BibleMetadata: Codable {
+public struct BibleMetadata: Codable {
     let books: [BookMetadata]
     
     var oldTestamentBooks: [BookMetadata] {
@@ -116,14 +123,14 @@ struct BibleMetadata: Codable {
 }
 
 /// Page of formatted content for display
-struct PageContent: Identifiable, Equatable {
-    let id = UUID()
+public struct PageContent: Identifiable, Equatable {
+    public let id = UUID()
     let attributedText: AttributedString
     let startReference: VerseReference
     let endReference: VerseReference
     let references: [VerseReference]
     
-    static func == (lhs: PageContent, rhs: PageContent) -> Bool {
+    public static func == (lhs: PageContent, rhs: PageContent) -> Bool {
         lhs.id == rhs.id &&
         lhs.startReference == rhs.startReference &&
         lhs.endReference == rhs.endReference
@@ -132,7 +139,7 @@ struct PageContent: Identifiable, Equatable {
 
 // MARK: - Constants
 
-enum BibleConstants {
+public enum BibleConstants {
     static let oldTestament: Set<String> = Set([
         "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua",
         "Judges", "Ruth", "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles",
@@ -154,7 +161,7 @@ enum BibleConstants {
 // MARK: - Service Layer Types
 
 /// Result wrapper for service operations
-enum ServiceResult<T> {
+public enum ServiceResult<T> {
     case success(T)
     case failure(BibleError)
     
@@ -178,14 +185,14 @@ enum ServiceResult<T> {
 }
 
 /// Comprehensive error handling for the app
-enum BibleError: LocalizedError, Equatable {
+public enum BibleError: LocalizedError, Equatable {
     case dataNotFound(String)
     case parsingError(String)
     case invalidInput(String)
     case networkError(String)
     case cacheError(String)
     
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .dataNotFound(let item):
             return "Could not find \(item)"
@@ -200,7 +207,7 @@ enum BibleError: LocalizedError, Equatable {
         }
     }
     
-    var recoverySuggestion: String? {
+    public var recoverySuggestion: String? {
         switch self {
         case .dataNotFound:
             return "Please check your internet connection and try again."
@@ -219,11 +226,11 @@ enum BibleError: LocalizedError, Equatable {
 // MARK: - Advanced Domain Models
 
 /// Represents a range of verses for pagination
-struct VerseRange: Hashable, Codable {
+public struct VerseRange: Hashable, Codable {
     let start: VerseReference
     let end: VerseReference
     
-    init?(start: VerseReference, end: VerseReference) {
+    public init?(start: VerseReference, end: VerseReference) {
         // Validate that end comes after start
         guard start.book == end.book else { return nil }
         guard start.chapter < end.chapter || 
@@ -247,7 +254,7 @@ struct VerseRange: Hashable, Codable {
 }
 
 /// Navigation context for better UX
-struct NavigationContext {
+public struct NavigationContext {
     let isFirstChapter: Bool
     let isLastChapter: Bool
     let isFirstVerse: Bool
@@ -255,7 +262,7 @@ struct NavigationContext {
     let totalChapters: Int
     let totalVerses: Int
     
-    init(currentChapter: Int, currentVerse: Int, totalChapters: Int, totalVerses: Int) {
+    public init(currentChapter: Int, currentVerse: Int, totalChapters: Int, totalVerses: Int) {
         self.isFirstChapter = currentChapter == 1
         self.isLastChapter = currentChapter == totalChapters
         self.isFirstVerse = currentVerse == 1
@@ -263,4 +270,26 @@ struct NavigationContext {
         self.totalChapters = totalChapters
         self.totalVerses = totalVerses
     }
+}
+
+
+// MARK: - Namespaced Access for Migration Compatibility
+/// Provides namespaced access to the improved models. This helps avoid
+/// type name collisions while migrating legacy code. Each alias refers to
+/// the corresponding top-level type defined in this file.
+public enum ImprovedBibleModels {
+    /// Sorted aliases for easier discovery and consistency
+    public typealias Bible             = BibleAppPOCV2.Bible
+    public typealias BibleConstants    = BibleAppPOCV2.BibleConstants
+    public typealias BibleError        = BibleAppPOCV2.BibleError
+    public typealias BibleMetadata     = BibleAppPOCV2.BibleMetadata
+    public typealias Book              = BibleAppPOCV2.Book
+    public typealias BookMetadata      = BibleAppPOCV2.BookMetadata
+    public typealias Chapter           = BibleAppPOCV2.Chapter
+    public typealias NavigationContext = BibleAppPOCV2.NavigationContext
+    public typealias PageContent       = BibleAppPOCV2.PageContent
+    public typealias ServiceResult<T>  = BibleAppPOCV2.ServiceResult<T>
+    public typealias Verse             = BibleAppPOCV2.Verse
+    public typealias VerseRange        = BibleAppPOCV2.VerseRange
+    public typealias VerseReference    = BibleAppPOCV2.VerseReference
 }

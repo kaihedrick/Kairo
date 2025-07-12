@@ -8,76 +8,22 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Performance Monitor
-
-@MainActor
-class PerformanceMonitor: ObservableObject {
-    @Published var memoryUsage: String = "0 MB"
-    @Published var cacheHitRate: Double = 0.0
-    
-    private var totalRequests: Int = 0
-    private var cacheHits: Int = 0
-    
-    init() {
-        startMonitoring()
-    }
-    
-    private func startMonitoring() {
-        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            Task { @MainActor in
-                self.updateMemoryUsage()
-            }
-        }
-    }
-    
-    private func updateMemoryUsage() {
-        var taskInfo = mach_task_basic_info()  // Use 'var' instead of 'let'
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
-        
-        let kerr: kern_return_t = withUnsafeMutablePointer(to: &taskInfo) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: 1) { ptr in
-                task_info(mach_task_self_,
-                         task_flavor_t(MACH_TASK_BASIC_INFO),
-                         ptr,
-                         &count)
-            }
-        }
-        
-        if kerr == KERN_SUCCESS {
-            let memoryInMB = Double(taskInfo.resident_size) / 1024.0 / 1024.0
-            memoryUsage = String(format: "%.1f MB", memoryInMB)
-        }
-    }
-    
-    func recordCacheHit() {
-        totalRequests += 1
-        cacheHits += 1
-        updateCacheHitRate()
-    }
-    
-    func recordCacheMiss() {
-        totalRequests += 1
-        updateCacheHitRate()
-    }
-    
-    private func updateCacheHitRate() {
-        guard totalRequests > 0 else { return }
-        cacheHitRate = Double(cacheHits) / Double(totalRequests)
-    }
-}
-
 // MARK: - Optimized Bible View Model
 
 @MainActor
 class OptimizedBibleViewModel: ObservableObject {
-    @Published var metadata: BibleMetadata?
+    // Use the improved models explicitly to avoid type ambiguity
+    @Published var metadata: ImprovedBibleModels.BibleMetadata?
     @Published var isInitializing = true
     @Published var initializationProgress: Double = 0.0
     @Published var errorMessage: String?
     
+    // Support for dependency injection (for future translation support)
+    private let repository: BibleRepositoryProtocol?
     private let dataLoader = OptimizedBibleDataLoader.shared
     
-    init() {
+    init(repository: BibleRepositoryProtocol? = nil) {
+        self.repository = repository
         Task {
             await initializeData()
         }
@@ -88,11 +34,16 @@ class OptimizedBibleViewModel: ObservableObject {
             // Start with metadata loading
             initializationProgress = 0.1
             
-            try await dataLoader.loadBibleMetadata()
-            initializationProgress = 0.8
+            // Use repository if available (for translation support), otherwise fallback to direct loader
+            if let repository = repository {
+                let loadedMetadata = try await repository.loadMetadata()
+                metadata = loadedMetadata
+            } else {
+                try await dataLoader.loadBibleMetadata()
+                metadata = await dataLoader.metadata
+            }
             
-            // Get metadata
-            metadata = await dataLoader.metadata
+            initializationProgress = 0.8
             initializationProgress = 1.0
             
             // Small delay to show completion
@@ -109,7 +60,7 @@ class OptimizedBibleViewModel: ObservableObject {
     // MARK: - Improved Architecture Methods
 
     /// Improved initialization with better error handling
-    private func initializeDataImproved() async {
+    func initializeDataImproved() async {
         do {
             // Start with metadata loading
             initializationProgress = 0.1
@@ -149,7 +100,7 @@ class OptimizedBibleViewModel: ObservableObject {
     }
 
     /// Search books with improved architecture
-    func searchBooksImproved(query: String) async -> [BookMetadata] {
+    func searchBooksImproved(query: String) async -> [ImprovedBibleModels.BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         // Use better filtering with validation

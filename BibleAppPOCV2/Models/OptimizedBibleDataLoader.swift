@@ -15,29 +15,42 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Explicit Model Selection for Loader
-// Use OptimizedBibleModels types to avoid ambiguity
-import struct OptimizedBibleModels.BibleMetadata
-import struct OptimizedBibleModels.BookMetadata
+// MARK: - Optimized Data Structures
+/// Local representation used for fast JSON decoding
+struct OptimizedBible: Codable {
+    let books: [Book]
 
-typealias LoaderBibleMetadata = OptimizedBibleModels.BibleMetadata
-typealias LoaderBookMetadata = OptimizedBibleModels.BookMetadata
+    struct Book: Codable, Hashable {
+        let name: String
+        let chapters: [[Verse]]
+    }
+
+    struct Verse: Codable, Hashable {
+        let verse: Int
+        let text: String
+    }
+
+    struct ChapterContent: Codable, Hashable {
+        let book: String
+        let chapter: Int
+        let verses: [Verse]
+    }
+}
+
+// MARK: - Explicit Model Selection for Loader
+// Use ImprovedBibleModels types for metadata
+
+typealias LoaderBibleMetadata = ImprovedBibleModels.BibleMetadata
+typealias LoaderBookMetadata = ImprovedBibleModels.BookMetadata
 
 // MARK: - Type Aliases for disambiguation
-// These aliases ensure we use the correct types from OptimizedBibleModels.swift
-// Note: We directly reference the types defined in OptimizedBibleModels.swift since they are in the same module
+// These aliases ensure we consistently reference the improved models
 
 // Import legacy types for fallback (using the renamed types from BibleDataLoader.swift)
 // No typealias needed - we'll reference LegacyBibleDataLoader directly
 
 // We need to use specific type paths to avoid ambiguity
-// BibleMetadata, BookMetadata come from OptimizedBibleModels.swift
-// OptimizedBible.ChapterContent, OptimizedBible.Verse come from OptimizedBibleModels.swift
-
-// MARK: - Optimized Data Models
-
-// Note: The core data models (BibleMetadata, BookMetadata, ChapterContent, VerseContent) 
-// are now defined in OptimizedBibleModels.swift to avoid redeclaration errors.
+// OptimizedBible.ChapterContent and OptimizedBible.Verse are defined above
 
 // MARK: - LRU Cache Implementation
 

@@ -7,30 +7,29 @@
 
 import SwiftUI
 
-struct BookTileView: View {
-    let abbreviation: String
-    let fullName: String
-
+struct BookTitleView: View {
+    let bookName: String
+    let chapterCount: Int
+    
     var body: some View {
-        VStack(spacing: 4) {
-            Text(abbreviation)
-                .font(.headline)
+        VStack(spacing: 8) {
+            Text(bookName)
+                .font(.title2.weight(.bold))
                 .foregroundColor(.primary)
+                .multilineTextAlignment(.center)
             
-            Text(fullName)
+            Text("\(chapterCount) chapters")
                 .font(.caption)
                 .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
+        .padding()
+        .background(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                .fill(.ultraThinMaterial)
         )
-        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
+}
+
+#Preview {
+    BookTitleView(bookName: "Genesis", chapterCount: 50)
 }
