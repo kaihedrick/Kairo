@@ -1,13 +1,31 @@
-import SwiftUI
+import SwiftUI  // Add this import statement
 
 // MARK: - Optimized Book Grid View
 
 struct OptimizedBookGridView: View {
     @StateObject private var viewModel = OptimizedBibleViewModel()
-    @StateObject private var performanceMonitor = PerformanceMonitor()
-    @State private var searchText = ""
+    @StateObject private var performanceMonitor = PerformanceMon            
+            // Debug logging to verify mobile-optimized calculations
+            #if DEBUG
+            let totalGridWidth = (columnWidth * 4) + totalSpacing
+            let totalWithPadding = totalGridWidth + (horizontalPadding * 2)
+            let isLandscape = screenWidth > screenHeight
+            print("📱 Mobile-Optimized Grid Layout:")
+            print("  Screen: \(screenWidth) x \(screenHeight) (Landscape: \(isLandscape))")
+            print("  Available Width: \(availableWidth)")
+            print("  Column Width: \(columnWidth) (capped at 80pt)")
+            print("  Tile Height: \(tileHeight)")
+            print("  Horizontal Padding: \(horizontalPadding)")
+            print("  Search Top Padding: \(searchTopPadding)")
+            print("  Search Bottom Padding: \(searchBottomPadding)")
+            print("  Total Grid Width: \(totalGridWidth)")
+            print("  Total With Padding: \(totalWithPadding)")
+            print("  Fits in Available: \(totalWithPadding <= availableWidth)")
+            print("  Space Efficiency: \(Int((totalWithPadding/availableWidth)*100))%")
+            #endif
+        }
+    }rivate var searchText = ""
     @State private var isSearchActive = false
-    @FocusState private var isSearchFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     // PERFORMANCE: Cache testament classifications
@@ -58,46 +76,22 @@ struct OptimizedBookGridView: View {
         "Philemon", "Hebrews", "James", "I Peter", "II Peter", "I John", "II John",
         "III John", "Jude", "Revelation of John"
     ])
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
-                // Main content layer
-                ZStack {
-                    backgroundView
-                    
-                    if viewModel.isInitializing {
-                        initializationView
-                    } else if let error = viewModel.errorMessage {
-                        errorView(error)
-                    } else {
-                        mainContent
-                    }
-                }
+                backgroundView
                 
-                // Bottom search overlay layer
-                bottomSearchOverlay
-            }
-        }
-        .navigationTitle("📖 Select a Book")
-        .navigationBarTitleDisplayMode(.large)  // Keep title always visible
-        .onChange(of: isSearchActive) { _, _ in
-            // Recalculate layout when search state changes
-            isLayoutCalculated = false
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                isSearchActive = true
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                if searchText.isEmpty {
-                    isSearchActive = false
+                if viewModel.isInitializing {
+                    initializationView
+                } else if let error = viewModel.errorMessage {
+                    errorView(error)
+                } else {
+                    mainContent
                 }
             }
         }
-        .task {
+        .task {  // Use .task instead of direct access
             await loadMetadata()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
@@ -147,35 +141,26 @@ struct OptimizedBookGridView: View {
     private var mainContent: some View {
         GeometryReader { geometry in
             ScrollView {
-                if !searchText.isEmpty && filteredBookGroups.isEmpty {
-                    searchEmptyState
-                        .padding(.top, 100)
-                } else {
-                    LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
-                        ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
-                            Section(header: sectionHeader(section)) {
-                                ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
-                                    NavigationLink {
-                                        OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
-                                    } label: {
-                                        BookTileView(
-                                            abbreviation: getBookAbbreviation(for: bookMeta.name),
-                                            fullName: bookMeta.name
-                                        )
-                                        .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
-                                        .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
-                                        .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
-                                        .animation(.easeInOut(duration: 0.25), value: searchText)
-                                    }
-                                    .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
+                LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {  // Reduced from 16 to 12
+                    ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
+                        Section(header: sectionHeader(section)) {
+                            ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
+                                NavigationLink {
+                                    OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
+                                } label: {
+                                    BookTileView(
+                                        abbreviation: getBookAbbreviation(for: bookMeta.name),
+                                        fullName: bookMeta.name
+                                    )
+                                    .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
                                 }
                             }
                         }
                     }
-                    .padding(.horizontal, stableGridLayout.horizontalPadding)
-                    .padding(.top, stableGridLayout.verticalPadding)
-                    .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
                 }
+                .padding(.horizontal, stableGridLayout.horizontalPadding)
+                .padding(.top, isSearchActive ? stableGridLayout.searchTopPadding : stableGridLayout.verticalPadding)
+                .padding(.bottom, isSearchActive ? stableGridLayout.searchBottomPadding : stableGridLayout.verticalPadding + 60)  // Enhanced bottom padding for search
             }
             .onAppear {
                 calculateLayoutIfNeeded(geometry: geometry)
@@ -184,20 +169,30 @@ struct OptimizedBookGridView: View {
                 calculateLayoutIfNeeded(geometry: geometry)
             }
             .onChange(of: horizontalSizeClass) { _, _ in
+                // Recalculate when orientation changes
                 isLayoutCalculated = false
                 calculateLayoutIfNeeded(geometry: geometry)
             }
-            .onTapGesture {
-                // Dismiss search when tapping main content
-                if isSearchActive {
-                    isSearchFocused = false
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        isSearchActive = false
-                    }
-                }
+            // Search-specific padding animations
+            .animation(.easeInOut(duration: 0.25), value: isSearchActive)
+        }
+        .searchable(text: $searchText, prompt: "Search books")
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isSearchActive = true
             }
         }
-        .clipped()
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isSearchActive = false
+            }
+        }
+        .onChange(of: searchText) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isSearchActive = !newValue.isEmpty
+            }
+        }
+        .navigationTitle("📖 Select a Book")
     }
     
     // STABLE LAYOUT: Mobile-first grid structure with smaller tiles
@@ -214,10 +209,6 @@ struct OptimizedBookGridView: View {
         let searchTopPadding: CGFloat
         let searchBottomPadding: CGFloat
         
-        // Search field horizontal constraints
-        let searchFieldHorizontalPadding: CGFloat
-        let searchFieldMaxWidth: CGFloat
-        
         init() {
             // Default values for initial state - optimized for mobile
             self.columnWidth = 70  // Reduced from 80
@@ -226,8 +217,6 @@ struct OptimizedBookGridView: View {
             self.verticalPadding = 16
             self.searchTopPadding = 20
             self.searchBottomPadding = 32
-            self.searchFieldHorizontalPadding = 16
-            self.searchFieldMaxWidth = 320  // Reasonable max width for search field
             self.gridItems = Array(repeating: GridItem(.fixed(70), spacing: 8), count: 4)
         }
         
@@ -268,18 +257,6 @@ struct OptimizedBookGridView: View {
             
             self.verticalPadding = max(16, screenHeight * 0.02)  // Reduced vertical padding
             
-            // Calculate search field horizontal constraints
-            let baseSearchPadding = max(16, screenWidth * 0.04)  // Responsive to screen size
-            let safeAreaAdjustment = max(safeAreaInsets.leading, safeAreaInsets.trailing)
-            self.searchFieldHorizontalPadding = baseSearchPadding + safeAreaAdjustment
-            
-            // Calculate search field max width - never too wide, respects safe areas
-            let maxSearchFieldWidth = min(
-                availableWidth - (searchFieldHorizontalPadding * 2),
-                isLandscape ? 600 : 400  // Landscape allows wider search field
-            )
-            self.searchFieldMaxWidth = max(280, maxSearchFieldWidth)
-            
             // Calculate search-specific padding based on orientation and state
             if isLandscape {
                 // Landscape: More conservative vertical padding
@@ -295,7 +272,7 @@ struct OptimizedBookGridView: View {
             self.gridItems = Array(repeating: GridItem(.fixed(columnWidth), spacing: interColumnSpacing), count: 4)
             
             // Debug logging to verify mobile-optimized calculations
-#if DEBUG
+            #if DEBUG
             let totalGridWidth = (columnWidth * 4) + totalSpacing
             let totalWithPadding = totalGridWidth + (horizontalPadding * 2)
             print("� Mobile-Optimized Grid Layout:")
@@ -309,7 +286,7 @@ struct OptimizedBookGridView: View {
             print("  Total With Padding: \(totalWithPadding)")
             print("  Fits in Available: \(totalWithPadding <= availableWidth)")
             print("  Space Efficiency: \(Int((totalWithPadding/availableWidth)*100))%")
-#endif
+            #endif
         }
     }
     
@@ -318,8 +295,8 @@ struct OptimizedBookGridView: View {
     private func calculateLayoutIfNeeded(geometry: GeometryProxy) {
         // Only calculate if layout hasn't been calculated or screen size changed significantly
         let screenSize = geometry.size
-        let sizeChanged = abs(screenSize.width - lastKnownScreenSize.width) > 20 ||
-        abs(screenSize.height - lastKnownScreenSize.height) > 20
+        let sizeChanged = abs(screenSize.width - lastKnownScreenSize.width) > 20 || 
+                         abs(screenSize.height - lastKnownScreenSize.height) > 20
         
         // Also recalculate if search state changed
         let searchStateChanged = isSearchActive != (stableGridLayout.searchTopPadding > stableGridLayout.verticalPadding)
@@ -334,9 +311,9 @@ struct OptimizedBookGridView: View {
         lastKnownScreenSize = screenSize
         isLayoutCalculated = true
         
-#if DEBUG
+        #if DEBUG
         print("📱 Layout recalculated - Screen: \(screenSize), Search: \(isSearchActive)")
-#endif
+        #endif
     }
     
     // MARK: - Book Abbreviation Helper
@@ -379,7 +356,7 @@ struct OptimizedBookGridView: View {
         }
         
         // DEBUG: Log book classification results
-#if DEBUG
+        #if DEBUG
         print("📚 Book Classification Results:")
         print("  Total books loaded: \(metadata.books.count)")
         print("  Old Testament: \(oldTestament.count) books")
@@ -406,7 +383,7 @@ struct OptimizedBookGridView: View {
         } else {
             print("  ❌ Revelation of John is NOT found in New Testament")
         }
-#endif
+        #endif
         
         // Cache the results
         Task { @MainActor in
@@ -430,7 +407,11 @@ struct OptimizedBookGridView: View {
     }
     
     private var backgroundView: some View {
-        Color.clear
+        Image("parchment-bg")
+            .resizable()
+            .scaledToFill()
+            .opacity(0.25)
+            .ignoresSafeArea()
     }
     
     private func sectionHeader(_ title: String) -> some View {
@@ -439,45 +420,6 @@ struct OptimizedBookGridView: View {
             .font(.title3.weight(.semibold))
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 8)
-    }
-    
-    // MARK: - Search Empty State
-    
-    private var searchEmptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 48, weight: .ultraLight))
-                .foregroundColor(.secondary)
-            
-            VStack(spacing: 8) {
-                Text("No books found")
-                    .font(.title2.weight(.medium))
-                    .foregroundColor(.primary)
-                
-                Text("Try adjusting your search terms")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    searchText = ""
-                    isSearchActive = false
-                }
-            }) {
-                Text("Clear Search")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.blue)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(.blue.opacity(0.1))
-                    )
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear)
     }
     
     // Memory warning handling
@@ -494,98 +436,4 @@ struct OptimizedBookGridView: View {
         // This function safely accesses actor-isolated properties
         // and will be called when the view appears
     }
-    // MARK: - Bottom Search Overlay with Liquid Glass Design
-    
-    @Namespace private var glassNamespace
-
-    private var bottomSearchOverlay: some View {
-        GeometryReader { geometry in
-            VStack {
-                Spacer() // Push search to bottom
-                
-                HStack {
-                    Spacer()
-                    
-                    // Search container with expand/collapse behavior
-                    HStack(spacing: 12) {
-                        // Search icon (always visible)
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .animation(.easeInOut(duration: 0.2), value: isSearchActive)
-                        
-                        // Expanding search text field
-                        if isSearchActive {
-                            TextField("Search books", text: $searchText)
-                                .font(.system(size: 16, weight: .medium))
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .focused($isSearchFocused)
-                                .onChange(of: searchText) { _, newValue in
-                                    withAnimation(.easeInOut(duration: 0.25)) {
-                                        isSearchActive = !newValue.isEmpty || isSearchFocused
-                                    }
-                                }
-                                .onChange(of: isSearchFocused) { _, focused in
-                                    if focused {
-                                        // Subtle haptic feedback when search becomes focused
-                                        let impactFeedback = UIImpactFeedbackGenerator(style: .soft)
-                                        impactFeedback.impactOccurred()
-                                    }
-                                    
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        isSearchActive = focused || !searchText.isEmpty
-                                    }
-                                }
-                                .transition(.opacity.combined(with: .move(edge: .trailing)))
-                            
-                            // Clear button (X)
-                            Button(action: {
-                                // Haptic feedback for clear action
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    searchText = ""
-                                    isSearchActive = false
-                                    isSearchFocused = false
-                                }
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .transition(.scale.combined(with: .opacity))
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .glassedEffect(shape: Capsule(), interactive: true)
-                    .glassEffectUnion(id: "searchArea", namespace: glassNamespace)
-                    .frame(width: isSearchActive ? min(geometry.size.width - 40, 400) : 56, height: 56)
-                    .onTapGesture {
-                        if !isSearchActive {
-                            isSearchActive = true
-                            isSearchFocused = true
-                        }
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 14) // Safe area aware
-            }
-        }
-        .allowsHitTesting(true)
-        .onTapGesture {
-            // Dismiss search when tapping outside the search container
-            if isSearchActive && !isSearchFocused {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    if searchText.isEmpty {
-                        isSearchActive = false
-                    }
-                }
-            }
-        }
-    }
-    
 }

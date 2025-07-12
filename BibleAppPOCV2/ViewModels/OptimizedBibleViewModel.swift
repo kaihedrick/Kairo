@@ -76,9 +76,12 @@ class OptimizedBibleViewModel: ObservableObject {
     @Published var initializationProgress: Double = 0.0
     @Published var errorMessage: String?
     
+    // Support for dependency injection (for future translation support)
+    private let repository: BibleRepositoryProtocol?
     private let dataLoader = OptimizedBibleDataLoader.shared
     
-    init() {
+    init(repository: BibleRepositoryProtocol? = nil) {
+        self.repository = repository
         Task {
             await initializeData()
         }
@@ -89,11 +92,16 @@ class OptimizedBibleViewModel: ObservableObject {
             // Start with metadata loading
             initializationProgress = 0.1
             
-            try await dataLoader.loadBibleMetadata()
-            initializationProgress = 0.8
+            // Use repository if available (for translation support), otherwise fallback to direct loader
+            if let repository = repository {
+                let loadedMetadata = try await repository.loadMetadata()
+                metadata = loadedMetadata
+            } else {
+                try await dataLoader.loadBibleMetadata()
+                metadata = await dataLoader.metadata
+            }
             
-            // Get metadata
-            metadata = await dataLoader.metadata
+            initializationProgress = 0.8
             initializationProgress = 1.0
             
             // Small delay to show completion
