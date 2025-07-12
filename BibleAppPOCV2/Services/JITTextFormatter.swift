@@ -94,7 +94,7 @@ class JITTextFormatter {
         // Convert to NSAttributedString for measurement
         let nsAttr = NSAttributedString(text)
         
-        // Use CTFramesetter for more accurate measurement that matches SwiftUI Text
+        // Use CTFramesetter for accurate measurement, then add conservative padding
         let framesetter = CTFramesetterCreateWithAttributedString(nsAttr)
         let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
             framesetter,
@@ -104,7 +104,12 @@ class JITTextFormatter {
             nil  // don't need the range that fits
         )
         
-        let size = CGSize(width: ceil(suggestedSize.width), height: ceil(suggestedSize.height))
+        // Add conservative padding to account for SwiftUI Text rendering variations
+        let conservativePadding: CGFloat = 4.0
+        let size = CGSize(
+            width: ceil(suggestedSize.width) + conservativePadding, 
+            height: ceil(suggestedSize.height) + conservativePadding
+        )
         if text.characters.count < 50 || Int.random(in: 1...10) == 1 {
             print("🔍 FRESH result: \(size)")
         }
