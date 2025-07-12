@@ -48,9 +48,6 @@ final class OnDemandPageGenerator: ObservableObject {
     private var size: CGSize
     private var currentNode: PageNode?
     private var pending: (key: VerseKey, text: AttributedString)?
-    
-    // REMOVED: conservativeMultiplier - legacy prediction-based approach
-    // WHY: Dynamic height measurement eliminates need for conservative estimation
 
     init(pageSize: CGSize) { self.size = pageSize }
 
@@ -184,19 +181,18 @@ final class OnDemandPageGenerator: ObservableObject {
         }
     }
 
-    /// Report overflow from SwiftUI for adaptive adjustment
-    /// NOTE: With dynamic height measurement, overflow should be rare but we log it for debugging
+    /// Report content overflow for debugging
     func reportOverflow(actualHeight: CGFloat, availableHeight: CGFloat, segmentCount: Int) {
-        print("⚠️ UNEXPECTED OVERFLOW: actual=\(actualHeight), available=\(availableHeight), verses=\(segmentCount)")
-        print("📝 This suggests our dynamic height measurement may need refinement")
+        print("📊 OVERFLOW REPORT:")
+        print("   Actual height: \(actualHeight)")
+        print("   Available height: \(availableHeight)")  
+        print("   Overflow by: \(actualHeight - availableHeight)")
+        print("   Segment count: \(segmentCount)")
+        print("   Page size: \(size)")
         
-        // REMOVED: adjustConservativeMultiplier call - no longer using prediction-based approach
-        // The new dynamic height measurement should prevent overflow by measuring before adding verses
+        // This is mainly for debugging - we don't auto-regenerate to avoid loops
+        // The user can swipe to regenerate if needed
     }
-    
-    // REMOVED: adjustConservativeMultiplier method - legacy prediction-based approach
-    // WHY: Dynamic height measurement eliminates need for conservative estimation
-    // The new approach measures each verse before adding it to the page
     
     /// Debug information about current state
     func debugInfo() async -> String {
@@ -253,45 +249,46 @@ final class OnDemandPageGenerator: ObservableObject {
         guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
             return .failure(.missingChapter(key))
         }
+        // compute available space
+        let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
+        let availH = max(size.height - LayoutMetrics.verticalPagePadding * 2, 0)
+        guard availW > 0 && availH > 0 else { return .failure(.layoutFailed(key)) }
         
-        guard size.width > 0 && size.height > 0 else {
-            return .failure(.layoutFailed(key))
-        }
+        // Debug: Print budget calculation
+        print("💰 Budget calc: inputSize=\(size), availW=\(availW), availH=\(availH), hPad=\(LayoutMetrics.horizontalPagePadding), vPad=\(LayoutMetrics.verticalPagePadding)")
         
-        print("📖 DYNAMIC HEIGHT: Starting page at \(key.description) with size \(size)")
-        
-        let startVerseIndex = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
-        
-        // PRECISION-FIRST PAGINATION: Use exact SwiftUI Text rendering measurements
-        // WHY: Eliminates the overflow feedback loop and ensures headers show exactly visible verses
-        
-        // Calculate available height with extra conservative margin to prevent any overflow
-        let conservativeMargin: CGFloat = 20 // Extra safety margin for SwiftUI rendering variations
-        let availableHeight = size.height - (LayoutMetrics.verticalPagePadding * 2) - conservativeMargin
-        let maxSize = CGSize(width: size.width - (LayoutMetrics.horizontalPagePadding * 2), height: availableHeight)
-        
-        print("📏 PRECISE LAYOUT: available=\(availableHeight), maxWidth=\(maxSize.width)")
-        
+        var idx = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
         var segments: [PageSegment] = []
-        var accumulatedHeight: CGFloat = 0
-        var lastCompleteVerseIndex = startVerseIndex - 1
-        
-        // Add carryover segment if there was one
-        if let carryover = tail, !carryover.characters.isEmpty {
-            let carryoverHeight = JITTextFormatter.measureText(carryover, maxSize: maxSize).height
-            // Extra conservative check - use 95% of available height to be safe
-            if accumulatedHeight + carryoverHeight <= availableHeight * 0.95 {
-                segments.append(PageSegment(attributed: carryover, verseKey: key, isSplit: true))
-                accumulatedHeight += carryoverHeight
-                print("📏 Added carryover: height=\(carryoverHeight), total=\(accumulatedHeight)")
+        var curH: CGFloat = 0
+        var currentContent = AttributedString()
+        var verseKeys: [VerseKey] = []
+
+        // Handle carry-over text from previous page
+        if let rest = tail, !rest.characters.isEmpty {
+            print("🔄 Processing tail for \(key.description)")
+            let m = TextMeasurer.measure(rest, size: CGSize(width: availW, height: .greatestFiniteMagnitude))
+            if m.height > availH {
+                let parts = TextMeasurer.split(rest, size: CGSize(width: availW, height: availH))
+                let newContent = currentContent + parts.0
+                commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
+                segments.append(PageSegment(attributed: parts.0, verseKey: key, isSplit: true))
+                let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+                print("📄 Tail split again - page with tail partial, remainder still pending")
+                return .success((page: page, remainder: (key, parts.1)))
             } else {
-                print("🚫 Carryover too tall, skipping: \(carryoverHeight) > \(availableHeight * 0.95)")
+                let newContent = currentContent + rest
+                commit(verseKey: key, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
+                segments.append(PageSegment(attributed: rest, verseKey: key, isSplit: true))
+                curH = m.height
+                print("✅ Tail consumed for \(key.description), verse count: \(verseKeys.count)")
+                // Important: Move to next verse only after consuming the tail
+                idx += 1
             }
         }
-        
-        // Accumulate verses with CONSERVATIVE height checking to prevent any overflow
-        for i in startVerseIndex..<chapter.verses.count {
-            let verse = chapter.verses[i]
+
+        // Process verses sequentially
+        while idx < chapter.verses.count {
+            let verse = chapter.verses[idx]
             let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
             
             let formatted = JITTextFormatter.formatVerse(
@@ -300,71 +297,139 @@ final class OnDemandPageGenerator: ObservableObject {
                 verse: verse.verse,
                 text: verse.text,
                 showChapterHeader: verse.verse == 1 && segments.isEmpty,
-                showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty
+                showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty)
+
+            let candidateContent = currentContent + formatted
+            
+            // Use debug measurement for better visibility
+            let padding = EdgeInsets(
+                top: LayoutMetrics.verticalPagePadding,
+                leading: LayoutMetrics.horizontalPagePadding,
+                bottom: LayoutMetrics.verticalPagePadding,
+                trailing: LayoutMetrics.horizontalPagePadding
             )
             
-            // Measure this verse's actual height
-            let verseHeight = JITTextFormatter.measureText(formatted, maxSize: maxSize).height
+            #if DEBUG
+            let (actualSize, _) = JITTextFormatter.debugMeasurement(
+                candidateContent,
+                containerSize: size,
+                padding: padding
+            )
+            #else
+            let actualSize = JITTextFormatter.measureActualRender(
+                candidateContent,
+                containerSize: size,
+                padding: padding
+            )
+            #endif
             
-            // CONSERVATIVE CHECK: Use 95% of available height to prevent any overflow
-            let heightLimit = availableHeight * 0.95
-            if accumulatedHeight + verseHeight <= heightLimit {
-                segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
-                accumulatedHeight += verseHeight
-                lastCompleteVerseIndex = i
-                print("📏 Added verse \(verse.verse): height=\(verseHeight), total=\(accumulatedHeight)/\(heightLimit)")
-            } else {
-                print("🛑 CONSERVATIVE STOP: Verse \(verse.verse) would exceed 95% limit")
-                print("    Height needed: \(verseHeight), Available: \(heightLimit - accumulatedHeight)")
-                break
+            // Debug: Print every 10 verses to see the height progression
+            if verseKeys.count % 10 == 0 || verseKeys.count < 3 {
+                print("📏 Verse \(verseKey.description): actualH=\(actualSize.height) vs containerH=\(size.height)")
             }
+
+            // Check if the ACTUAL rendered size fits in the container
+            if actualSize.height <= size.height {
+                // fits on this page
+                currentContent = candidateContent
+                curH = actualSize.height
+                if verseKeys.last != verseKey { verseKeys.append(verseKey) }
+                segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
+                idx += 1 // Move to next verse
+                print("✅ Added complete verse \(verseKey.description) - total verses: \(verseKeys.count)")
+
+            } else {
+                // split the verse exactly at the remaining space
+                let remainingSpace = max(size.height - curH, 0)
+                let availW = max(size.width - LayoutMetrics.horizontalPagePadding * 2, 0)
+                let parts = JITTextFormatter.split(
+                    attributed: formatted,
+                    maxSize: CGSize(width: availW, height: remainingSpace)
+                )
+
+                // parts.0 is what fits, parts.1 is the tail
+                if !parts.0.characters.isEmpty {
+                    currentContent += parts.0
+                    if verseKeys.last != verseKey { verseKeys.append(verseKey) }
+                    segments.append(PageSegment(attributed: parts.0, verseKey: verseKey, isSplit: true))
+                    print("🔄 Split verse \(verseKey.description) - partial added, remainder pending")
+                }
+
+        let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
+        let remainder = parts.1.characters.isEmpty ? nil : (key: verseKey, text: parts.1)
+        
+        print("📄 Page complete: \(segments.count) segments, verses \(verseKeys.first?.description ?? "nil") to \(verseKeys.last?.description ?? "nil")")
+        
+        // Final validation: check if the complete page content actually fits
+        let finalContent = page.segments.reduce(AttributedString()) { result, segment in
+            result + segment.attributed
+        }
+        let finalSize = JITTextFormatter.measureActualRender(
+            finalContent,
+            containerSize: size,
+            padding: EdgeInsets(
+                top: LayoutMetrics.verticalPagePadding,
+                leading: LayoutMetrics.horizontalPagePadding,
+                bottom: LayoutMetrics.verticalPagePadding,
+                trailing: LayoutMetrics.horizontalPagePadding
+            )
+        )
+        
+        if finalSize.height > size.height + 10 { // 10pt tolerance
+            print("⚠️ FINAL VALIDATION: Page content (\(finalSize.height)) exceeds container (\(size.height))")
+            print("🔍 Consider reducing verse count or improving splitting logic")
+        } else {
+            print("✅ FINAL VALIDATION: Page content fits perfectly (\(finalSize.height) <= \(size.height))")
         }
         
-        // Emergency fallback - ensure we have at least one verse
-        if segments.isEmpty {
-            let verse = chapter.verses[startVerseIndex]
+        return .success((page: page, remainder: remainder))
+            }
+        }
+
+        // Fallback: if no segments were created, force at least one verse
+        if segments.isEmpty && idx < chapter.verses.count {
+            let verse = chapter.verses[idx]
             let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
-            
             let formatted = JITTextFormatter.formatVerse(
                 book: key.book,
                 chapter: key.chapter,
                 verse: verse.verse,
                 text: verse.text,
                 showChapterHeader: verse.verse == 1,
-                showBookTitle: key.chapter == 1 && verse.verse == 1
-            )
+                showBookTitle: key.chapter == 1 && verse.verse == 1)
             
+            let newContent = currentContent + formatted
+            commit(verseKey: verseKey, newContent: newContent, currentContent: &currentContent, verseKeys: &verseKeys)
             segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
-            lastCompleteVerseIndex = startVerseIndex
-            print("🚨 Emergency fallback: added verse \(verse.verse) (page must have at least one verse)")
         }
+
+        guard !segments.isEmpty else { return .failure(.layoutFailed(key)) }
+
+        let page = GeneratedPage(segments: segments, startKey: key, navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false))
         
-        // Handle remainder - continue from the next verse that didn't fit
-        let remainder: (key: VerseKey, text: AttributedString)? = {
-            let nextVerseIndex = lastCompleteVerseIndex + 1
-            if nextVerseIndex < chapter.verses.count {
-                let nextVerse = chapter.verses[nextVerseIndex]
-                return (key: VerseKey(book: key.book, chapter: key.chapter, verse: nextVerse.verse), text: AttributedString())
-            } else {
-                return nil // No more verses in this chapter
-            }
-        }()
-        
-        let startVerse = chapter.verses[startVerseIndex]
-        let endVerse = chapter.verses[lastCompleteVerseIndex]
-        
-        let page = GeneratedPage(
-            segments: segments,
-            startKey: VerseKey(book: key.book, chapter: key.chapter, verse: startVerse.verse),
-            navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false)
+        // Final validation: check if the complete page content actually fits
+        let finalContent = page.segments.reduce(AttributedString()) { result, segment in
+            result + segment.attributed
+        }
+        let finalSize = JITTextFormatter.measureActualRender(
+            finalContent,
+            containerSize: size,
+            padding: EdgeInsets(
+                top: LayoutMetrics.verticalPagePadding,
+                leading: LayoutMetrics.horizontalPagePadding,
+                bottom: LayoutMetrics.verticalPagePadding,
+                trailing: LayoutMetrics.horizontalPagePadding
+            )
         )
         
-        print("📄 PRECISION RESULT: verses \(startVerse.verse)-\(endVerse.verse) (\(segments.count) verses)")
-        print("📄 Conservative height used: \(accumulatedHeight) of \(availableHeight * 0.95) limit")
-        print("📄 Actual available space: \(availableHeight) (with \(conservativeMargin)pt safety margin)")
-        print("📄 Has remainder: \(remainder != nil)")
+        if finalSize.height > size.height + 10 { // 10pt tolerance
+            print("⚠️ FINAL VALIDATION: Page content (\(finalSize.height)) exceeds container (\(size.height))")
+            print("🔍 Consider reducing verse count or improving splitting logic")
+        } else {
+            print("✅ FINAL VALIDATION: Page content fits perfectly (\(finalSize.height) <= \(size.height))")
+        }
         
-        return .success((page: page, remainder: remainder))
+        return .success((page: page, remainder: nil))
     }
 
     private func findNextVerse(after verse: VerseKey) async -> VerseKey? {

@@ -89,25 +89,17 @@ struct OptimizedBibleReaderView: View {
                         .onAppear {
                             let actualContentHeight = textGeo.size.height
                             let availableHeight = size.height
-                            print("📏 ACTUAL RENDER: content=\(actualContentHeight) vs available=\(availableHeight)")
-                            print("📊 VERSE COUNT: Page contains \(page.verseKeys.count) verses from \(page.startVerse.description) to \(page.endVerse.description)")
+                            print("📏 RENDER VERIFICATION: content=\(actualContentHeight) vs available=\(availableHeight)")
+                            print("📊 VERSE RANGE: \(page.verseKeys.count) verses from \(page.startVerse.description) to \(page.endVerse.description)")
                             
-                            // If content overflows significantly, we need to regenerate
-                            if actualContentHeight > availableHeight + 10 { // 10pt tolerance
-                                print("⚠️ OVERFLOW: Content is \(actualContentHeight - availableHeight)pts too tall")
-                                print("🔄 Page has \(page.verseKeys.count) verses, should have fewer")
-                                
-                                // Provide feedback to generator about actual fit
-                                Task {
-                                    generator.reportOverflow(
-                                        actualHeight: actualContentHeight,
-                                        availableHeight: availableHeight,
-                                        segmentCount: page.verseKeys.count
-                                    )
-                                }
+                            // With precision pagination, overflow should be extremely rare
+                            if actualContentHeight > availableHeight + 5 { // Very small tolerance
+                                print("⚠️ UNEXPECTED OVERFLOW: Content is \(actualContentHeight - availableHeight)pts too tall")
+                                print("� This indicates the measurement system needs refinement")
+                                // No longer calling reportOverflow - precision pagination should prevent this
                             } else {
-                                print("✅ FITS: Content fits within available space")
-                                print("📏 FINAL: \(page.verseKeys.count) verses fit perfectly in \(availableHeight) pts")
+                                print("✅ PRECISION SUCCESS: Content fits perfectly within available space")
+                                print("📏 VERIFIED: \(page.verseKeys.count) verses fit in \(availableHeight) pts")
                             }
                         }
                         .onChange(of: textGeo.size.height) { _, newHeight in
