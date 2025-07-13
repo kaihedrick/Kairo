@@ -10,7 +10,7 @@ import Foundation
 import SwiftUI
 
 /// Represents a portion of a verse that can span across pages
-public struct VerseFragment: Hashable, Identifiable {
+public struct VerseFragment: Hashable, Identifiable, Codable {
     public let id = UUID()
     
     /// The verse reference this fragment belongs to
@@ -85,7 +85,7 @@ public struct VerseFragment: Hashable, Identifiable {
 }
 
 /// Collection of verse fragments that make up a page
-public struct FragmentedPage: Identifiable {
+public struct FragmentedPage: Identifiable, Codable {
     public let id = UUID()
     
     /// All fragments on this page
@@ -100,14 +100,19 @@ public struct FragmentedPage: Identifiable {
     /// Ending verse reference
     let endVerse: VerseReference
     
-    /// Combined attributed content for rendering
-    let content: AttributedString
+    /// Combined content as string (AttributedString is not Codable)
+    let contentString: String
     
     /// Total height of content (measured)
     let measuredHeight: CGFloat
     
     /// Available height when page was created
     let availableHeight: CGFloat
+    
+    /// Combined attributed content for rendering (computed property)
+    var content: AttributedString {
+        AttributedString(contentString)
+    }
     
     /// Verse keys for backwards compatibility
     var verseKeys: [VerseKey] {
@@ -139,5 +144,24 @@ public struct FragmentedPage: Identifiable {
         let verseCount = uniqueVerses.count
         let heightRatio = measuredHeight / availableHeight
         return "Page: \(fragmentCount) fragments, \(verseCount) verses, \(Int(heightRatio * 100))% full"
+    }
+    
+    /// Initializer for FragmentedPage
+    init(
+        fragments: [VerseFragment],
+        navTitle: String,
+        startVerse: VerseReference,
+        endVerse: VerseReference,
+        content: AttributedString,
+        measuredHeight: CGFloat,
+        availableHeight: CGFloat
+    ) {
+        self.fragments = fragments
+        self.navTitle = navTitle
+        self.startVerse = startVerse
+        self.endVerse = endVerse
+        self.contentString = String(content.characters)
+        self.measuredHeight = measuredHeight
+        self.availableHeight = availableHeight
     }
 }

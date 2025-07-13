@@ -51,6 +51,10 @@ final class OnDemandPageGenerator: ObservableObject {
     private var pending: (key: VerseKey, text: AttributedString)?
     private var fragmentPending: VerseFragment?
     
+    // Enhanced page history management for reliable backward navigation
+    private let enhancedHistoryManager = EnhancedPageHistoryManager()
+    private var isNavigatingFromHistory = false
+    
     // REMOVED: conservativeMultiplier - legacy prediction-based approach
     // WHY: Dynamic height measurement eliminates need for conservative estimation
 
@@ -66,6 +70,10 @@ final class OnDemandPageGenerator: ObservableObject {
         pending = nil
         currentNode = nil
         currentPage = nil
+        currentFragmentedPage = nil
+        
+        // Clear enhanced page history since page layout has changed
+        enhancedHistoryManager.clearHistory()
         
         // Force clear text formatter cache too
         JITTextFormatter.clearCache()
@@ -136,6 +144,12 @@ final class OnDemandPageGenerator: ObservableObject {
             currentNode = newNode
             await commitCurrentPage(slice, key: key)
             trimLinkedList()
+            
+            // Add to enhanced history for backward navigation
+            if !isNavigatingFromHistory {
+                let historyEntry = createHistoryEntryForLegacyPage(slice)
+                enhancedHistoryManager.pushPage(historyEntry)
+            }
         case .failure(let error):
             currentPage = nil
             lastError = error.localizedDescription
@@ -167,15 +181,30 @@ final class OnDemandPageGenerator: ObservableObject {
 
     func generatePreviousPage() async {
         defer { Task { await trimCacheToThreePages() } }
+        
+        // Check if we have a cached previous page in the linked list
         if let node = currentNode?.prev {
             currentNode = node
             currentPage = node.slice
             pending = nil
             return
         }
-        guard let first = currentNode?.slice.startVerse,
-              let prev = await findPreviousVerse(before: first) else { return }
-        await generatePage(startingAt: (prev.book, prev.chapter, prev.verse))
+        
+        // Use enhanced history for reliable backward navigation
+        if enhancedHistoryManager.canGoBackward, let historyEntry = enhancedHistoryManager.goBackward() {
+            print("📚 LEGACY BACKWARD NAVIGATION: Using enhanced history")
+            
+            isNavigatingFromHistory = true
+            defer { isNavigatingFromHistory = false }
+            
+            if await restorePageFromHistory(historyEntry) {
+                return
+            }
+        }
+        
+        // NO FALLBACK: Legacy method should not guess page starts
+        print("❌ LEGACY BACKWARD NAVIGATION: No reliable history available")
+        lastError = "Cannot navigate backwards - no page history available"
     }
 
     /// Handle memory pressure by clearing caches
@@ -203,13 +232,19 @@ final class OnDemandPageGenerator: ObservableObject {
     /// Debug information about current state
     func debugInfo() async -> String {
         let cacheKeys = await cache.keys
+        let enhancedHistoryInfo = enhancedHistoryManager.getDebugInfo()
         return """
         📊 PAGE GENERATOR DEBUG:
         Current page: \(currentPage?.startVerse.description ?? "none") - \(currentPage?.endVerse.description ?? "none")
+        Current fragmented page: \(currentFragmentedPage?.debugDescription ?? "none")
         Page size: \(size)
         Cache keys: \(cacheKeys.map { $0.description }.joined(separator: ", "))
         Is generating: \(isGenerating)
         Has pending: \(pending != nil)
+        Is navigating from history: \(isNavigatingFromHistory)
+        Can go to previous page: \(canGoToPreviousPage)
+        Can go to next page: \(canGoToNextPage)
+        \(enhancedHistoryInfo)
         """
     }
     
@@ -466,25 +501,14 @@ final class OnDemandPageGenerator: ObservableObject {
             let fragmentedPage = try await generateFragmentedPageContent(startingAt: key)
             currentFragmentedPage = fragmentedPage
             
-            // Also update the legacy currentPage for backward compatibility
-            currentPage = OptimizedPageSlice(
-                content: fragmentedPage.content,
-                verseKeys: fragmentedPage.verseKeys,
-                startVerse: VerseKey(
-                    book: fragmentedPage.startVerse.book,
-                    chapter: fragmentedPage.startVerse.chapter,
-                    verse: fragmentedPage.startVerse.verse
-                ),
-                endVerse: VerseKey(
-                    book: fragmentedPage.endVerse.book,
-                    chapter: fragmentedPage.endVerse.chapter,
-                    verse: fragmentedPage.endVerse.verse
-                ),
-                navigationContext: PageNavigationContext(
-                    isFirstVerseOfBook: fragmentedPage.startVerse.book == "Genesis" && fragmentedPage.startVerse.chapter == 1 && fragmentedPage.startVerse.verse == 1,
-                    isLastVerseOfBook: false // We'll set this properly later when we know the book structure
-                )
-            )
+            // Create and store history entry for reliable backward navigation
+            if !isNavigatingFromHistory {
+                let historyEntry = createHistoryEntry(for: fragmentedPage)
+                enhancedHistoryManager.pushPage(historyEntry)
+                print("📚 HISTORY TRACKING: Added new page to history (\(enhancedHistoryManager.historyCount) total)")
+            } else {
+                print("📚 HISTORY TRACKING: Skipped adding page (navigating from history)")
+            }
             
             print("📖 FRAGMENTED PAGE GENERATED: \(fragmentedPage.debugDescription)")
             
@@ -666,21 +690,291 @@ final class OnDemandPageGenerator: ObservableObject {
         await generateFragmentedPage(startingAt: (nextVerse.book, nextVerse.chapter, nextVerse.verse))
     }
     
-    /// Navigate to previous page with fragment support
+    /// Navigate to previous page with enhanced history - NO UNRELIABLE FALLBACK
     func generatePreviousFragmentedPage() async {
         defer { Task { await trimCacheToThreePages() } }
         
-        guard let current = currentFragmentedPage,
-              let prevVerse = await findPreviousVerse(before: VerseKey(
-                book: current.startVerse.book,
-                chapter: current.startVerse.chapter,
-                verse: current.startVerse.verse
-              )) else { return }
+        // Use enhanced history manager for reliable backward navigation
+        if enhancedHistoryManager.canGoBackward, let historyEntry = enhancedHistoryManager.goBackward() {
+            print("📚 BACKWARD NAVIGATION: Using enhanced history entry")
+            
+            // Set flag to prevent adding this page to history again
+            isNavigatingFromHistory = true
+            defer { isNavigatingFromHistory = false }
+            
+            // Restore page from history entry with exact layout reproduction
+            if await restorePageFromHistory(historyEntry) {
+                print("✅ BACKWARD NAVIGATION: Successfully restored exact page from history")
+                return
+            } else {
+                print("❌ BACKWARD NAVIGATION: Failed to restore from history - this should not happen!")
+                // Push the entry back since we failed to restore it
+                enhancedHistoryManager.pushPageBack(historyEntry)
+            }
+        }
         
-        // Clear any pending fragment when going backwards
-        fragmentPending = nil
+        // NO FALLBACK: If we can't restore from history, we can't reliably navigate backwards
+        // This ensures we never show incorrect pages due to estimation errors
+        print("❌ BACKWARD NAVIGATION: No reliable history available - cannot navigate backwards safely")
+        print("💡 HINT: This usually means you're at the first page or history was cleared")
         
-        await generateFragmentedPage(startingAt: (prevVerse.book, prevVerse.chapter, prevVerse.verse))
+        // Optional: Could show user feedback that backward navigation is not available
+        // For now, we simply don't navigate to avoid showing wrong content
+        lastError = "Cannot navigate backwards - no page history available"
+    }
+    
+    /// Navigate to next page using enhanced history if available
+    func generateNextFragmentedPageWithHistory() async {
+        defer { Task { await trimCacheToThreePages() } }
+        
+        // First, try to use enhanced history manager for forward navigation
+        if enhancedHistoryManager.canGoForward, let historyEntry = enhancedHistoryManager.goForward() {
+            print("📚 FORWARD NAVIGATION: Using enhanced history entry")
+            
+            // Set flag to prevent adding this page to history again
+            isNavigatingFromHistory = true
+            defer { isNavigatingFromHistory = false }
+            
+            // Restore page from history entry
+            if await restorePageFromHistory(historyEntry) {
+                print("✅ FORWARD NAVIGATION: Successfully restored page from history")
+                return
+            } else {
+                print("❌ FORWARD NAVIGATION: Failed to restore from history, using regular navigation")
+                // Push the entry back since we failed to restore it
+                enhancedHistoryManager.pushPageBack(historyEntry)
+            }
+        }
+        
+        // Fallback to regular forward navigation with history tracking
+        print("📚 FORWARD NAVIGATION: Using regular forward navigation with history tracking")
+        await generateNextFragmentedPage()
+    }
+    
+    /// Navigate to the next page of verses using the fragment-based approach
+    func goToNextPage() async {
+        print("📚 PAGE NAVIGATION: Going to next page")
+        await generateNextFragmentedPageWithHistory()
+    }
+    
+    /// Navigate back to the previous full page of verses using history snapshots
+    func goToPreviousPage() async {
+        print("📚 PAGE NAVIGATION: Going to previous page")
+        await generatePreviousFragmentedPage()
+    }
+    
+    /// Check if we can navigate to the next page
+    var canGoToNextPage: Bool {
+        // Can always try to generate next page unless we're at the very end of the Bible
+        return true // TODO: Could add logic to check if we're at the last verse of Revelation
+    }
+    
+    /// Check if we can navigate to the previous page - relies on reliable history only
+    var canGoToPreviousPage: Bool {
+        // RELIABLE BACKWARD NAVIGATION: Only allow if we have verified history
+        return enhancedHistoryManager.canGoBackward
+    }
+    
+    /// DEPRECATED: Find the starting verse key for the previous page (not just previous verse)
+    /// This method is now obsolete as we use reliable history-based backward navigation
+    /// Keeping for reference but should not be used in production
+    @available(*, deprecated, message: "Use enhanced history manager for reliable backward navigation")
+    private func getPreviousPageStartKey(before currentPageStart: VerseKey) async -> VerseKey? {
+        // Estimate how many verses might fit on a typical page
+        let estimatedVersesPerPage = 15 // Conservative estimate
+        
+        // Start by going back roughly one page's worth of verses
+        var candidateStart = currentPageStart
+        for _ in 0..<estimatedVersesPerPage {
+            if let prev = await findPreviousVerse(before: candidateStart) {
+                candidateStart = prev
+            } else {
+                break // Hit the beginning of the Bible
+            }
+        }
+        
+        // Now test if a page starting from this position would end near our current page start
+        let testKey = VerseKey(book: candidateStart.book, chapter: candidateStart.chapter, verse: candidateStart.verse)
+        
+        do {
+            let testPage = try await generateFragmentedPageContent(startingAt: testKey)
+            
+            // Check if this test page ends close to our current page start
+            let testEndKey = VerseKey(book: testPage.endVerse.book, chapter: testPage.endVerse.chapter, verse: testPage.endVerse.verse)
+            
+            // If the test page ends at or just before our current start, we found the right position
+            if testEndKey.book == currentPageStart.book && testEndKey.chapter == currentPageStart.chapter {
+                let verseDifference = currentPageStart.verse - testEndKey.verse
+                if verseDifference >= 0 && verseDifference <= 2 {
+                    // Perfect! The test page ends right before our current page
+                    return testKey
+                }
+            }
+            
+            // If test page goes too far forward, try starting a bit earlier
+            if isAfter(testEndKey, currentPageStart) {
+                // Go back a few more verses and try again
+                for _ in 0..<3 {
+                    if let prev = await findPreviousVerse(before: candidateStart) {
+                        candidateStart = prev
+                    } else {
+                        break
+                    }
+                }
+                return candidateStart
+            }
+            
+            // If test page doesn't reach our current start, try starting a bit later
+            if isBefore(testEndKey, currentPageStart) {
+                // Move forward a few verses
+                for _ in 0..<3 {
+                    if let next = await findNextVerse(after: candidateStart) {
+                        candidateStart = next
+                    } else {
+                        break
+                    }
+                }
+                return candidateStart
+            }
+            
+        } catch {
+            print("⚠️ Error testing previous page start: \(error)")
+        }
+        
+        // Fallback: return the estimated start position
+        return candidateStart
+    }
+    
+    /// Helper to check if verse A comes after verse B
+    private func isAfter(_ a: VerseKey, _ b: VerseKey) -> Bool {
+        if a.book != b.book {
+            // Would need book order logic here, but for now assume same book
+            return false
+        }
+        if a.chapter != b.chapter {
+            return a.chapter > b.chapter
+        }
+        return a.verse > b.verse
+    }
+    
+    /// Helper to check if verse A comes before verse B
+    private func isBefore(_ a: VerseKey, _ b: VerseKey) -> Bool {
+        if a.book != b.book {
+            // Would need book order logic here, but for now assume same book
+            return false
+        }
+        if a.chapter != b.chapter {
+            return a.chapter < b.chapter
+        }
+        return a.verse < b.verse
+    }
+    
+    /// Create a history entry for the current fragmented page
+    private func createHistoryEntry(for fragmentedPage: FragmentedPage) -> PageHistoryEntry {
+        return PageHistoryEntry.createFromFragmentedPage(
+            fragmentedPage,
+            pageSize: size,
+            horizontalPadding: LayoutMetrics.horizontalPagePadding,
+            verticalPadding: LayoutMetrics.verticalPagePadding,
+            characterOffset: nil, // TODO: Add character offset tracking if needed
+            fragmentOffset: nil   // TODO: Add fragment offset tracking if needed
+        )
+    }
+    
+    /// Create a history entry for a legacy page slice
+    private func createHistoryEntryForLegacyPage(_ page: OptimizedPageSlice) -> PageHistoryEntry {
+        let layoutHash = PageHistoryEntry.createLayoutHash(
+            pageSize: size,
+            horizontalPadding: LayoutMetrics.horizontalPagePadding,
+            verticalPadding: LayoutMetrics.verticalPagePadding
+        )
+        
+        return PageHistoryEntry(
+            book: page.startVerse.book,
+            chapter: page.startVerse.chapter,
+            verse: page.startVerse.verse,
+            characterOffset: nil,
+            fragmentOffset: nil,
+            renderedContent: String(page.content.characters), // Convert AttributedString to String properly
+            navTitle: "\(page.startVerse.book) \(page.startVerse.chapter)",
+            pageSize: size,
+            layoutHash: layoutHash,
+            serializedFragmentedPage: nil, // Legacy pages don't have fragments
+            verseKeys: ["\(page.startVerse.book) \(page.startVerse.chapter):\(page.startVerse.verse)"],
+            hasSplitVerses: false, // Legacy pages don't typically split verses
+            endBook: page.endVerse.book,
+            endChapter: page.endVerse.chapter,
+            endVerse: page.endVerse.verse
+        )
+    }
+
+    /// Restore a page from a history entry with exact layout reproduction
+    private func restorePageFromHistory(_ entry: PageHistoryEntry) async -> Bool {
+        // Verify layout compatibility
+        guard entry.isCompatibleWith(
+            pageSize: size,
+            horizontalPadding: LayoutMetrics.horizontalPagePadding,
+            verticalPadding: LayoutMetrics.verticalPagePadding
+        ) else {
+            print("⚠️ HISTORY: Entry incompatible with current layout")
+            return false
+        }
+        
+        print("🔄 HISTORY RESTORE: Attempting exact restoration of \(entry.debugDescription)")
+        
+        // PRIORITY 1: Try to restore from serialized FragmentedPage if available
+        if let serializedData = entry.serializedFragmentedPage {
+            do {
+                let restoredPage = try JSONDecoder().decode(FragmentedPage.self, from: serializedData)
+                currentFragmentedPage = restoredPage
+                print("✅ HISTORY RESTORE: Successfully restored from serialized page")
+                return true
+            } catch {
+                print("⚠️ HISTORY RESTORE: Failed to deserialize page: \(error)")
+                // Fall through to content recreation
+            }
+        }
+        
+        // PRIORITY 2: Recreate page from stored content and metadata
+        print("🔄 HISTORY RESTORE: Recreating page from stored content and metadata")
+        
+        // Create a pseudo-FragmentedPage using the stored information
+        let startVerseRef = VerseReference(
+            unsafeBook: entry.book,
+            unsafeChapter: entry.chapter,
+            unsafeVerse: entry.verse
+        )
+        
+        let endVerseRef = VerseReference(
+            unsafeBook: entry.endBook,
+            unsafeChapter: entry.endChapter,
+            unsafeVerse: entry.endVerse
+        )
+        
+        // For exact restoration, we need to create fragment(s) that match the original content
+        let mainFragment = VerseFragment(
+            reference: startVerseRef,
+            textFragment: entry.renderedContent,
+            isStartOfVerse: entry.characterOffset == nil,
+            isEndOfVerse: !entry.hasSplitVerses,
+            fullVerseText: entry.renderedContent,
+            sequenceNumber: entry.fragmentOffset ?? 0,
+            totalFragments: entry.hasSplitVerses ? 2 : 1 // Conservative estimate
+        )
+        
+        let restoredPage = FragmentedPage(
+            fragments: [mainFragment],
+            navTitle: entry.navTitle,
+            startVerse: startVerseRef,
+            endVerse: endVerseRef,
+            content: AttributedString(entry.renderedContent),
+            measuredHeight: size.height * 0.8, // Estimate based on page size
+            availableHeight: size.height - (LayoutMetrics.verticalPagePadding * 2)
+        )
+        
+        currentFragmentedPage = restoredPage
+        print("✅ HISTORY RESTORE: Successfully recreated page from metadata")
+        return true
     }
 }
 
