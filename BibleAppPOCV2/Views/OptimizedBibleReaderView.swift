@@ -123,9 +123,9 @@ struct OptimizedBibleReaderView: View {
                 DragGesture(minimumDistance: 30)
                     .onEnded { value in
                         if value.translation.width < -50 {
-                            Task { await generator.generateNextFragmentedPage() }
+                            Task { await generator.goToNextPage() }
                         } else if value.translation.width > 50 {
-                            Task { await generator.generatePreviousFragmentedPage() }
+                            Task { await generator.goToPreviousPage() }
                         }
                     }
             )
@@ -177,9 +177,9 @@ struct OptimizedBibleReaderView: View {
                 DragGesture(minimumDistance: 30)
                     .onEnded { value in
                         if value.translation.width < -50 {
-                            Task { await generator.generateNextFragmentedPage() }
+                            Task { await generator.goToNextPage() }
                         } else if value.translation.width > 50 {
-                            Task { await generator.generatePreviousFragmentedPage() }
+                            Task { await generator.goToPreviousPage() }
                         }
                     }
             )
