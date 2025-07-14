@@ -109,25 +109,48 @@ final class OnDemandPageGenerator: ObservableObject {
         if let node = currentNode, node.key == key {
             currentNode = node
             currentPage = node.slice
+            print("📖 LINKED LIST: Reused current node for \(key.description)")
             return
         } else if let node = currentNode?.next, node.key == key {
             currentNode = node
             currentPage = node.slice
+            print("📖 LINKED LIST: Moved to next node for \(key.description)")
             return
         } else if let node = currentNode?.prev, node.key == key {
             currentNode = node
             currentPage = node.slice
+            print("📖 LINKED LIST: Moved to prev node for \(key.description)")
             return
         }
 
         if pending == nil, let cached = await cache.get(key) {
             let newNode = PageNode(key: key, slice: cached)
-            currentNode?.next = newNode
-            newNode.prev = currentNode
+            
+            // Properly link the new node into the doubly linked list
+            if isNavigatingFromHistory {
+                // When navigating from history, we need to be careful not to break the chain
+                // Store the old current node to reconnect later
+                if let oldNode = currentNode {
+                    newNode.prev = oldNode
+                    oldNode.next = newNode
+                }
+                print("📖 LINKED LIST: Created new node from cache during history navigation")
+            } else {
+                // Normal forward navigation
+                if let oldNode = currentNode {
+                    newNode.prev = oldNode
+                    oldNode.next = newNode
+                }
+                print("📖 LINKED LIST: Created new node from cache during normal navigation")
+            }
+            
             currentNode = newNode
             await commitCurrentPage(cached, key: key)
             trimLinkedList()
             currentPage = cached
+            
+            // Debug log the linked list state
+            print("📖 LINKED LIST: Loaded \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
             return
         }
 
@@ -139,8 +162,24 @@ final class OnDemandPageGenerator: ObservableObject {
             currentPage = slice
             pending = result.remainder
             let newNode = PageNode(key: key, slice: slice)
-            currentNode?.next = newNode
-            newNode.prev = currentNode
+            
+            // Properly link the new node into the doubly linked list
+            if isNavigatingFromHistory {
+                // When navigating from history, we need to be careful not to break the chain
+                if let oldNode = currentNode {
+                    newNode.prev = oldNode
+                    oldNode.next = newNode
+                }
+                print("📖 LINKED LIST: Created new node from generation during history navigation")
+            } else {
+                // Normal forward navigation
+                if let oldNode = currentNode {
+                    newNode.prev = oldNode
+                    oldNode.next = newNode
+                }
+                print("📖 LINKED LIST: Created new node from generation during normal navigation")
+            }
+            
             currentNode = newNode
             await commitCurrentPage(slice, key: key)
             trimLinkedList()
@@ -150,6 +189,9 @@ final class OnDemandPageGenerator: ObservableObject {
                 let historyEntry = createHistoryEntryForLegacyPage(slice)
                 enhancedHistoryManager.pushPage(historyEntry)
             }
+            
+            // Debug log the linked list state
+            print("📖 LINKED LIST: Generated \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
         case .failure(let error):
             currentPage = nil
             lastError = error.localizedDescription
@@ -187,8 +229,12 @@ final class OnDemandPageGenerator: ObservableObject {
             currentNode = node
             currentPage = node.slice
             pending = nil
+            print("📖 LINKED LIST: Used cached previous page for \(node.key.description)")
             return
         }
+        
+        // Store the current node to reconnect after history navigation
+        let oldNode = currentNode
         
         // Use enhanced history for reliable backward navigation
         if enhancedHistoryManager.canGoBackward, let historyEntry = enhancedHistoryManager.goBackward() {
@@ -198,6 +244,12 @@ final class OnDemandPageGenerator: ObservableObject {
             defer { isNavigatingFromHistory = false }
             
             if await restorePageFromHistory(historyEntry) {
+                // After restoring from history, reconnect the linked list
+                if let oldNode = oldNode, let currentNode = currentNode {
+                    currentNode.next = oldNode
+                    oldNode.prev = currentNode
+                    print("📖 LINKED LIST: Reconnected after history restore - Current: \(currentNode.key.description) -> Next: \(oldNode.key.description)")
+                }
                 return
             }
         }
@@ -270,6 +322,12 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     private func trimCacheToThreePages() async {
+        // Skip trimming during history navigation to preserve valid PageNodes
+        if isNavigatingFromHistory {
+            print("📖 CACHE: Skipping trim during history navigation")
+            return
+        }
+        
         let allowed: Set<VerseKey> = Set([currentNode?.prev?.key, currentNode?.key, currentNode?.next?.key].compactMap { $0 })
         let keys = await cache.keys
         for k in keys where !allowed.contains(k) {
@@ -694,6 +752,9 @@ final class OnDemandPageGenerator: ObservableObject {
     func generatePreviousFragmentedPage() async {
         defer { Task { await trimCacheToThreePages() } }
         
+        // Store the current fragmented page for potential reconnection
+        let oldFragmentedPage = currentFragmentedPage
+        
         // Use enhanced history manager for reliable backward navigation
         if enhancedHistoryManager.canGoBackward, let historyEntry = enhancedHistoryManager.goBackward() {
             print("📚 BACKWARD NAVIGATION: Using enhanced history entry")
@@ -705,6 +766,14 @@ final class OnDemandPageGenerator: ObservableObject {
             // Restore page from history entry with exact layout reproduction
             if await restorePageFromHistory(historyEntry) {
                 print("✅ BACKWARD NAVIGATION: Successfully restored exact page from history")
+                
+                // TODO: If we had a doubly linked list for fragmented pages, we would reconnect here
+                // For now, we just ensure the page change is visible
+                if let restoredPage = currentFragmentedPage,
+                   let oldPage = oldFragmentedPage {
+                    print("📖 FRAGMENTED PAGE: Navigated from \(oldPage.startVerse.book) \(oldPage.startVerse.chapter):\(oldPage.startVerse.verse) to \(restoredPage.startVerse.book) \(restoredPage.startVerse.chapter):\(restoredPage.startVerse.verse)")
+                }
+                
                 return
             } else {
                 print("❌ BACKWARD NAVIGATION: Failed to restore from history - this should not happen!")
@@ -938,7 +1007,34 @@ final class OnDemandPageGenerator: ObservableObject {
         // PRIORITY 2: Recreate page from stored content and metadata
         print("🔄 HISTORY RESTORE: Recreating page from stored content and metadata")
         
-        // Create a pseudo-FragmentedPage using the stored information
+        // For legacy pages, try to create a new PageNode and update currentNode
+        let entryKey = VerseKey(book: entry.book, chapter: entry.chapter, verse: entry.verse)
+        
+        // Check if we can load the chapter to create a proper page
+        if let chapter = await loader.loadChapterContent(book: entry.book, chapter: entry.chapter) {
+            // Try to generate the page starting from this verse
+            let result = await generatePageContent(startingAt: entryKey, tail: nil)
+            
+            switch result {
+            case .success(let generatedResult):
+                let slice = generatedResult.page.toOptimizedPageSlice()
+                currentPage = slice
+                pending = generatedResult.remainder
+                
+                // Create a new PageNode for the restored page
+                let restoredNode = PageNode(key: entryKey, slice: slice)
+                currentNode = restoredNode
+                
+                print("✅ HISTORY RESTORE: Successfully recreated page from chapter data")
+                return true
+                
+            case .failure(let error):
+                print("❌ HISTORY RESTORE: Failed to regenerate page: \(error)")
+                // Fall through to pseudo-page creation
+            }
+        }
+        
+        // PRIORITY 3: Create a pseudo-FragmentedPage using the stored information
         let startVerseRef = VerseReference(
             unsafeBook: entry.book,
             unsafeChapter: entry.chapter,
@@ -973,7 +1069,7 @@ final class OnDemandPageGenerator: ObservableObject {
         )
         
         currentFragmentedPage = restoredPage
-        print("✅ HISTORY RESTORE: Successfully recreated page from metadata")
+        print("✅ HISTORY RESTORE: Successfully recreated pseudo-page from metadata")
         return true
     }
 }
