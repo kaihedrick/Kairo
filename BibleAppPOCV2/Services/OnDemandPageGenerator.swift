@@ -46,17 +46,12 @@ final class OnDemandPageGenerator: ObservableObject {
 
     private let cache = PageCache()
     private let loader = OptimizedBibleDataLoader.shared
+    private let historyManager = PageHistoryService()
     private var size: CGSize
     private var currentNode: PageNode?
     private var pending: (key: VerseKey, text: AttributedString)?
     private var fragmentPending: VerseFragment?
-    
-    // Enhanced page history management for reliable backward navigation
-    private let enhancedHistoryManager = EnhancedPageHistoryManager()
     private var isNavigatingFromHistory = false
-    
-    // REMOVED: conservativeMultiplier - legacy prediction-based approach
-    // WHY: Dynamic height measurement eliminates need for conservative estimation
 
     init(pageSize: CGSize) { self.size = pageSize }
 
@@ -73,7 +68,7 @@ final class OnDemandPageGenerator: ObservableObject {
         currentFragmentedPage = nil
         
         // Clear enhanced page history since page layout has changed
-        enhancedHistoryManager.clearHistory()
+        historyManager.clearHistory()
         
         // Force clear text formatter cache too
         JITTextFormatter.clearCache()
@@ -156,11 +151,18 @@ final class OnDemandPageGenerator: ObservableObject {
 
         let tail = (pending?.key == key) ? pending?.text : nil
         pending = nil
-        switch await generatePageContent(startingAt: key, tail: tail) {
-        case .success(let result):
-            let slice = result.page.toOptimizedPageSlice()
+        let result = await PageContentGenerator.generate(
+            from: key,
+            pageSize: size,
+            tail: tail,
+            using: loader
+        )
+        
+        switch result {
+        case .success(let generatedResult):
+            let slice = generatedResult.page.toOptimizedPageSlice()
             currentPage = slice
-            pending = result.remainder
+            pending = generatedResult.remainder
             let newNode = PageNode(key: key, slice: slice)
             
             // Properly link the new node into the doubly linked list
@@ -184,10 +186,9 @@ final class OnDemandPageGenerator: ObservableObject {
             await commitCurrentPage(slice, key: key)
             trimLinkedList()
             
-            // Add to enhanced history for backward navigation
+            // Add to history for backward navigation
             if !isNavigatingFromHistory {
-                let historyEntry = createHistoryEntryForLegacyPage(slice)
-                enhancedHistoryManager.pushPage(historyEntry)
+                historyManager.pushPage(slice: slice, pageSize: size)
             }
             
             // Debug log the linked list state
@@ -237,7 +238,7 @@ final class OnDemandPageGenerator: ObservableObject {
         let oldNode = currentNode
         
         // Use enhanced history for reliable backward navigation
-        if enhancedHistoryManager.canGoBackward, let historyEntry = enhancedHistoryManager.goBackward() {
+        if historyManager.canGoBackward, let historyEntry = historyManager.goBackward() {
             print("📚 LEGACY BACKWARD NAVIGATION: Using enhanced history")
             
             isNavigatingFromHistory = true
@@ -284,7 +285,7 @@ final class OnDemandPageGenerator: ObservableObject {
     /// Debug information about current state
     func debugInfo() async -> String {
         let cacheKeys = await cache.keys
-        let enhancedHistoryInfo = enhancedHistoryManager.getDebugInfo()
+        let historyInfo = historyManager.getDebugInfo()
         return """
         📊 PAGE GENERATOR DEBUG:
         Current page: \(currentPage?.startVerse.description ?? "none") - \(currentPage?.endVerse.description ?? "none")
@@ -296,7 +297,7 @@ final class OnDemandPageGenerator: ObservableObject {
         Is navigating from history: \(isNavigatingFromHistory)
         Can go to previous page: \(canGoToPreviousPage)
         Can go to next page: \(canGoToNextPage)
-        \(enhancedHistoryInfo)
+        \(historyInfo)
         """
     }
     
@@ -339,127 +340,6 @@ final class OnDemandPageGenerator: ObservableObject {
         guard let cur = currentNode else { return }
         if let p2 = cur.prev?.prev { p2.next = nil; p2.prev = nil }
         if let n2 = cur.next?.next { n2.prev = nil; n2.next = nil }
-    }
-
-    private func generatePageContent(
-        startingAt key: VerseKey,
-        tail: AttributedString?
-    ) async -> Result<(page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?), PageGenerationError> {
-        guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
-            return .failure(.missingChapter(key))
-        }
-        
-        guard size.width > 0 && size.height > 0 else {
-            return .failure(.layoutFailed(key))
-        }
-        
-        print("📖 DYNAMIC HEIGHT: Starting page at \(key.description) with size \(size)")
-        
-        let startVerseIndex = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
-        
-        // PRECISION-FIRST PAGINATION: Use exact SwiftUI Text rendering measurements
-        // WHY: Eliminates the overflow feedback loop and ensures headers show exactly visible verses
-        
-        // Calculate available height with extra conservative margin to prevent any overflow
-        let conservativeMargin: CGFloat = 20 // Extra safety margin for SwiftUI rendering variations
-        let availableHeight = size.height - (LayoutMetrics.verticalPagePadding * 2) - conservativeMargin
-        let maxSize = CGSize(width: size.width - (LayoutMetrics.horizontalPagePadding * 2), height: availableHeight)
-        
-        print("📏 PRECISE LAYOUT: available=\(availableHeight), maxWidth=\(maxSize.width)")
-        
-        var segments: [PageSegment] = []
-        var accumulatedHeight: CGFloat = 0
-        var lastCompleteVerseIndex = startVerseIndex - 1
-        
-        // Add carryover segment if there was one
-        if let carryover = tail, !carryover.characters.isEmpty {
-            let carryoverHeight = JITTextFormatter.measureText(carryover, maxSize: maxSize).height
-            // Extra conservative check - use 95% of available height to be safe
-            if accumulatedHeight + carryoverHeight <= availableHeight * 0.95 {
-                segments.append(PageSegment(attributed: carryover, verseKey: key, isSplit: true))
-                accumulatedHeight += carryoverHeight
-                print("📏 Added carryover: height=\(carryoverHeight), total=\(accumulatedHeight)")
-            } else {
-                print("🚫 Carryover too tall, skipping: \(carryoverHeight) > \(availableHeight * 0.95)")
-            }
-        }
-        
-        // Accumulate verses with CONSERVATIVE height checking to prevent any overflow
-        for i in startVerseIndex..<chapter.verses.count {
-            let verse = chapter.verses[i]
-            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
-            
-            let formatted = JITTextFormatter.formatVerse(
-                book: key.book,
-                chapter: key.chapter,
-                verse: verse.verse,
-                text: verse.text,
-                showChapterHeader: verse.verse == 1 && segments.isEmpty,
-                showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty
-            )
-            
-            // Measure this verse's actual height
-            let verseHeight = JITTextFormatter.measureText(formatted, maxSize: maxSize).height
-            
-            // CONSERVATIVE CHECK: Use 95% of available height to prevent any overflow
-            let heightLimit = availableHeight * 0.95
-            if accumulatedHeight + verseHeight <= heightLimit {
-                segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
-                accumulatedHeight += verseHeight
-                lastCompleteVerseIndex = i
-                print("📏 Added verse \(verse.verse): height=\(verseHeight), total=\(accumulatedHeight)/\(heightLimit)")
-            } else {
-                print("🛑 CONSERVATIVE STOP: Verse \(verse.verse) would exceed 95% limit")
-                print("    Height needed: \(verseHeight), Available: \(heightLimit - accumulatedHeight)")
-                break
-            }
-        }
-        
-        // Emergency fallback - ensure we have at least one verse
-        if segments.isEmpty {
-            let verse = chapter.verses[startVerseIndex]
-            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
-            
-            let formatted = JITTextFormatter.formatVerse(
-                book: key.book,
-                chapter: key.chapter,
-                verse: verse.verse,
-                text: verse.text,
-                showChapterHeader: verse.verse == 1,
-                showBookTitle: key.chapter == 1 && verse.verse == 1
-            )
-            
-            segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
-            lastCompleteVerseIndex = startVerseIndex
-            print("🚨 Emergency fallback: added verse \(verse.verse) (page must have at least one verse)")
-        }
-        
-        // Handle remainder - continue from the next verse that didn't fit
-        let remainder: (key: VerseKey, text: AttributedString)? = {
-            let nextVerseIndex = lastCompleteVerseIndex + 1
-            if nextVerseIndex < chapter.verses.count {
-                let nextVerse = chapter.verses[nextVerseIndex]
-                return (key: VerseKey(book: key.book, chapter: key.chapter, verse: nextVerse.verse), text: AttributedString())
-            } else {
-                return nil // No more verses in this chapter
-            }
-        }()
-        
-        let startVerse = chapter.verses[startVerseIndex]
-        let endVerse = chapter.verses[lastCompleteVerseIndex]
-        
-        let page = GeneratedPage(
-            segments: segments,
-            startKey: VerseKey(book: key.book, chapter: key.chapter, verse: startVerse.verse),
-            navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false)
-        )
-        
-        print("📄 PRECISION RESULT: verses \(startVerse.verse)-\(endVerse.verse) (\(segments.count) verses)")
-        print("📄 Conservative height used: \(accumulatedHeight) of \(availableHeight * 0.95) limit")
-        print("📄 Actual available space: \(availableHeight) (with \(conservativeMargin)pt safety margin)")
-        print("📄 Has remainder: \(remainder != nil)")
-        
-        return .success((page: page, remainder: remainder))
     }
 
     private func findNextVerse(after verse: VerseKey) async -> VerseKey? {
@@ -556,171 +436,30 @@ final class OnDemandPageGenerator: ObservableObject {
         defer { isGenerating = false }
         
         do {
-            let fragmentedPage = try await generateFragmentedPageContent(startingAt: key)
-            currentFragmentedPage = fragmentedPage
+            let result = try await FragmentedPageGenerator.generateContent(
+                startingAt: key,
+                pageSize: size,
+                fragmentPending: fragmentPending,
+                using: loader
+            )
+            
+            currentFragmentedPage = result.page
+            fragmentPending = result.pendingFragment
             
             // Create and store history entry for reliable backward navigation
             if !isNavigatingFromHistory {
-                let historyEntry = createHistoryEntry(for: fragmentedPage)
-                enhancedHistoryManager.pushPage(historyEntry)
-                print("📚 HISTORY TRACKING: Added new page to history (\(enhancedHistoryManager.historyCount) total)")
+                historyManager.pushFragmentedPage(result.page, pageSize: size)
+                print("📚 HISTORY TRACKING: Added new page to history (\(historyManager.historyCount) total)")
             } else {
                 print("📚 HISTORY TRACKING: Skipped adding page (navigating from history)")
             }
             
-            print("📖 FRAGMENTED PAGE GENERATED: \(fragmentedPage.debugDescription)")
+            print("📖 FRAGMENTED PAGE GENERATED: \(result.page.debugDescription)")
             
         } catch {
             lastError = error.localizedDescription
             print("❌ Failed to generate fragmented page: \(error.localizedDescription)")
         }
-    }
-    
-    /// Generate fragmented page content with cross-page verse continuation
-    private func generateFragmentedPageContent(startingAt key: VerseKey) async throws -> FragmentedPage {
-        guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
-            throw PageGenerationError.missingChapter(key)
-        }
-        
-        guard size.width > 0 && size.height > 0 else {
-            throw PageGenerationError.layoutFailed(key)
-        }
-        
-        print("📖 FRAGMENT GENERATION: Starting at \(key.description) with size \(size)")
-        
-        // Calculate available space for fragments
-        let conservativeMargin: CGFloat = 30 // Extra margin for fragment indicators
-        let availableHeight = size.height - (LayoutMetrics.verticalPagePadding * 2) - conservativeMargin
-        let maxSize = CGSize(width: size.width - (LayoutMetrics.horizontalPagePadding * 2), height: availableHeight)
-        
-        print("📏 FRAGMENT LAYOUT: available=\(availableHeight), maxWidth=\(maxSize.width)")
-        
-        var fragments: [VerseFragment] = []
-        var accumulatedHeight: CGFloat = 0
-        var currentVerseIndex = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
-        
-        // Handle pending fragment from previous page
-        if let pendingFragment = fragmentPending {
-            let fragmentHeight = measureFragmentHeight(pendingFragment, maxSize: maxSize)
-            if accumulatedHeight + fragmentHeight <= availableHeight * 0.95 {
-                fragments.append(pendingFragment)
-                accumulatedHeight += fragmentHeight
-                print("📏 Added pending fragment: height=\(fragmentHeight), total=\(accumulatedHeight)")
-            }
-            fragmentPending = nil
-        }
-        
-        // Process verses starting from the current position
-        while currentVerseIndex < chapter.verses.count {
-            let verse = chapter.verses[currentVerseIndex]
-            let verseRef = VerseReference(
-                unsafeBook: key.book,
-                unsafeChapter: key.chapter,
-                unsafeVerse: verse.verse
-            )
-            let domainVerse = Verse(reference: verseRef, text: verse.text)
-            
-            // Generate fragments for this verse
-            let remainingHeight = availableHeight * 0.95 - accumulatedHeight
-            let verseFragments = VerseFragmentGenerator.fragmentVerse(
-                verse: domainVerse,
-                availableHeight: remainingHeight,
-                maxSize: maxSize
-            )
-            
-            var addedFragments = 0
-            for fragment in verseFragments {
-                let fragmentHeight = measureFragmentHeight(fragment, maxSize: maxSize)
-                
-                if accumulatedHeight + fragmentHeight <= availableHeight * 0.95 {
-                    fragments.append(fragment)
-                    accumulatedHeight += fragmentHeight
-                    addedFragments += 1
-                    print("📏 Added fragment \(fragment.sequenceNumber + 1)/\(fragment.totalFragments): height=\(fragmentHeight), total=\(accumulatedHeight)")
-                } else {
-                    // This fragment doesn't fit, save it for next page
-                    fragmentPending = fragment
-                    print("🔄 Fragment \(fragment.sequenceNumber + 1)/\(fragment.totalFragments) saved for next page")
-                    break
-                }
-            }
-            
-            // If we added all fragments for this verse, move to next verse
-            if addedFragments == verseFragments.count {
-                currentVerseIndex += 1
-            } else {
-                // We have a pending fragment, stop here
-                break
-            }
-            
-            // Safety check to prevent infinite loops
-            if fragments.count > 50 {
-                print("⚠️ Safety break: too many fragments on one page")
-                break
-            }
-        }
-        
-        // Ensure we have at least one fragment
-        if fragments.isEmpty {
-            print("🚨 Emergency: No fragments fit, adding first verse as single fragment")
-            let verse = chapter.verses[currentVerseIndex]
-            let verseRef = VerseReference(
-                unsafeBook: key.book,
-                unsafeChapter: key.chapter,
-                unsafeVerse: verse.verse
-            )
-            
-            let emergencyFragment = VerseFragment(
-                reference: verseRef,
-                textFragment: verse.text,
-                isStartOfVerse: true,
-                isEndOfVerse: true,
-                fullVerseText: verse.text,
-                sequenceNumber: 0,
-                totalFragments: 1
-            )
-            fragments.append(emergencyFragment)
-        }
-        
-        // Generate the combined content
-        let combinedContent = VerseFragmentGenerator.combineFragments(fragments)
-        
-        // Create navigation title
-        let startVerse = fragments.first!.reference
-        let endVerse = fragments.last!.reference
-        let navTitle = if startVerse.book == endVerse.book && startVerse.chapter == endVerse.chapter {
-            if startVerse.verse == endVerse.verse {
-                "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse)"
-            } else {
-                "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse)-\(endVerse.verse)"
-            }
-        } else if startVerse.book == endVerse.book {
-            "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse) - \(endVerse.chapter):\(endVerse.verse)"
-        } else {
-            "\(startVerse.book) \(startVerse.chapter):\(startVerse.verse) - \(endVerse.book) \(endVerse.chapter):\(endVerse.verse)"
-        }
-        
-        return FragmentedPage(
-            fragments: fragments,
-            navTitle: navTitle,
-            startVerse: startVerse,
-            endVerse: endVerse,
-            content: combinedContent,
-            measuredHeight: accumulatedHeight,
-            availableHeight: availableHeight
-        )
-    }
-    
-    /// Measure the height of a fragment for layout calculations
-    private func measureFragmentHeight(_ fragment: VerseFragment, maxSize: CGSize) -> CGFloat {
-        let formatted = JITTextFormatter.formatVerse(
-            book: fragment.reference.book,
-            chapter: fragment.reference.chapter,
-            verse: fragment.reference.verse,
-            text: fragment.displayText
-        )
-        
-        return JITTextFormatter.measureText(formatted, maxSize: maxSize).height
     }
     
     /// Navigate to next page with fragment support
@@ -756,7 +495,7 @@ final class OnDemandPageGenerator: ObservableObject {
         let oldFragmentedPage = currentFragmentedPage
         
         // Use enhanced history manager for reliable backward navigation
-        if enhancedHistoryManager.canGoBackward, let historyEntry = enhancedHistoryManager.goBackward() {
+        if historyManager.canGoBackward, let historyEntry = historyManager.goBackward() {
             print("📚 BACKWARD NAVIGATION: Using enhanced history entry")
             
             // Set flag to prevent adding this page to history again
@@ -778,7 +517,7 @@ final class OnDemandPageGenerator: ObservableObject {
             } else {
                 print("❌ BACKWARD NAVIGATION: Failed to restore from history - this should not happen!")
                 // Push the entry back since we failed to restore it
-                enhancedHistoryManager.pushPageBack(historyEntry)
+                historyManager.pushPageBack(historyEntry)
             }
         }
         
@@ -797,7 +536,7 @@ final class OnDemandPageGenerator: ObservableObject {
         defer { Task { await trimCacheToThreePages() } }
         
         // First, try to use enhanced history manager for forward navigation
-        if enhancedHistoryManager.canGoForward, let historyEntry = enhancedHistoryManager.goForward() {
+        if historyManager.canGoForward, let historyEntry = historyManager.goForward() {
             print("📚 FORWARD NAVIGATION: Using enhanced history entry")
             
             // Set flag to prevent adding this page to history again
@@ -811,7 +550,7 @@ final class OnDemandPageGenerator: ObservableObject {
             } else {
                 print("❌ FORWARD NAVIGATION: Failed to restore from history, using regular navigation")
                 // Push the entry back since we failed to restore it
-                enhancedHistoryManager.pushPageBack(historyEntry)
+                historyManager.pushPageBack(historyEntry)
             }
         }
         
@@ -841,142 +580,9 @@ final class OnDemandPageGenerator: ObservableObject {
     /// Check if we can navigate to the previous page - relies on reliable history only
     var canGoToPreviousPage: Bool {
         // RELIABLE BACKWARD NAVIGATION: Only allow if we have verified history
-        return enhancedHistoryManager.canGoBackward
+        return historyManager.canGoBackward
     }
     
-    /// DEPRECATED: Find the starting verse key for the previous page (not just previous verse)
-    /// This method is now obsolete as we use reliable history-based backward navigation
-    /// Keeping for reference but should not be used in production
-    @available(*, deprecated, message: "Use enhanced history manager for reliable backward navigation")
-    private func getPreviousPageStartKey(before currentPageStart: VerseKey) async -> VerseKey? {
-        // Estimate how many verses might fit on a typical page
-        let estimatedVersesPerPage = 15 // Conservative estimate
-        
-        // Start by going back roughly one page's worth of verses
-        var candidateStart = currentPageStart
-        for _ in 0..<estimatedVersesPerPage {
-            if let prev = await findPreviousVerse(before: candidateStart) {
-                candidateStart = prev
-            } else {
-                break // Hit the beginning of the Bible
-            }
-        }
-        
-        // Now test if a page starting from this position would end near our current page start
-        let testKey = VerseKey(book: candidateStart.book, chapter: candidateStart.chapter, verse: candidateStart.verse)
-        
-        do {
-            let testPage = try await generateFragmentedPageContent(startingAt: testKey)
-            
-            // Check if this test page ends close to our current page start
-            let testEndKey = VerseKey(book: testPage.endVerse.book, chapter: testPage.endVerse.chapter, verse: testPage.endVerse.verse)
-            
-            // If the test page ends at or just before our current start, we found the right position
-            if testEndKey.book == currentPageStart.book && testEndKey.chapter == currentPageStart.chapter {
-                let verseDifference = currentPageStart.verse - testEndKey.verse
-                if verseDifference >= 0 && verseDifference <= 2 {
-                    // Perfect! The test page ends right before our current page
-                    return testKey
-                }
-            }
-            
-            // If test page goes too far forward, try starting a bit earlier
-            if isAfter(testEndKey, currentPageStart) {
-                // Go back a few more verses and try again
-                for _ in 0..<3 {
-                    if let prev = await findPreviousVerse(before: candidateStart) {
-                        candidateStart = prev
-                    } else {
-                        break
-                    }
-                }
-                return candidateStart
-            }
-            
-            // If test page doesn't reach our current start, try starting a bit later
-            if isBefore(testEndKey, currentPageStart) {
-                // Move forward a few verses
-                for _ in 0..<3 {
-                    if let next = await findNextVerse(after: candidateStart) {
-                        candidateStart = next
-                    } else {
-                        break
-                    }
-                }
-                return candidateStart
-            }
-            
-        } catch {
-            print("⚠️ Error testing previous page start: \(error)")
-        }
-        
-        // Fallback: return the estimated start position
-        return candidateStart
-    }
-    
-    /// Helper to check if verse A comes after verse B
-    private func isAfter(_ a: VerseKey, _ b: VerseKey) -> Bool {
-        if a.book != b.book {
-            // Would need book order logic here, but for now assume same book
-            return false
-        }
-        if a.chapter != b.chapter {
-            return a.chapter > b.chapter
-        }
-        return a.verse > b.verse
-    }
-    
-    /// Helper to check if verse A comes before verse B
-    private func isBefore(_ a: VerseKey, _ b: VerseKey) -> Bool {
-        if a.book != b.book {
-            // Would need book order logic here, but for now assume same book
-            return false
-        }
-        if a.chapter != b.chapter {
-            return a.chapter < b.chapter
-        }
-        return a.verse < b.verse
-    }
-    
-    /// Create a history entry for the current fragmented page
-    private func createHistoryEntry(for fragmentedPage: FragmentedPage) -> PageHistoryEntry {
-        return PageHistoryEntry.createFromFragmentedPage(
-            fragmentedPage,
-            pageSize: size,
-            horizontalPadding: LayoutMetrics.horizontalPagePadding,
-            verticalPadding: LayoutMetrics.verticalPagePadding,
-            characterOffset: nil, // TODO: Add character offset tracking if needed
-            fragmentOffset: nil   // TODO: Add fragment offset tracking if needed
-        )
-    }
-    
-    /// Create a history entry for a legacy page slice
-    private func createHistoryEntryForLegacyPage(_ page: OptimizedPageSlice) -> PageHistoryEntry {
-        let layoutHash = PageHistoryEntry.createLayoutHash(
-            pageSize: size,
-            horizontalPadding: LayoutMetrics.horizontalPagePadding,
-            verticalPadding: LayoutMetrics.verticalPagePadding
-        )
-        
-        return PageHistoryEntry(
-            book: page.startVerse.book,
-            chapter: page.startVerse.chapter,
-            verse: page.startVerse.verse,
-            characterOffset: nil,
-            fragmentOffset: nil,
-            renderedContent: String(page.content.characters), // Convert AttributedString to String properly
-            navTitle: "\(page.startVerse.book) \(page.startVerse.chapter)",
-            pageSize: size,
-            layoutHash: layoutHash,
-            serializedFragmentedPage: nil, // Legacy pages don't have fragments
-            verseKeys: ["\(page.startVerse.book) \(page.startVerse.chapter):\(page.startVerse.verse)"],
-            hasSplitVerses: false, // Legacy pages don't typically split verses
-            endBook: page.endVerse.book,
-            endChapter: page.endVerse.chapter,
-            endVerse: page.endVerse.verse
-        )
-    }
-
     /// Restore a page from a history entry with exact layout reproduction
     private func restorePageFromHistory(_ entry: PageHistoryEntry) async -> Bool {
         // Verify layout compatibility
@@ -1013,7 +619,11 @@ final class OnDemandPageGenerator: ObservableObject {
         // Check if we can load the chapter to create a proper page
         if let chapter = await loader.loadChapterContent(book: entry.book, chapter: entry.chapter) {
             // Try to generate the page starting from this verse
-            let result = await generatePageContent(startingAt: entryKey, tail: nil)
+            let result = await PageContentGenerator.generate(
+                from: entryKey,
+                pageSize: size,
+                using: loader
+            )
             
             switch result {
             case .success(let generatedResult):
