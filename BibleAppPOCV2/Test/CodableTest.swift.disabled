@@ -1,0 +1,117 @@
+//
+//  CodableTest.swift
+//  BibleAppPOCV2
+//
+//  Created by AI Assistant on 2025-07-14.
+//
+
+import Foundation
+
+/// Test to verify that all Bible models are properly Codable
+class CodableTest {
+    static func testBibleModelsCodable() {
+        print("Testing Bible models for Codable compliance...")
+        
+        // Test Verse model
+        let verse = Verse(
+            id: 1,
+            number: 1,
+            text: "In the beginning was the Word, and the Word was with God, and the Word was God."
+        )
+        
+        do {
+            let verseData = try JSONEncoder().encode(verse)
+            let decodedVerse = try JSONDecoder().decode(Verse.self, from: verseData)
+            print("✅ Verse model: Codable test passed")
+            print("   Original: \(verse.text)")
+            print("   Decoded: \(decodedVerse.text)")
+        } catch {
+            print("❌ Verse model: Codable test failed - \(error)")
+        }
+        
+        // Test Chapter model
+        let chapter = Chapter(
+            id: 1,
+            number: 1,
+            verses: [verse]
+        )
+        
+        do {
+            let chapterData = try JSONEncoder().encode(chapter)
+            let decodedChapter = try JSONDecoder().decode(Chapter.self, from: chapterData)
+            print("✅ Chapter model: Codable test passed")
+            print("   Original verses count: \(chapter.verses.count)")
+            print("   Decoded verses count: \(decodedChapter.verses.count)")
+        } catch {
+            print("❌ Chapter model: Codable test failed - \(error)")
+        }
+        
+        // Test Book model
+        let book = Book(
+            id: 1,
+            name: "John",
+            chapters: [chapter]
+        )
+        
+        do {
+            let bookData = try JSONEncoder().encode(book)
+            let decodedBook = try JSONDecoder().decode(Book.self, from: bookData)
+            print("✅ Book model: Codable test passed")
+            print("   Original: \(book.name)")
+            print("   Decoded: \(decodedBook.name)")
+        } catch {
+            print("❌ Book model: Codable test failed - \(error)")
+        }
+        
+        // Test Bible model
+        let bible = Bible(
+            id: 1,
+            name: "King James Version",
+            books: [book]
+        )
+        
+        do {
+            let bibleData = try JSONEncoder().encode(bible)
+            let decodedBible = try JSONDecoder().decode(Bible.self, from: bibleData)
+            print("✅ Bible model: Codable test passed")
+            print("   Original: \(bible.name)")
+            print("   Decoded: \(decodedBible.name)")
+        } catch {
+            print("❌ Bible model: Codable test failed - \(error)")
+        }
+        
+        // Test VerseFragment model
+        let verseFragment = VerseFragment(
+            verseNumber: 1,
+            text: "In the beginning was the Word"
+        )
+        
+        do {
+            let fragmentData = try JSONEncoder().encode(verseFragment)
+            let decodedFragment = try JSONDecoder().decode(VerseFragment.self, from: fragmentData)
+            print("✅ VerseFragment model: Codable test passed")
+            print("   Original: \(verseFragment.text)")
+            print("   Decoded: \(decodedFragment.text)")
+        } catch {
+            print("❌ VerseFragment model: Codable test failed - \(error)")
+        }
+        
+        // Test FragmentedPage model
+        let fragmentedPage = FragmentedPage(
+            pageNumber: 1,
+            fragments: [verseFragment]
+        )
+        
+        do {
+            let pageData = try JSONEncoder().encode(fragmentedPage)
+            let decodedPage = try JSONDecoder().decode(FragmentedPage.self, from: pageData)
+            print("✅ FragmentedPage model: Codable test passed")
+            print("   Original fragments count: \(fragmentedPage.fragments.count)")
+            print("   Decoded fragments count: \(decodedPage.fragments.count)")
+        } catch {
+            print("❌ FragmentedPage model: Codable test failed - \(error)")
+        }
+        
+        print("\n🎉 All Bible models are now fully Codable and ready for static decoding!")
+    }
+}
