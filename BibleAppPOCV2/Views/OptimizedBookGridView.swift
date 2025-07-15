@@ -104,8 +104,8 @@ struct OptimizedBookGridView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
-                // Background that extends to screen edges
-                Color.white.ignoresSafeArea()
+                // Background that extends to screen edges - adapts to dark mode
+                Color(UIColor.systemBackground).ignoresSafeArea()
                 
                 // Main content layer - ScrollView with book grid
                 if viewModel.isInitializing {
