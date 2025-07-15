@@ -2,7 +2,8 @@ import Foundation
 import SwiftUI
 import CoreGraphics
 
-actor PageCache {
+// Simple LRU cache for OnDemandPageGenerator
+private actor SliceCache {
     private let lru = LRUCache<VerseKey, OptimizedPageSlice>(capacity: 15)
     var keys: [VerseKey] { lru.keys }
     func get(_ k: VerseKey) -> OptimizedPageSlice? { lru.get(k) }
@@ -11,11 +12,12 @@ actor PageCache {
     func clear() { lru.clear() }
 }
 
-final class PageNode {
+// Simple node for OnDemandPageGenerator
+private final class SliceNode {
     let key: VerseKey
     let slice: OptimizedPageSlice
-    weak var prev: PageNode?
-    weak var next: PageNode?
+    weak var prev: SliceNode?
+    weak var next: SliceNode?
     init(key: VerseKey, slice: OptimizedPageSlice) {
         self.key = key
         self.slice = slice
@@ -43,12 +45,13 @@ final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentFragmentedPage: FragmentedPage?
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
+    @Published private(set) var currentGeneratedPage: GeneratedPage?
 
-    private let cache = PageCache()
+    private let cache = SliceCache()
     private let loader = OptimizedBibleDataLoader.shared
     private let historyManager = PageHistoryService()
     private var size: CGSize
-    private var currentNode: PageNode?
+    private var currentNode: SliceNode?
     private var pending: (key: VerseKey, text: AttributedString)?
     private var fragmentPending: VerseFragment?
     private var isNavigatingFromHistory = false
@@ -65,6 +68,7 @@ final class OnDemandPageGenerator: ObservableObject {
         pending = nil
         currentNode = nil
         currentPage = nil
+        currentGeneratedPage = nil
         currentFragmentedPage = nil
         
         // Clear enhanced page history since page layout has changed
@@ -119,7 +123,7 @@ final class OnDemandPageGenerator: ObservableObject {
         }
 
         if pending == nil, let cached = await cache.get(key) {
-            let newNode = PageNode(key: key, slice: cached)
+            let newNode = SliceNode(key: key, slice: cached)
             
             // Properly link the new node into the doubly linked list
             if isNavigatingFromHistory {
@@ -162,8 +166,9 @@ final class OnDemandPageGenerator: ObservableObject {
         case .success(let generatedResult):
             let slice = generatedResult.page.toOptimizedPageSlice()
             currentPage = slice
+            currentGeneratedPage = generatedResult.page
             pending = generatedResult.remainder
-            let newNode = PageNode(key: key, slice: slice)
+            let newNode = SliceNode(key: key, slice: slice)
             
             // Properly link the new node into the doubly linked list
             if isNavigatingFromHistory {
@@ -323,7 +328,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
 
     private func trimCacheToThreePages() async {
-        // Skip trimming during history navigation to preserve valid PageNodes
+        // Skip trimming during history navigation to preserve valid SliceNodes
         if isNavigatingFromHistory {
             print("📖 CACHE: Skipping trim during history navigation")
             return
@@ -613,7 +618,7 @@ final class OnDemandPageGenerator: ObservableObject {
         // PRIORITY 2: Recreate page from stored content and metadata
         print("🔄 HISTORY RESTORE: Recreating page from stored content and metadata")
         
-        // For legacy pages, try to create a new PageNode and update currentNode
+        // For legacy pages, try to create a new SliceNode and update currentNode
         let entryKey = VerseKey(book: entry.book, chapter: entry.chapter, verse: entry.verse)
         
         // Check if we can load the chapter to create a proper page
@@ -629,10 +634,11 @@ final class OnDemandPageGenerator: ObservableObject {
             case .success(let generatedResult):
                 let slice = generatedResult.page.toOptimizedPageSlice()
                 currentPage = slice
+                currentGeneratedPage = generatedResult.page
                 pending = generatedResult.remainder
                 
-                // Create a new PageNode for the restored page
-                let restoredNode = PageNode(key: entryKey, slice: slice)
+                // Create a new SliceNode for the restored page
+                let restoredNode = SliceNode(key: entryKey, slice: slice)
                 currentNode = restoredNode
                 
                 print("✅ HISTORY RESTORE: Successfully recreated page from chapter data")
