@@ -6,6 +6,11 @@ struct BibleReaderView: View {
     @State private var currentPageInfo: String = ""
     @State private var showingPerformanceOverlay = false
     @State private var cacheStats: (hitRate: Double, size: Int) = (0.0, 0)
+    
+    // LLM Integration State
+    @State private var selectedVerse: VerseKey? = nil
+    @State private var showSummaryPopup: Bool = false
+    @StateObject private var summaryViewModel = VerseSummaryViewModel()
 
     // For gesture handling
     @State private var dragOffset: CGSize = .zero
@@ -68,6 +73,16 @@ struct BibleReaderView: View {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     pageGenerator.handleMemoryPressure()
                 }
+                
+                // LLM Summary Popup Overlay
+                if let selectedVerse = selectedVerse, showSummaryPopup {
+                    VerseSummaryPopupView(
+                        verseKey: selectedVerse,
+                        isVisible: $showSummaryPopup
+                    )
+                    .environmentObject(summaryViewModel)
+                    .animation(.easeInOut(duration: 0.3), value: showSummaryPopup)
+                }
             }
         }
     }
@@ -82,26 +97,52 @@ struct BibleReaderView: View {
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
-        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
-            if let newPage = pageGenerator.currentPage {
-                updateCurrentPageInfo(newPage)
+            .onTapGesture { location in
+                // Find which verse was tapped based on location
+                if let tappedVerse = findVerseAtLocation(location, in: page, size: size) {
+                    selectedVerse = tappedVerse
+                    showSummaryPopup = true
+                }
             }
-        }
-        .onAppear {
-            updateCurrentPageInfo(page)
-        }
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onChanged { value in
-                    isDragging = true
-                    dragOffset = value.translation
+            .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
+                if let newPage = pageGenerator.currentPage {
+                    updateCurrentPageInfo(newPage)
                 }
-                .onEnded { value in
-                    isDragging = false
-                    dragOffset = .zero
-                    handleSwipeGesture(value)
-                }
-        )
+            }
+            .onAppear {
+                updateCurrentPageInfo(page)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        isDragging = true
+                        dragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        dragOffset = .zero
+                        handleSwipeGesture(value)
+                    }
+            )
+    }
+    
+    /// Finds which verse was tapped based on the tap location
+    private func findVerseAtLocation(_ location: CGPoint, in page: OptimizedPageSlice, size: CGSize) -> VerseKey? {
+        // Simple approach: divide the page into equal sections for each verse
+        let pageHeight = size.height - (LayoutMetrics.verticalPagePadding * 2)
+        let verseCount = page.verseKeys.count
+        
+        if verseCount == 0 { return nil }
+        
+        let adjustedY = location.y - LayoutMetrics.verticalPagePadding
+        let verseHeight = pageHeight / CGFloat(verseCount)
+        let verseIndex = Int(adjustedY / verseHeight)
+        
+        if verseIndex >= 0 && verseIndex < page.verseKeys.count {
+            return page.verseKeys[verseIndex]
+        }
+        
+        return nil
     }
 
     /// Handles swipe gestures for navigation
