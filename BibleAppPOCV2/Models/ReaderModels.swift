@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/ReaderModels.swift
 // ReaderModels.swift
 // Shared models for Bible reader views and generators.
 

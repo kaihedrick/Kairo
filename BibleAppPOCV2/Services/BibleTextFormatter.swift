@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/BibleTextFormatter.swift
 // BibleTextFormatter.swift
 // Handles the formatting of Bible text according to Crossway typography standards
 

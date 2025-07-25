@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/PageSnapshot.swift
 import Foundation
 
 /// Represents a snapshot of a page's fragment range for backward navigation

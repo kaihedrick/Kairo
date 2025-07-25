@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/OptimizedBibleApp.swift
 import SwiftUI
 
 @main

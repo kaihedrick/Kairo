@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/Typography.swift
 import SwiftUI
 
 /// Fonts and spacing used by the Bible reader.

@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/LayoutMetrics.swift
 import Foundation
 import CoreGraphics
 

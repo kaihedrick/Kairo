@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Utilities/TruncationDetector.swift
 import SwiftUI
 import UIKit
 

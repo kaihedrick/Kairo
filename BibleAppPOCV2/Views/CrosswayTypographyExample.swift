@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/CrosswayTypographyExample.swift
 // CrosswayTypographyExample.swift
 // Example demonstrating Crossway-compatible Bible typography in SwiftUI
 

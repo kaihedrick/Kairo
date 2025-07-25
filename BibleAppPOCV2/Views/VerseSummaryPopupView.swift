@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/VerseSummaryPopupView.swift
 import SwiftUI
 
 struct VerseSummaryPopupView: View {

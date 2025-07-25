@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/ImprovedBibleModels.swift
 //
 //  ImprovedBibleModels.swift
 //  BibleAppPOCV2

@@ -1,3 +1,5 @@
+// filepath: BibleAppPOCV2/Views/HeaderView.swift
+// filepath: BibleAppPOCV2/Views/HeaderView.swift
 import SwiftUI
 
 struct HeaderView: View {

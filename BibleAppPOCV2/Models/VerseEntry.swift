@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/VerseEntry.swift
 
 //
 //  VerseEntry.swift

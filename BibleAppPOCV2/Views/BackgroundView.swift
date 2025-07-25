@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/BackgroundView.swift
 import SwiftUI
 
 struct BackgroundView: View {
