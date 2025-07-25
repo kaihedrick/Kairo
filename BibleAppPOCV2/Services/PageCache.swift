@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/PageCache.swift
 import Foundation
 
 /// ACID-Safe actor-based cache implementation with thread-safe operations

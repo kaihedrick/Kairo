@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/VerseSummary.swift
 import Foundation
 
 struct VerseSummary: Identifiable, Codable, Equatable {

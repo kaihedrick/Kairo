@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/LegacyBibleModels.swift
 //
 //  LegacyBibleModels.swift
 //  BibleAppPOCV2

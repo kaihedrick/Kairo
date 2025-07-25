@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/BibleReaderView.swift
 
 import SwiftUI
 import CoreGraphics

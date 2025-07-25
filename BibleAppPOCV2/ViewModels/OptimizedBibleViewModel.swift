@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/ViewModels/OptimizedBibleViewModel.swift
 //
 //  OptimizedBibleViewModel.swift
 //  AIStudyBiblePOC

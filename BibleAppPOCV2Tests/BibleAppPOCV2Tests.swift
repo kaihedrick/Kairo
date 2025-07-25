@@ -1,3 +1,5 @@
+// filepath: BibleAppPOCV2Tests/BibleAppPOCV2Tests.swift
+// filepath: BibleAppPOCV2/BibleAppPOCV2Tests/BibleAppPOCV2Tests.swift
 //
 //  BibleAppPOCV2Tests.swift
 //  BibleAppPOCV2Tests

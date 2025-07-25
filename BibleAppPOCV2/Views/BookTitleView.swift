@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/BookTitleView.swift
 //
 //  BookTitleView.swift
 //  AIStudyBiblePOC

@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/OptimizedVerseView.swift
 import SwiftUI
 
 struct OptimizedVerseView: View {

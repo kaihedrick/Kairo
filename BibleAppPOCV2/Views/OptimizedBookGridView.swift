@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/OptimizedBookGridView.swift
 import SwiftUI
 
 // MARK: - Scroll Tracking Preference Key

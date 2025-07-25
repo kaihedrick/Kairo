@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/VerseFragment.swift
 //
 //  VerseFragment.swift
 //  BibleAppPOCV2

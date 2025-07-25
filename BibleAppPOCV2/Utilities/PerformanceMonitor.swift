@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Utilities/PerformanceMonitor.swift
 import SwiftUI
 import os.log
 

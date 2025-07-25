@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Models/PageSlice.swift
 // PageSlice.swift
 // Defines one "page" of text with its identifying verse-keys
 
