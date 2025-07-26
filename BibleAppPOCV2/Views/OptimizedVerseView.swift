@@ -10,6 +10,7 @@ struct OptimizedVerseView: View {
     @State private var loadError: Error?
     @State private var pageIndex: Int = 0
     
+    private let loader = OptimizedBibleDataLoader()
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
     private let tileSize: CGFloat = 50
     

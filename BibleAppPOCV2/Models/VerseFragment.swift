@@ -8,8 +8,6 @@
 //
 
 import Foundation
-import BibleAppPOCV2
-// import BibleAppPOCV2.Models.ImprovedBibleModels
 import SwiftUI
 
 /// Represents a portion of a verse that can span across pages

@@ -10,17 +10,9 @@
 import Foundation
 import SwiftUI
 
-/// Namespace providing aliases to the improved domain models.
-/// This maintains backwards compatibility for components that still
-/// reference `UnifiedBibleModels` while ensuring a single source of truth.
-// public typealias VerseReference = ImprovedBibleModels.VerseReference
-// public typealias Verse = ImprovedBibleModels.Verse
-// public typealias Chapter = ImprovedBibleModels.Chapter
-// public typealias Book = ImprovedBibleModels.Book
-// public typealias BookMetadata = ImprovedBibleModels.BookMetadata
-// public typealias BibleMetadata = ImprovedBibleModels.BibleMetadata
-// public typealias ServiceResult<T> = ImprovedBibleModels.ServiceResult<T>
-// If you need additional typealiases, add them here
+/// This file provides a namespace for unified Bible models.
+/// The actual types are defined in ImprovedBibleModels.swift as top-level structs.
+/// No typealiases are needed since the types are already accessible.
 enum UnifiedBibleModels {
     // Core domain models
 

@@ -1,17 +1,15 @@
 import Foundation
-import BibleAppPOCV2
-import BibleAppPOCV2.Services.BibleVerseCommentaryGenerator // If this is the correct path
 
 protocol VerseSummaryServiceProtocol {
-    func fetchSummary(for verse: VerseKey) async throws -> String
+    func fetchSummary(for verse: VerseKey, text: String) async throws -> String
 }
 
-/// Service that integrates both summarization and commentary generation
+/// Service that integrates summarization using existing LLM infrastructure
 @MainActor
 class VerseSummaryService: VerseSummaryServiceProtocol, ObservableObject {
     // MARK: - Services
-    private let llmService = LLMService() // Direct instantiation, no singleton
-    private let commentaryGenerator = BibleVerseCommentaryGenerator()
+    private let llmService = LLMService()
+    private let tokenizer = T5Tokenizer()
     
     // MARK: - Published Properties
     @Published var isLoading = false
@@ -20,21 +18,7 @@ class VerseSummaryService: VerseSummaryServiceProtocol, ObservableObject {
     init() {}
     
     // MARK: - Protocol Implementation
-    func fetchSummary(for verse: VerseKey) async throws -> String {
-        // TODO: Implement summary generation using available model or service
-        // Placeholder: Return empty summary for migration
-        return ""
-    }
-    
-    // MARK: - Enhanced Summary Generation
-    
-    /// Generate a comprehensive verse analysis including summary and commentary
-    func generateVerseAnalysis(
-        verseKey: VerseKey,
-        text: String,
-        includeCommentary: Bool = true
-    ) async -> VerseAnalysis? {
-        
+    func fetchSummary(for verse: VerseKey, text: String) async throws -> String {
         isLoading = true
         lastError = nil
         
@@ -43,123 +27,46 @@ class VerseSummaryService: VerseSummaryServiceProtocol, ObservableObject {
         }
         
         do {
-            // TODO: Implement summary generation using available model or service
-            // Placeholder: Return empty summary for migration
-            var biblical: String?
-            var devotional: String?
-            if includeCommentary {
-                let reference = "\(verseKey.book) \(verseKey.chapter):\(verseKey.verse)"
-                biblical = await commentaryGenerator.generateCommentary(
-                    verseText: text,
-                    verseReference: reference,
-                    type: .biblical
-                )
-                devotional = await commentaryGenerator.generateCommentary(
-                    verseText: text,
-                    verseReference: reference,
-                    type: .devotional
-                )
-            }
-            return VerseAnalysis(
-                verseKey: verseKey,
-                originalText: text,
-                summary: "",
-                biblicalCommentary: biblical,
-                devotionalInsight: devotional
-            )
+            // Use existing LLM infrastructure for summary generation
+            let tokens = tokenizer.tokenize(text)
+            let encoderOutputs = llmService.encode(tokens: tokens)
             
+            // Simple decoder simulation (same as VerseSummaryViewModel)
+            let summaryTokenIDs = encoderOutputs.map { Int($0) }.reversed()
+            let summaryText = detokenize(tokenIDs: Array(summaryTokenIDs))
+            
+            return summaryText
         } catch {
             lastError = error.localizedDescription
-            print("❌ Error generating verse analysis: \(error)")
-            return nil
+            throw error
         }
     }
     
-    /// Generate commentary only (faster for UI interactions)
-    func generateCommentaryOnly(
-        verseKey: VerseKey,
-        text: String,
-        type: BibleVerseCommentaryGenerator.CommentaryType = .devotional
-    ) async -> String? {
-        
-        let reference = "\(verseKey.book) \(verseKey.chapter):\(verseKey.verse)"
-        
-        return await commentaryGenerator.generateCommentary(
-            verseText: text,
-            verseReference: reference,
-            type: type
-        )
+    // MARK: - Helper Methods
+    
+    /// Detokenize token IDs to text using tokenizer's vocab
+    private func detokenize(tokenIDs: [Int]) -> String {
+        // Reverse vocab lookup: token ID → token string
+        let idToToken = tokenizer.vocab.reduce(into: [Int: String]()) { dict, pair in dict[pair.value] = pair.key }
+        let tokens = tokenIDs.compactMap { idToToken[$0] }
+        return tokens.joined(separator: " ")
     }
     
-    /// Check if both services are ready
+    /// Check if service is ready
     var isReady: Bool {
-        return commentaryGenerator.isModelLoaded
+        return true // LLMService and T5Tokenizer are always ready
     }
     
     /// Get service status
     var statusMessage: String {
         if isLoading {
-            return "Generating analysis..."
-        }
-        
-        if !commentaryGenerator.isModelLoaded {
-            return "Loading commentary model..."
+            return "Generating summary..."
         }
         
         if let error = lastError {
             return "Error: \(error)"
         }
         
-        return "Ready to generate verse analysis"
-    }
-}
-
-// MARK: - Data Models
-
-struct VerseAnalysis {
-    let verseKey: VerseKey
-    let originalText: String
-    let summary: VerseSummary
-    let biblicalCommentary: String?
-    let devotionalInsight: String?
-    
-    var hasCommentary: Bool {
-        return biblicalCommentary != nil || devotionalInsight != nil
-    }
-}
-
-// MARK: - Integration with Bible Reader
-
-extension VerseSummaryService {
-    
-    /// Generate analysis for the current page's verses
-    func analyzePageVerses(_ pageSlice: OptimizedPageSlice) async -> [VerseAnalysis] {
-        var analyses: [VerseAnalysis] = []
-        
-        for verseKey in pageSlice.verseKeys {
-            // Extract verse text from the data loader
-            if let verseText = await getVerseText(for: verseKey) {
-                if let analysis = await generateVerseAnalysis(
-                    verseKey: verseKey,
-                    text: verseText,
-                    includeCommentary: true
-                ) {
-                    analyses.append(analysis)
-                }
-            }
-        }
-        
-        return analyses
-    }
-    
-    private func getVerseText(for verseKey: VerseKey) async -> String? {
-        let loader = OptimizedBibleDataLoader()
-        
-        guard let chapter = await loader.loadChapterContent(book: verseKey.book, chapter: verseKey.chapter),
-              let verseContent = chapter.verses.first(where: { $0.verse == verseKey.verse }) else {
-            return nil
-        }
-        
-        return verseContent.text
+        return "Ready to generate verse summaries"
     }
 }

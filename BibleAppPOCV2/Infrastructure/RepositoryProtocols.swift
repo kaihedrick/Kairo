@@ -6,16 +6,17 @@
 //
 
 import Foundation
-import BibleAppPOCV2
-import BibleAppPOCV2.Infrastructure.ServiceProtocols // If CacheServiceProtocol is here
 
 // MARK: - Repository Protocols
 
 protocol BibleRepositoryProtocol: Actor {
     func loadMetadata() async throws -> BibleMetadata
     func loadChapter(book: String, chapter: Int) async throws -> Chapter
-// }
+}
 
+// MARK: - Cache Service Protocol
+
+protocol CacheServiceProtocol: Actor {
     func get<T>(key: String) async -> T?
     func set<T>(key: String, value: T) async
     func remove(key: String) async

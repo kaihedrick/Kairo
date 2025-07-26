@@ -1,5 +1,4 @@
 import Foundation
-import BibleAppPOCV2
 import SwiftUI
 
 // MARK: - Service Layer Protocols
@@ -7,22 +6,22 @@ import SwiftUI
 /// Main Bible service protocol with all operations
 protocol BibleServiceProtocol: Actor {
     func getMetadata() async -> ServiceResult<BibleMetadata>
-func loadChapter(book: String, chapter: Int) async -> ServiceResult<Chapter>
-func loadVerse(reference: VerseReference) async -> ServiceResult<Verse>
+    func loadChapter(book: String, chapter: Int) async -> ServiceResult<Chapter>
+    func loadVerse(reference: VerseReference) async -> ServiceResult<Verse>
     func searchBooks(query: String) async -> ServiceResult<[BookMetadata]>
-func getNavigationContext(for reference: VerseReference) async -> ServiceResult<NavigationContext>
+    func getNavigationContext(for reference: VerseReference) async -> ServiceResult<NavigationContext>
 }
 
 /// Page generation service protocol
 protocol PageServiceProtocol: Actor {
-func generatePage(startingAt reference: VerseReference, pageSize: CGSize) async -> ServiceResult<PageContent>
+    func generatePage(startingAt reference: VerseReference, pageSize: CGSize) async -> ServiceResult<PageContent>
     func getNextPage(from current: PageContent) async -> ServiceResult<PageContent?>
     func getPreviousPage(from current: PageContent) async -> ServiceResult<PageContent?>
 }
 
 /// Text formatting service protocol
 protocol TextServiceProtocol {
-func formatVerse(_ verse: UnifiedBibleModels.Verse, showChapterHeader: Bool, showBookTitle: Bool) -> AttributedString
+    func formatVerse(_ verse: Verse, showChapterHeader: Bool, showBookTitle: Bool) -> AttributedString
     func measureText(_ text: AttributedString, containerSize: CGSize) -> CGSize
-func formatVerseRange(_ verses: [UnifiedBibleModels.Verse]) -> AttributedString
+    func formatVerseRange(_ verses: [Verse]) -> AttributedString
 }

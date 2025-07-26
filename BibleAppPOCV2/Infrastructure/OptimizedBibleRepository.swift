@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // MARK: - Repository Implementation using existing OptimizedBibleDataLoader
 

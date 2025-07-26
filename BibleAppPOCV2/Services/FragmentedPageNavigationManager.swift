@@ -25,6 +25,7 @@ final class FragmentedPageNavigationManager: ObservableObject {
     }
     
     init(pageSize: CGSize) {
+        self.loader = OptimizedBibleDataLoader()
         self.pageSize = pageSize
     }
     

@@ -8,7 +8,6 @@
 
 import Foundation
 import SwiftUI
-import BibleAppPOCV2
 
 // MARK: - Domain Models (Business Logic Layer)
 
@@ -17,6 +16,7 @@ public enum Testament: String, CaseIterable {
     case all = "All"
     case old = "Old Testament"
     case new = "New Testament"
+}
 
 /// Core verse identifier - immutable value object
 public struct VerseReference: Hashable, Codable, CustomStringConvertible {
@@ -82,6 +82,14 @@ public struct Book: Hashable, Identifiable {
 }
 
 /// Complete Bible structure
+public struct Bible: Hashable, Identifiable {
+    public let id = UUID()
+    public let books: [Book]
+    
+    public init(books: [Book]) {
+        self.books = books
+    }
+    
     func book(named name: String) -> Book? {
         books.first { $0.name == name }
     }
