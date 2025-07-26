@@ -15,7 +15,7 @@ import SwiftUI
 /// reference `UnifiedBibleModels` while ensuring a single source of truth.
 enum UnifiedBibleModels {
     // Core domain models
-    typealias Bible          = ImprovedBibleModels.Bible
+    // Removed typealias Bible to resolve ambiguity
     typealias Book           = ImprovedBibleModels.Book
     typealias Chapter        = ImprovedBibleModels.Chapter
     typealias Verse          = ImprovedBibleModels.Verse

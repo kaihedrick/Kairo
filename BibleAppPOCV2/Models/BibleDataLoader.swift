@@ -79,13 +79,13 @@ struct Bible: Codable {
 }
 
 @MainActor
-class OptimizedBibleDataLoader: ObservableObject {
+class LegacyOptimizedBibleDataLoader: ObservableObject {
     static let shared = OptimizedBibleDataLoader()
 
     @Published private(set) var bible: Bible?
     @Published private(set) var loadError: Error?
 
-    private init() {
+    init() {
         Task { await loadBible() }
     }
 

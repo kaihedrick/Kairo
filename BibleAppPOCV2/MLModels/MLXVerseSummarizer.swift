@@ -1,5 +1,4 @@
-// filepath: BibleAppPOCV2/MLXVerseSummarizer.swift
-// filepath: BibleAppPOCV2/MLXVerseSummarizer.swift
+// filepath: BibleAppPOCV2/MLModels/MLXVerseSummarizer.swift
 import Foundation
 
 /// MLXVerseSummarizer: Loads MLX model files and provides Bible verse summarization

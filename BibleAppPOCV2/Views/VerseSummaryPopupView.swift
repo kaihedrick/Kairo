@@ -4,6 +4,7 @@ import SwiftUI
 struct VerseSummaryPopupView: View {
     let summary: VerseSummary
     let onClose: () -> Void
+    @StateObject private var viewModel = VerseSummaryViewModel()
 
     var body: some View {
         VStack(spacing: 12) {
@@ -22,12 +23,16 @@ struct VerseSummaryPopupView: View {
 
             // Summary Text
             ScrollView {
-                Text(summary.summaryText)
+                Text(viewModel.summaryText.isEmpty ? "Generating summary..." : viewModel.summaryText)
                     .font(.body)
                     .padding(.horizontal)
                     .frame(maxWidth: .infinity, alignment: .leading)
+// File: BibleAppPOCV2/Views/VerseSummaryPopupView.swift
+// Directory: Views
+// Purpose: Display the summarized verse result in the popup view
             }
 
+// TODO: Update this view to render the summary result from VerseSummaryViewModel
             Divider()
 
             // Metadata (Optional)
@@ -55,5 +60,8 @@ struct VerseSummaryPopupView: View {
         .frame(maxHeight: .infinity, alignment: .bottom)
         .transition(.move(edge: .bottom))
         .accessibilityElement(children: .contain)
+        .onAppear {
+            viewModel.summarize(verse: summary.summaryText)
+        }
     }
 }

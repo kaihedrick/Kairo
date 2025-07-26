@@ -163,7 +163,7 @@ class LRUCache<Key: Hashable, Value> {
 // MARK: - Optimized Bible Data Loader
 
 actor OptimizedBibleDataLoader {
-    static let shared = OptimizedBibleDataLoader()
+    // Singleton removed for actor best practices. Instantiate as needed.
     
     private var _metadata: LoaderBibleMetadata?
     private let chapterCache = LRUCache<String, OptimizedBible.ChapterContent>(capacity: 20)
@@ -173,7 +173,7 @@ actor OptimizedBibleDataLoader {
         return _metadata
     }
     
-    private init() {}
+    init() {}
     
     func ensureMetadataLoaded() async {
         if _metadata == nil {
