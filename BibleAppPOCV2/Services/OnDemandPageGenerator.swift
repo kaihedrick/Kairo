@@ -51,13 +51,17 @@ final class OnDemandPageGenerator: ObservableObject {
     private let cache = SliceCache()
     private let loader = OptimizedBibleDataLoader()
     private let historyManager = PageHistoryService()
+    private let fragmentedPageGenerator: FragmentedPageGenerator
     private var size: CGSize
     private var currentNode: SliceNode?
     private var pending: (key: VerseKey, text: AttributedString)?
     private var fragmentPending: VerseFragment?
     private var isNavigatingFromHistory = false
 
-    init(pageSize: CGSize) { self.size = pageSize }
+    init(pageSize: CGSize) { 
+        self.size = pageSize 
+        self.fragmentedPageGenerator = FragmentedPageGenerator(loader: loader)
+    }
 
     /// Update the size used for pagination and clear stale state.
     func updatePageSize(_ new: CGSize) {
@@ -442,11 +446,10 @@ final class OnDemandPageGenerator: ObservableObject {
         defer { isGenerating = false }
         
         do {
-            let result = try await FragmentedPageGenerator.generateContent(
+            let result = try await fragmentedPageGenerator.generateContent(
                 startingAt: key,
                 pageSize: size,
-                fragmentPending: fragmentPending,
-                using: loader
+                fragmentPending: fragmentPending
             )
             
             currentFragmentedPage = result.page

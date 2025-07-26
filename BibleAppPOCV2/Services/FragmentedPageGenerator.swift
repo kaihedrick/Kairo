@@ -50,7 +50,7 @@ final class FragmentedPageGenerator {
         
         // Handle pending fragment from previous page
         if let pendingFragment = fragmentPending {
-            let fragmentHeight = measureFragmentHeight(pendingFragment, maxSize: maxSize)
+            let fragmentHeight = FragmentedPageGenerator.measureFragmentHeight(pendingFragment, maxSize: maxSize)
             if accumulatedHeight + fragmentHeight <= availableHeight * 0.95 {
                 fragments.append(pendingFragment)
                 accumulatedHeight += fragmentHeight
@@ -78,7 +78,7 @@ final class FragmentedPageGenerator {
             
             var addedFragments = 0
             for fragment in verseFragments {
-                let fragmentHeight = measureFragmentHeight(fragment, maxSize: maxSize)
+                let fragmentHeight = FragmentedPageGenerator.measureFragmentHeight(fragment, maxSize: maxSize)
                 
                 if accumulatedHeight + fragmentHeight <= availableHeight * 0.95 {
                     fragments.append(fragment)

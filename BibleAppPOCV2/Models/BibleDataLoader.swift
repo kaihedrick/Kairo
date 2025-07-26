@@ -74,7 +74,7 @@ struct BibleVerse: Codable {
     let text: String
 }
 
-struct Bible: Codable {
+struct BibleData: Codable {
     let books: [BibleBook]
 }
 
@@ -82,7 +82,7 @@ struct Bible: Codable {
 class LegacyOptimizedBibleDataLoader: ObservableObject {
     static let shared = OptimizedBibleDataLoader()
 
-    @Published private(set) var bible: Bible?
+    @Published private(set) var bible: BibleData?
     @Published private(set) var loadError: Error?
 
     init() {
@@ -103,7 +103,7 @@ class LegacyOptimizedBibleDataLoader: ObservableObject {
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
-            let bible = try decoder.decode(Bible.self, from: data)
+            let bible = try decoder.decode(BibleData.self, from: data)
             await MainActor.run {
                 self.bible = bible
                 self.loadError = nil
