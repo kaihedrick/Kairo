@@ -280,7 +280,7 @@ public struct NavigationContext {
 /// the corresponding top-level type defined in this file.
 public enum ImprovedBibleModels {
     /// Sorted aliases for easier discovery and consistency
-    public typealias Bible             = BibleAppPOCV2.Bible
+    // Removed typealias Bible to resolve redeclaration and ambiguity errors
     public typealias BibleConstants    = BibleAppPOCV2.BibleConstants
     public typealias BibleError        = BibleAppPOCV2.BibleError
     public typealias BibleMetadata     = BibleAppPOCV2.BibleMetadata

@@ -10,7 +10,7 @@ import Foundation
 // MARK: - Repository Implementation using existing OptimizedBibleDataLoader
 
 actor OptimizedBibleRepository: BibleRepositoryProtocol {
-    private let dataLoader = OptimizedBibleDataLoader.shared
+    private let dataLoader = OptimizedBibleDataLoader()
     
     func loadMetadata() async throws -> ImprovedBibleModels.BibleMetadata {
         try await dataLoader.loadBibleMetadata()

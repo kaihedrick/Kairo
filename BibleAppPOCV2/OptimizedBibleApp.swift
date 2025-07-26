@@ -17,7 +17,8 @@ struct OptimizedBibleApp: App {
         print("🚨 Memory warning received - cleaning up resources")
 
         Task {
-            await OptimizedBibleDataLoader.shared.handleMemoryWarning()
+            let dataLoader = OptimizedBibleDataLoader()
+            await dataLoader.handleMemoryWarning()
         }
 
         // Force garbage collection

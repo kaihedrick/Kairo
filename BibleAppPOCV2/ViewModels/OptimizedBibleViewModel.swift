@@ -21,7 +21,7 @@ class OptimizedBibleViewModel: ObservableObject {
     
     // Support for dependency injection (for future translation support)
     private let repository: BibleRepositoryProtocol?
-    private let dataLoader = OptimizedBibleDataLoader.shared
+    private let dataLoader = OptimizedBibleDataLoader()
     
     init(repository: BibleRepositoryProtocol? = nil) {
         self.repository = repository
@@ -67,7 +67,7 @@ class OptimizedBibleViewModel: ObservableObject {
             initializationProgress = 0.1
             
             // Use dependency injection pattern (preparation for future migration)
-            let dataLoader = OptimizedBibleDataLoader.shared
+            let dataLoader = OptimizedBibleDataLoader()
             
             try await dataLoader.loadBibleMetadata()
             initializationProgress = 0.8
