@@ -8,6 +8,7 @@
 
 import Foundation
 import SwiftUI
+import BibleAppPOCV2
 
 // MARK: - Domain Models (Business Logic Layer)
 
@@ -41,10 +42,9 @@ public struct VerseReference: Hashable, Codable, CustomStringConvertible {
     }
 }
 
-/// Represents a single verse with its content
 public struct Verse: Hashable, Identifiable {
     public let id = UUID()
-    let reference: VerseReference
+    public let reference: VerseReference
     let text: String
     
     public init(reference: VerseReference, text: String) {
@@ -53,10 +53,9 @@ public struct Verse: Hashable, Identifiable {
     }
 }
 
-/// Represents a chapter containing multiple verses
 public struct Chapter: Hashable, Identifiable {
     public let id = UUID()
-    let book: String
+    public let book: String
     let number: Int
     let verses: [Verse]
     
@@ -69,7 +68,6 @@ public struct Chapter: Hashable, Identifiable {
     }
 }
 
-/// Represents a book containing multiple chapters
 public struct Book: Hashable, Identifiable {
     public let id = UUID()
     let name: String
@@ -91,7 +89,6 @@ public struct Book: Hashable, Identifiable {
 
 // MARK: - Presentation Models (View Layer)
 
-/// Lightweight metadata for UI display
 public struct BookMetadata: Hashable, Codable {
     let name: String
     let chapterCount: Int
@@ -104,7 +101,6 @@ public struct BookMetadata: Hashable, Codable {
     }
 }
 
-/// Collection of book metadata for navigation
 public struct BibleMetadata: Codable {
     let books: [BookMetadata]
     
@@ -117,10 +113,9 @@ public struct BibleMetadata: Codable {
     }
 }
 
-/// Page of formatted content for display
 public struct PageContent: Identifiable, Equatable {
     public let id = UUID()
-    let attributedText: AttributedString
+    public let attributedText: AttributedString
     let startReference: VerseReference
     let endReference: VerseReference
     let references: [VerseReference]
@@ -220,7 +215,6 @@ public enum BibleError: LocalizedError, Equatable {
 
 // MARK: - Advanced Domain Models
 
-/// Represents a range of verses for pagination
 public struct VerseRange: Hashable, Codable {
     let start: VerseReference
     let end: VerseReference
@@ -248,7 +242,6 @@ public struct VerseRange: Hashable, Codable {
     }
 }
 
-/// Navigation context for better UX
 public struct NavigationContext {
     let isFirstChapter: Bool
     let isLastChapter: Bool
@@ -272,18 +265,23 @@ public struct NavigationContext {
 /// Provides namespaced access to the improved models. This helps avoid
 /// type name collisions while migrating legacy code. Each alias refers to
 /// the corresponding top-level type defined in this file.
+// Removed invalid circular/self-referencing typealiases:
+// public typealias BookMetadata = BookMetadata
+// public typealias BibleMetadata = BibleMetadata
+// public typealias ServiceResult<T> = ServiceResult<T>
+// Add other typealiases as needed
 public enum ImprovedBibleModels {
-    /// Sorted aliases for easier discovery and consistency
-    // Removed typealias Bible to resolve redeclaration and ambiguity errors
-    public typealias BibleConstants    = BibleAppPOCV2.BibleConstants
-    public typealias BibleError        = BibleAppPOCV2.BibleError
-    public typealias BibleMetadata     = BibleAppPOCV2.BibleMetadata
-    public typealias Chapter           = BibleAppPOCV2.Chapter
-    public typealias Verse             = Verse
-    public typealias VerseReference    = VerseReference
-    public typealias BookMetadata      = BibleAppPOCV2.BookMetadata
-    public typealias NavigationContext = BibleAppPOCV2.NavigationContext
-    public typealias PageContent       = BibleAppPOCV2.PageContent
-    public typealias ServiceResult<T>  = BibleAppPOCV2.ServiceResult<T>
-    public typealias VerseRange        = BibleAppPOCV2.VerseRange
+    // Migration compatibility: expose top-level types as static typealiases
+    // Removed invalid alias: typealias Book = Book
+    // Removed invalid alias: typealias Chapter = Chapter
+    // Removed invalid alias: typealias Verse = Verse
+    // Removed invalid alias: typealias VerseReference = VerseReference
+    // Removed invalid alias: typealias VerseRange = VerseRange
+    // Removed invalid alias: typealias BibleMetadata = BibleMetadata
+    // Removed invalid alias: typealias BookMetadata = BookMetadata
+    // Removed invalid alias: typealias NavigationContext = NavigationContext
+    // Removed invalid alias: typealias ServiceResult<T> = ServiceResult<T>
+    // Removed invalid alias: typealias BibleError = BibleError
+    // Removed invalid alias: typealias BibleConstants = BibleConstants
+    // Removed invalid alias: typealias PageContent = PageContent
 }

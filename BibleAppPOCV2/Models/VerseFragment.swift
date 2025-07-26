@@ -8,6 +8,8 @@
 //
 
 import Foundation
+import BibleAppPOCV2
+// import BibleAppPOCV2.Models.ImprovedBibleModels
 import SwiftUI
 
 /// Represents a portion of a verse that can span across pages
@@ -86,29 +88,15 @@ public struct VerseFragment: Hashable, Identifiable, Codable {
 }
 
 /// Collection of verse fragments that make up a page
-public struct FragmentedPage: Identifiable, Codable {
+public struct FragmentedPage: Identifiable, Codable, Hashable, Equatable {
     public let id = UUID()
-    
-    /// All fragments on this page
-    let fragments: [VerseFragment]
-    
-    /// Navigation title for this page
-    let navTitle: String
-    
-    /// Starting verse reference
-    let startVerse: VerseReference
-    
-    /// Ending verse reference
-    let endVerse: VerseReference
-    
-    /// Combined content as string (AttributedString is not Codable)
-    let contentString: String
-    
-    /// Total height of content (measured)
-    let measuredHeight: CGFloat
-    
-    /// Available height when page was created
-    let availableHeight: CGFloat
+    public let fragments: [VerseFragment]
+    public let navTitle: String
+    public let startVerse: VerseReference
+    public let endVerse: VerseReference
+    public let contentString: String
+    public let measuredHeight: CGFloat
+    public let availableHeight: CGFloat
     
     /// Combined attributed content for rendering (computed property)
     var content: AttributedString {

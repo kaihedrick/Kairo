@@ -29,9 +29,24 @@
 		4F9C0B4F2DFD3758007ED13A /* BibleAppPOCV2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BibleAppPOCV2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4F743DEA2E34785600B2CF0B /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Services/OnDemandPageGenerator.swift.backup,
+				Test/CodableTest.swift.disabled,
+				Views/OptimizedBookGridView.swift.backup,
+			);
+			target = 4F9C0B372DFD3757007ED13A /* BibleAppPOCV2 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4F9C0B3A2DFD3757007ED13A /* BibleAppPOCV2 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4F743DEA2E34785600B2CF0B /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2" target */,
+			);
 			path = BibleAppPOCV2;
 			sourceTree = "<group>";
 		};

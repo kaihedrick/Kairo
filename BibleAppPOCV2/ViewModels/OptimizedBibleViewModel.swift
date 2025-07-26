@@ -14,7 +14,7 @@ import SwiftUI
 @MainActor
 class OptimizedBibleViewModel: ObservableObject {
     // Use the improved models explicitly to avoid type ambiguity
-    @Published var metadata: ImprovedBibleModels.BibleMetadata?
+    @Published var metadata: BibleMetadata?
     @Published var isInitializing = true
     @Published var initializationProgress: Double = 0.0
     @Published var errorMessage: String?
@@ -101,7 +101,7 @@ class OptimizedBibleViewModel: ObservableObject {
     }
 
     /// Search books with improved architecture
-    func searchBooksImproved(query: String) async -> [ImprovedBibleModels.BookMetadata] {
+    func searchBooksImproved(query: String) async -> [BookMetadata] {
         guard let metadata = metadata else { return [] }
         
         // Use better filtering with validation

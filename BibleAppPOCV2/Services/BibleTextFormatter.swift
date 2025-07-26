@@ -4,6 +4,7 @@
 
 import Foundation
 import SwiftUI
+// ...existing code...
 
 /// Handles Bible text formatting with Crossway-compatible typography
 struct BibleTextFormatter {

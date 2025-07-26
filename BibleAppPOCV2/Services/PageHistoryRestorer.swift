@@ -1,6 +1,7 @@
 // filepath: BibleAppPOCV2/Services/PageHistoryRestorer.swift
 import Foundation
 import SwiftUI
+// ...existing code...
 
 /// ACID-Safe page history restoration service for durability guarantees
 class PageHistoryRestorer {
