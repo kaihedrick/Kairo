@@ -13,10 +13,16 @@ import SwiftUI
 /// Enhanced navigation manager for fragmented pages with reliable backward navigation
 @MainActor
 final class FragmentedPageNavigationManager: ObservableObject {
-    private let loader = OptimizedBibleDataLoader.shared
+    private let loader: OptimizedBibleDataLoader
     private let historyService = PageHistoryService()
     private let pageSize: CGSize
     private var isNavigatingFromHistory = false
+
+    // Dependency injection initializer
+    init(loader: OptimizedBibleDataLoader, pageSize: CGSize) {
+        self.loader = loader
+        self.pageSize = pageSize
+    }
     
     init(pageSize: CGSize) {
         self.pageSize = pageSize

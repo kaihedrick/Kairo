@@ -99,7 +99,7 @@ struct OptimizedVerseView: View {
         loadError = nil
         
         do {
-            chapterContent = await OptimizedBibleDataLoader.shared.loadChapterContent(
+            chapterContent = await loader.loadChapterContent(
                 book: bookName, 
                 chapter: chapterNumber
             )

@@ -16,7 +16,6 @@ public enum Testament: String, CaseIterable {
     case all = "All"
     case old = "Old Testament"
     case new = "New Testament"
-}
 
 /// Core verse identifier - immutable value object
 public struct VerseReference: Hashable, Codable, CustomStringConvertible {
@@ -85,11 +84,6 @@ public struct Book: Hashable, Identifiable {
 }
 
 /// Complete Bible structure
-public struct Bible {
-    let books: [Book]
-    
-    var bookCount: Int { books.count }
-    
     func book(named name: String) -> Book? {
         books.first { $0.name == name }
     }
@@ -284,13 +278,12 @@ public enum ImprovedBibleModels {
     public typealias BibleConstants    = BibleAppPOCV2.BibleConstants
     public typealias BibleError        = BibleAppPOCV2.BibleError
     public typealias BibleMetadata     = BibleAppPOCV2.BibleMetadata
-    public typealias Book              = BibleAppPOCV2.Book
-    public typealias BookMetadata      = BibleAppPOCV2.BookMetadata
     public typealias Chapter           = BibleAppPOCV2.Chapter
+    public typealias Verse             = Verse
+    public typealias VerseReference    = VerseReference
+    public typealias BookMetadata      = BibleAppPOCV2.BookMetadata
     public typealias NavigationContext = BibleAppPOCV2.NavigationContext
     public typealias PageContent       = BibleAppPOCV2.PageContent
     public typealias ServiceResult<T>  = BibleAppPOCV2.ServiceResult<T>
-    public typealias Verse             = BibleAppPOCV2.Verse
     public typealias VerseRange        = BibleAppPOCV2.VerseRange
-    public typealias VerseReference    = BibleAppPOCV2.VerseReference
 }

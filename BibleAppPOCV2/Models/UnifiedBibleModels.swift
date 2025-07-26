@@ -16,24 +16,25 @@ import SwiftUI
 enum UnifiedBibleModels {
     // Core domain models
     // Removed typealias Bible to resolve ambiguity
-    typealias Book           = ImprovedBibleModels.Book
-    typealias Chapter        = ImprovedBibleModels.Chapter
-    typealias Verse          = ImprovedBibleModels.Verse
-    typealias VerseReference = ImprovedBibleModels.VerseReference
-    typealias VerseRange     = ImprovedBibleModels.VerseRange
+typealias LegacyBook           = Book
+typealias LegacyChapter        = Chapter
+public typealias Chapter           = Chapter
+public typealias Verse             = Verse
+public typealias VerseReference    = VerseReference
+public typealias VerseRange        = VerseRange
 
     // Metadata and navigation
-    typealias BibleMetadata     = ImprovedBibleModels.BibleMetadata
-    typealias BookMetadata      = ImprovedBibleModels.BookMetadata
-    typealias NavigationContext = ImprovedBibleModels.NavigationContext
+    typealias BibleMetadata     = BibleMetadata
+    typealias BookMetadata      = BookMetadata
+    typealias NavigationContext = NavigationContext
 
     // Service and error handling
-    typealias ServiceResult<T> = ImprovedBibleModels.ServiceResult<T>
-    typealias BibleError       = ImprovedBibleModels.BibleError
+    typealias ServiceResult<T> = ServiceResult<T>
+    typealias BibleError       = BibleError
 
     // Other shared types
-    typealias BibleConstants = ImprovedBibleModels.BibleConstants
-    typealias PageContent    = ImprovedBibleModels.PageContent
+    typealias BibleConstants = BibleConstants
+    typealias PageContent    = PageContent
 }
 
 // MARK: - Type Aliases for Backwards Compatibility
