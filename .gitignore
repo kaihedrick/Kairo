@@ -1,2 +1,10 @@
 BibleAppPOCV2/Resources/ML/model.npz
 BibleAppPOCV2/Resources/ML/t5_tokenizer_vocab.json
+/TestResults.xcresult/Data
+build.log
+build.log
+build.log
+build.log
+*.log
+build.log
+*.log

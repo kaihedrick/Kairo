@@ -13,39 +13,48 @@ import SwiftUI
 /// Namespace providing aliases to the improved domain models.
 /// This maintains backwards compatibility for components that still
 /// reference `UnifiedBibleModels` while ensuring a single source of truth.
+// public typealias VerseReference = ImprovedBibleModels.VerseReference
+// public typealias Verse = ImprovedBibleModels.Verse
+// public typealias Chapter = ImprovedBibleModels.Chapter
+// public typealias Book = ImprovedBibleModels.Book
+// public typealias BookMetadata = ImprovedBibleModels.BookMetadata
+// public typealias BibleMetadata = ImprovedBibleModels.BibleMetadata
+// public typealias ServiceResult<T> = ImprovedBibleModels.ServiceResult<T>
+// If you need additional typealiases, add them here
 enum UnifiedBibleModels {
     // Core domain models
-    // Removed typealias Bible to resolve ambiguity
-typealias LegacyBook           = Book
-typealias LegacyChapter        = Chapter
-public typealias Chapter           = Chapter
-public typealias Verse             = Verse
-public typealias VerseReference    = VerseReference
-public typealias VerseRange        = VerseRange
+
+
+
+    // Removed invalid alias: typealias Book = ImprovedBibleModels.Book
+    // Removed invalid alias: typealias Chapter = ImprovedBibleModels.Chapter
+    // Removed invalid alias: typealias Verse = ImprovedBibleModels.Verse
+    // Removed invalid alias: typealias VerseReference = ImprovedBibleModels.VerseReference
+    // Removed invalid alias: typealias VerseRange = ImprovedBibleModels.VerseRange
 
     // Metadata and navigation
-    typealias BibleMetadata     = BibleMetadata
-    typealias BookMetadata      = BookMetadata
-    typealias NavigationContext = NavigationContext
+    // Removed invalid alias: typealias BibleMetadata = ImprovedBibleModels.BibleMetadata
+    // Removed invalid alias: typealias BookMetadata = ImprovedBibleModels.BookMetadata
+    // Removed invalid alias: typealias NavigationContext = ImprovedBibleModels.NavigationContext
 
     // Service and error handling
-    typealias ServiceResult<T> = ServiceResult<T>
-    typealias BibleError       = BibleError
+    // Removed invalid alias: typealias ServiceResult<T> = ImprovedBibleModels.ServiceResult<T>
+    // Removed invalid alias: typealias BibleError = ImprovedBibleModels.BibleError
 
     // Other shared types
-    typealias BibleConstants = BibleConstants
-    typealias PageContent    = PageContent
+    // Removed invalid alias: typealias BibleConstants = ImprovedBibleModels.BibleConstants
+    // Removed invalid alias: typealias PageContent = ImprovedBibleModels.PageContent
 }
 
 // MARK: - Type Aliases for Backwards Compatibility
 /// These aliases preserve external API names while the underlying
 /// implementations come from `ImprovedBibleModels`.
 enum UnifiedTypeAliases {
-    typealias UnifiedBibleMetadata = UnifiedBibleModels.BibleMetadata
-    typealias UnifiedBookMetadata  = UnifiedBibleModels.BookMetadata
-    typealias UnifiedChapter       = UnifiedBibleModels.Chapter
-    typealias UnifiedVerse         = UnifiedBibleModels.Verse
-    typealias UnifiedVerseReference = UnifiedBibleModels.VerseReference
-    typealias UnifiedBibleError    = UnifiedBibleModels.BibleError
-    typealias UnifiedServiceResult<T> = UnifiedBibleModels.ServiceResult<T>
+    // typealias UnifiedBibleMetadata = UnifiedBibleModels.BibleMetadata
+    // typealias UnifiedBookMetadata  = UnifiedBibleModels.BookMetadata
+    // typealias UnifiedChapter       = UnifiedBibleModels.Chapter
+    // typealias UnifiedVerse         = UnifiedBibleModels.Verse
+    // typealias UnifiedVerseReference = UnifiedBibleModels.VerseReference
+    // typealias UnifiedBibleError    = UnifiedBibleModels.BibleError
+    // typealias UnifiedServiceResult<T> = UnifiedBibleModels.ServiceResult<T>
 }

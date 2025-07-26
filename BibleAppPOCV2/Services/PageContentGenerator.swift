@@ -22,7 +22,7 @@ final class PageContentGenerator {
         from key: VerseKey,
         pageSize: CGSize,
         tail: AttributedString? = nil,
-        using loader: OptimizedBibleDataLoader = OptimizedBibleDataLoader.shared
+        using loader: OptimizedBibleDataLoader = OptimizedBibleDataLoader()
     ) async -> Result<(page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?), PageGenerationError> {
         
         guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {

@@ -1,5 +1,6 @@
 // filepath: BibleAppPOCV2/Models/PageSnapshot.swift
 import Foundation
+import BibleAppPOCV2
 
 /// Represents a snapshot of a page's fragment range for backward navigation
 struct PageSnapshot: Codable, Equatable {
@@ -14,7 +15,6 @@ struct PageSnapshot: Codable, Equatable {
     
     /// The verse reference where this page ends
     let endVerse: VerseReference
-    
     /// Navigation title for this page
     let navTitle: String
     

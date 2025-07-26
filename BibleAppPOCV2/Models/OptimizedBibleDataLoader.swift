@@ -41,8 +41,8 @@ struct OptimizedBible: Codable {
 // MARK: - Explicit Model Selection for Loader
 // Use ImprovedBibleModels types for metadata
 
-typealias LoaderBibleMetadata = ImprovedBibleModels.BibleMetadata
-typealias LoaderBookMetadata = ImprovedBibleModels.BookMetadata
+typealias LoaderBibleMetadata = BibleMetadata
+typealias LoaderBookMetadata = BookMetadata
 
 // MARK: - Type Aliases for disambiguation
 // These aliases ensure we consistently reference the improved models

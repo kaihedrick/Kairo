@@ -49,7 +49,7 @@ final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentGeneratedPage: GeneratedPage?
 
     private let cache = SliceCache()
-    private let loader = OptimizedBibleDataLoader.shared
+    private let loader = OptimizedBibleDataLoader()
     private let historyManager = PageHistoryService()
     private var size: CGSize
     private var currentNode: SliceNode?
