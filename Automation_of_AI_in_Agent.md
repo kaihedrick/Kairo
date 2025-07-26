@@ -1,451 +1,460 @@
-# 🤖 Automated Integration Plan for BibleAppPOCV2
+# 🤖 AI Agent Rebuild & Assessment Framework
 
-> This markdown document defines the automated AI agent prompting framework and diagnostics strategy for integrating features into the BibleAppPOCV2 project. It is used to guide a CLI-capable AI assistant (e.g., Cloud 4.0 Agent or Claude-style expert system) to precisely locate, diagnose, and modify code and assets within a Swift + Python hybrid project.
-
----
-
-## 🎯 Objective
-
-To provide structured JSON-based prompts to a terminal-aware AI agent that:
-
-* Understands the Swift + Python MLX integration context
-* Can simulate console commands
-* Can analyze directory trees and file types
-* Automates summarization model updates and app feature integration
+> Comprehensive automation framework for rebuilding projects, monitoring console logs, and performing systematic assessments with human oversight.
 
 ---
 
-## 📁 Directory Detection and File Scanning
+## 🎯 Core Objectives
 
-### 🔍 Goal
+The AI agent will systematically:
+- **Rebuild** the BibleAppPOCV2 project with dependency management
+- **Monitor** console logs during build and runtime
+- **Assess** code quality, performance, and integration status
+- **Report** findings with actionable recommendations
 
-Ensure the AI agent can:
+---
 
-* Identify relevant project directories
-* Locate files of specific types (e.g., `.swift`, `.json`, `.mlpackage`, `.py`)
-* Traverse nested folders
+## 📋 Phase 1: Pre-Build Assessment
 
-### ✅ Agent Prompt Snippet
+### 🔍 Environment Discovery
 
 ```json
 {
-  "command": "find . -type f \( -name '*.swift' -o -name '*.py' -o -name '*.json' -o -name '*.mlpackage' -o -name '*.npz' \)",
-  "description": "List all relevant code and ML asset files"
-}
-```
-
----
-
-## ⚙️ Swift Integration Commands
-
-### 🧠 Objective
-
-Find or modify Swift files that:
-
-* Tokenize verse input
-* Call encoder model
-* Simulate decoder logic
-* Display UI
-
-### ✅ Agent Prompt Snippet
-
-```json
-{
-  "command": "grep -r 'FlanT5Encoder' ./KairoBibleApp/Services",
-  "description": "Search for encoder model usage in Swift logic"
-}
-```
-
----
-
-## 🧪 Python Model Conversion / Export Scripts
-
-### 🔁 Objective
-
-Ensure AI can:
-
-* Trigger or diagnose training, tracing, and conversion pipeline
-* Understand file dependencies (tokenizer, model checkpoints, config files)
-
-### ✅ Agent Prompt Snippet
-
-```json
-{
-  "command": "ls ./scripts && grep -r 'from_pretrained' ./scripts",
-  "description": "List and inspect Python scripts that load or export models"
-}
-```
-
----
-
-## 📦 Deployment Target Check
-
-### 🎯 Objective
-
-Validate Xcode compatibility and ML asset presence for iOS 18+
-
-### ✅ Agent Prompt Snippet
-
-```json
-{
-  "command": "plutil -p ./KairoBibleApp/Info.plist | grep 'MinimumOSVersion'",
-  "description": "Ensure deployment target is iOS 17 or 18+"
-}
-```
-
----
-
-## 🔁 Integration Pipeline Simulation
-
-### 🌐 Objective
-
-Give the AI a repeatable framework to:
-
-1. Tokenize
-2. Encode
-3. Decode (simulate)
-4. Detokenize
-5. Display
-
-### ✅ Suggested AI Action Summary
-
-```json
-{
-  "task": "Integrate new ML model",
-  "steps": [
-    "Tokenize verse in T5Tokenizer.swift",
-    "Send tokens to FlanT5Encoder.mlpackage via LLMService.swift",
-    "Simulate decoder outputs in Swift",
-    "Detokenize results",
-    "Update VerseSummaryPopupView.swift to render result"
+  "command_sequence": [
+    {
+      "cmd": "pwd && ls -la",
+      "description": "Identify current directory and project structure"
+    },
+    {
+      "cmd": "find . -name '*.xcodeproj' -o -name '*.xcworkspace'",
+      "description": "Locate Xcode project files"
+    },
+    {
+      "cmd": "find . -name 'Podfile' -o -name 'Package.swift' -o -name 'requirements.txt'",
+      "description": "Identify dependency management files"
+    },
+    {
+      "cmd": "git status && git log --oneline -5",
+      "description": "Check git status and recent commits"
+    }
   ],
-  "filesToCheck": [
-    "T5Tokenizer.swift",
-    "LLMService.swift",
-    "VerseSummaryViewModel.swift",
-    "VerseSummaryPopupView.swift"
+  "validation": "Ensure all required project files are present"
+}
+```
+
+### 🧪 Dependency Health Check
+
+```json
+{
+  "swift_dependencies": {
+    "cmd": "swift package resolve",
+    "fallback": "pod install --repo-update",
+    "validation": "Check for dependency resolution errors"
+  },
+  "python_dependencies": {
+    "cmd": "pip install -r requirements.txt",
+    "validation": "Verify MLX and transformers installation"
+  },
+  "ml_assets": {
+    "cmd": "find . -name '*.mlpackage' -o -name '*.npz' | head -10",
+    "validation": "Confirm ML model files are present"
+  }
+}
+```
+
+---
+
+## 🏗️ Phase 2: Systematic Rebuild Process
+
+### 🔄 Build Execution Strategy
+
+```json
+{
+  "build_sequence": [
+    {
+      "step": "clean",
+      "cmd": "xcodebuild clean -workspace project.xcworkspace -scheme BibleAppPOCV2",
+      "timeout": 60,
+      "retry_count": 2
+    },
+    {
+      "step": "build",
+      "cmd": "xcodebuild build -workspace project.xcworkspace -scheme BibleAppPOCV2 -destination 'platform=iOS Simulator,name=iPhone 15' | tee build.log",
+      "timeout": 300,
+      "log_capture": true
+    },
+    {
+      "step": "test",
+      "cmd": "xcodebuild test -workspace project.xcworkspace -scheme BibleAppPOCV2 -destination 'platform=iOS Simulator,name=iPhone 15' | tee test.log",
+      "timeout": 180,
+      "optional": true
+    }
+  ]
+}
+```
+
+### 🔍 Real-Time Log Monitoring
+
+```json
+{
+  "log_monitoring": {
+    "build_logs": {
+      "file": "build.log",
+      "patterns": {
+        "errors": "\\berror:\\s*(.+)",
+        "warnings": "\\bwarning:\\s*(.+)",
+        "swift_errors": "Swift compilation error",
+        "linker_errors": "Undefined symbols|ld: symbol"
+      }
+    },
+    "console_logs": {
+      "cmd": "xcrun simctl spawn booted log stream --predicate 'subsystem CONTAINS \"com.bibleapp.pocv2\"' | tee console.log &",
+      "patterns": {
+        "crashes": "SIGABRT|SIGSEGV|EXC_BAD_ACCESS",
+        "ml_errors": "Core ML|MLModel|prediction failed",
+        "memory_warnings": "Memory warning|didReceiveMemoryWarning"
+      }
+    }
+  }
+}
+```
+
+---
+
+## 📊 Phase 3: Comprehensive Assessment
+
+### 🧠 Code Quality Analysis
+
+```json
+{
+  "code_analysis": [
+    {
+      "tool": "swiftlint",
+      "cmd": "swiftlint lint --reporter json > swiftlint_report.json",
+      "assessment": "Code style and best practices"
+    },
+    {
+      "tool": "grep_analysis",
+      "cmd": "grep -r 'TODO\\|FIXME\\|HACK' --include='*.swift' .",
+      "assessment": "Technical debt indicators"
+    },
+    {
+      "tool": "complexity_check",
+      "cmd": "find . -name '*.swift' -exec wc -l {} + | sort -n | tail -10",
+      "assessment": "File size complexity"
+    }
+  ]
+}
+```
+
+### 🔬 ML Integration Assessment
+
+```json
+{
+      "ml_integration_check": {
+    "tokenizer_analysis": {
+      "cmd": "grep -r 'T5Tokenizer\\|tokenize' --include='*.swift' ./BibleAppPOCV2/Services",
+      "assessment": "Tokenization implementation status"
+    },
+    "model_loading": {
+      "cmd": "grep -r 'FlanT5Encoder\\|MLModel' --include='*.swift' .",
+      "assessment": "Model loading and inference setup"
+    },
+    "performance_check": {
+      "cmd": "grep -r 'prediction\\|inference' --include='*.swift' . | wc -l",
+      "assessment": "ML prediction usage patterns"
+    }
+  }
+}
+```
+
+### 📱 App Functionality Verification
+
+```json
+{
+  "functionality_tests": [
+    {
+      "component": "VerseSummaryPopupView",
+      "cmd": "grep -A 10 -B 5 'VerseSummaryPopupView' --include='*.swift' .",
+      "validation": "UI component integration"
+    },
+    {
+      "component": "LLMService",
+      "cmd": "grep -A 15 'class LLMService\\|struct LLMService' --include='*.swift' .",
+      "validation": "Service layer implementation"
+    },
+    {
+      "component": "Data persistence",
+      "cmd": "grep -r 'CoreData\\|UserDefaults\\|Realm' --include='*.swift' .",
+      "validation": "Data storage mechanisms"
+    }
   ]
 }
 ```
 
 ---
 
-# 🧠 Systematic Bot Automation Framework
+## 🚨 Phase 4: Error Detection & Diagnosis
 
-## Overview
-
-This framework adapts Claude Code's systematic planning approach and flexible architecture principles to create robust, maintainable bot automation systems. The methodology emphasizes structured planning, modular design, and human oversight.
-
-## Core Principles
-
-### 1. Systematic Planning Before Execution
-
-* Always create a comprehensive plan before implementing any automation
-* Break complex tasks into sequential, manageable subtasks
-* Document dependencies and prerequisites for each step
-* Establish clear success criteria and validation points
-
-### 2. Flexible Architecture Design
-
-* Build low-level, unopinionated systems that don't force specific workflows
-* Provide close-to-raw access to underlying capabilities
-* Maintain modularity for customization and scriptability
-* Ensure safety through built-in guardrails and human oversight
-
-### 3. Human-in-the-Loop Control
-
-* Maintain human supervision at critical decision points
-* Provide clear visibility into bot actions and reasoning
-* Enable easy intervention and course correction
-* Log all activities for audit and improvement
-
-## Planning Framework
-
-### Phase 1: Task Analysis and Decomposition
-
-#### 1.1 Initial Assessment
-
-```markdown
-**Task**: [Describe the high-level automation goal]
-**Scope**: [Define boundaries and limitations]
-**Success Criteria**: [Measurable outcomes]
-**Risk Assessment**: [Potential failure points]
-```
-
-#### 1.2 Dependency Mapping
-
-* **Prerequisites**: What must exist before starting
-* **Resources Required**: APIs, credentials, data sources
-* **External Dependencies**: Third-party services, human inputs
-* **Environmental Requirements**: System capabilities, permissions
-
-#### 1.3 Task Decomposition Structure
-
-```markdown
-### Primary Task: [Main Goal]
-
-#### Subtask 1: [Component Task]
-- **Objective**: [Specific outcome]
-- **Inputs**: [Required data/resources]
-- **Outputs**: [Expected results]
-- **Dependencies**: [What must complete first]
-- **Validation**: [How to verify success]
-- **Rollback**: [Recovery procedure if failed]
-
-#### Subtask 2: [Next Component]
-[Repeat structure]
-```
-
-### Phase 2: Execution Planning
-
-#### 2.1 Sequential Task Ordering
-
-1. **Preparation Tasks**: Setup, authentication, data gathering
-2. **Core Execution Tasks**: Primary automation logic
-3. **Validation Tasks**: Verification and quality checks
-4. **Cleanup Tasks**: Resource management, logging, notifications
-
-#### 2.2 Decision Points and Branching
-
-```markdown
-**Decision Point**: [What needs to be determined]
-- **Condition A**: [Scenario] → [Action Path]
-- **Condition B**: [Scenario] → [Alternative Path]
-- **Error State**: [Failure scenario] → [Recovery Path]
-```
-
-## Architecture Guidelines
-
-### 1. Modular Component Design
-
-#### Core Components
-
-* **Task Planner**: Analyzes requests and creates execution plans
-* **Executor Engine**: Manages task execution with proper error handling
-* **State Manager**: Tracks progress and maintains system state
-* **Interface Layer**: Handles human interaction and oversight
-* **Logging System**: Records all actions and decisions
-
-#### Component Interface Standards
-
-```python
-# Example component interface
-class BotComponent:
-    def execute(self, inputs: dict) -> dict:
-        """Execute component logic with standardized input/output"""
-        pass
-
-    def validate(self, result: dict) -> bool:
-        """Validate execution results"""
-        pass
-
-    def rollback(self) -> bool:
-        """Reverse component actions if needed"""
-        pass
-```
-
-### 2. Configuration Management
-
-#### 2.1 Layered Configuration
-
-```yaml
-# base_config.yaml
-system:
-  safety_mode: true
-  human_oversight: required
-  max_retry_attempts: 3
-  timeout_seconds: 300
-
-# task_config.yaml
-task_specific:
-  api_endpoints: []
-  data_sources: []
-  output_formats: []
-```
-
-#### 2.2 Dynamic Configuration
-
-* Allow runtime configuration updates
-* Support environment-specific overrides
-* Maintain configuration versioning
-* Enable feature flags for gradual rollouts
-
-### 3. Safety and Control Mechanisms
-
-#### 3.1 Guardrails Implementation
-
-* **Rate Limiting**: Prevent overwhelming external systems
-* **Resource Limits**: Cap CPU, memory, and network usage
-* **Action Validation**: Pre-execution safety checks
-* **Rollback Capabilities**: Undo mechanisms for all actions
-
-#### 3.2 Human Oversight Integration
-
-```markdown
-**Oversight Levels**:
-- **Level 0**: Full autonomy (low-risk tasks only)
-- **Level 1**: Notification after action
-- **Level 2**: Approval before critical actions
-- **Level 3**: Step-by-step human guidance
-```
-
-## Implementation Workflow
-
-### Step 1: Planning Phase
-
-1. **Receive Task Request**
-
-   * Parse natural language instructions
-   * Extract key requirements and constraints
-   * Identify ambiguities requiring clarification
-
-2. **Generate Execution Plan**
-
-   * Apply task decomposition framework
-   * Create dependency graph
-   * Estimate resource requirements and timeline
-
-3. **Plan Review and Approval**
-
-   * Present plan to human supervisor
-   * Incorporate feedback and modifications
-   * Finalize execution strategy
-
-### Step 2: Execution Phase
-
-1. **Environment Preparation**
-
-   * Validate all prerequisites
-   * Initialize required resources
-   * Set up monitoring and logging
-
-2. **Sequential Task Execution**
-
-   * Execute tasks according to plan
-   * Validate each step before proceeding
-   * Handle errors with predefined strategies
-
-3. **Progress Monitoring**
-
-   * Track completion status
-   * Report milestones to human supervisor
-   * Adjust plan if conditions change
-
-### Step 3: Validation and Cleanup
-
-1. **Result Validation**
-
-   * Verify all success criteria met
-   * Run quality assurance checks
-   * Generate completion report
-
-2. **Resource Cleanup**
-
-   * Release temporary resources
-   * Archive logs and artifacts
-   * Update system state
-
-## Error Handling Strategy
-
-### Error Classification
-
-* **Recoverable Errors**: Retry with backoff strategy
-* **Configuration Errors**: Request human intervention
-* **System Errors**: Graceful degradation or abort
-* **Logic Errors**: Log and escalate for review
-
-### Recovery Procedures
-
-```markdown
-**Error Response Protocol**:
-1. **Immediate**: Stop current operation
-2. **Assess**: Determine error type and severity
-3. **Recover**: Apply appropriate recovery strategy
-4. **Report**: Notify human supervisor of issue and resolution
-5. **Learn**: Update error handling based on experience
-```
-
-## Monitoring and Observability
-
-### Key Metrics
-
-* **Task Success Rate**: Percentage of completed tasks
-* **Execution Time**: Average and peak performance
-* **Error Frequency**: Types and frequency of failures
-* **Human Intervention Rate**: How often oversight is needed
-
-### Logging Standards
+### 🔧 Automated Issue Classification
 
 ```json
 {
-  "timestamp": "2024-01-15T10:30:00Z",
-  "task_id": "task_001",
-  "component": "executor",
-  "level": "INFO",
-  "message": "Task step completed successfully",
-  "context": {
-    "step": "data_validation",
-    "duration_ms": 1250,
-    "resources_used": {...}
+  "error_classification": {
+    "build_failures": {
+      "pattern": "Build failed|Compilation failed",
+      "severity": "critical",
+      "action": "immediate_fix_required"
+    },
+    "dependency_issues": {
+      "pattern": "Module not found|Package resolution failed",
+      "severity": "high",
+      "action": "dependency_update_needed"
+    },
+    "ml_model_issues": {
+      "pattern": "MLModel.*failed|Core ML error",
+      "severity": "high", 
+      "action": "model_debugging_required"
+    },
+    "runtime_warnings": {
+      "pattern": "warning:|deprecated",
+      "severity": "medium",
+      "action": "code_cleanup_suggested"
+    }
   }
 }
 ```
 
-## Best Practices
+### 🩺 Diagnostic Procedures
 
-### 1. Design Principles
-
-* **Fail Fast**: Detect issues early in the process
-* **Idempotency**: Ensure operations can be safely repeated
-* **Composability**: Build reusable, combinable components
-* **Transparency**: Make all actions and decisions visible
-
-### 2. Development Guidelines
-
-* Start with simple, well-understood tasks
-* Gradually increase complexity as system proves reliable
-* Maintain comprehensive test suites
-* Document all decisions and trade-offs
-
-### 3. Operational Excellence
-
-* Regular system health checks
-* Continuous improvement based on performance data
-* Proactive maintenance and updates
-* Clear escalation procedures for complex issues
-
-## Customization Framework
-
-### Plugin Architecture
-
-* Define standard interfaces for extensions
-* Support hot-swapping of components
-* Enable custom task types and execution strategies
-* Maintain backward compatibility
-
-### Scriptability Options
-
-* Command-line interface for direct control
-* Configuration file customization
-* API endpoints for integration
-* Webhook support for event-driven automation
-
-## Security Considerations
-
-### Access Control
-
-* Role-based permissions for different user types
-* API key management and rotation
-* Audit trails for all system access
-* Secure credential storage
-
-### Data Protection
-
-* Encrypt sensitive data in transit and at rest
-* Implement data retention policies
-* Anonymize logs where appropriate
-* Comply with relevant privacy regulations
+```json
+{
+  "diagnostic_workflow": [
+    {
+      "issue_type": "build_failure",
+      "steps": [
+        "Extract error context from build.log",
+        "Check for missing imports or dependencies",
+        "Verify Xcode version compatibility",
+        "Analyze Swift version conflicts"
+      ]
+    },
+    {
+      "issue_type": "ml_integration",
+      "steps": [
+        "Verify .mlpackage file integrity",
+        "Check model input/output specifications",
+        "Validate tokenizer configuration",
+        "Test inference pipeline independently"
+      ]
+    },
+    {
+      "issue_type": "runtime_crash",
+      "steps": [
+        "Parse crash logs for stack traces",
+        "Identify memory management issues",
+        "Check for nil pointer dereferences",
+        "Analyze async operation handling"
+      ]
+    }
+  ]
+}
+```
 
 ---
 
-*This framework provides a foundation for building systematic, reliable bot automation systems. Adapt the components and processes to fit your specific use case and requirements.*
+## 📈 Phase 5: Performance & Health Monitoring
+
+### ⚡ Performance Metrics Collection
+
+```json
+{
+  "performance_monitoring": {
+    "build_times": {
+      "cmd": "grep 'Build succeeded\\|Build failed' build.log | tail -1",
+      "metric": "total_build_duration"
+    },
+    "app_launch": {
+      "cmd": "xcrun simctl launch booted com.bibleapp.pocv2 && sleep 5",
+      "metric": "launch_time_seconds"
+    },
+    "memory_usage": {
+      "cmd": "xcrun simctl spawn booted vm_stat | head -10",
+      "metric": "memory_footprint"
+    },
+    "ml_inference": {
+      "pattern": "prediction.*took.*ms",
+      "metric": "inference_latency"
+    }
+  }
+}
+```
+
+### 🔍 Health Status Dashboard
+
+```json
+{
+  "health_indicators": {
+    "overall_status": "healthy|warning|critical",
+    "build_status": true,
+    "tests_passing": true,
+    "dependencies_resolved": true,
+    "ml_models_loaded": true,
+    "performance_acceptable": true,
+    "error_count": 0,
+    "warning_count": 5,
+    "last_successful_build": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+---
+
+## 🤖 Agent Execution Framework
+
+### 🎯 Systematic Planning Implementation
+
+```python
+# Pseudo-code for AI agent execution
+class BibleAppRebuildAgent:
+    def execute_rebuild_cycle(self):
+        # Phase 1: Assessment
+        environment_status = self.assess_environment()
+        if not environment_status.ready:
+            return self.request_human_intervention(environment_status.issues)
+        
+        # Phase 2: Rebuild
+        build_result = self.execute_build_sequence()
+        self.capture_logs(build_result)
+        
+        # Phase 3: Analysis  
+        assessment = self.perform_comprehensive_assessment()
+        
+        # Phase 4: Diagnosis
+        issues = self.classify_and_diagnose_issues()
+        
+        # Phase 5: Reporting
+        return self.generate_status_report(assessment, issues)
+    
+    def human_oversight_checkpoint(self, phase, data):
+        """Present findings to human supervisor for review"""
+        if self.oversight_level >= 2:  # Approval required
+            return self.request_approval(phase, data)
+        else:  # Notification only
+            self.notify_human(phase, data)
+            return True
+```
+
+### 🔄 Continuous Monitoring Loop
+
+```json
+{
+  "monitoring_schedule": {
+    "full_rebuild": "on_demand",
+    "log_monitoring": "continuous",
+    "health_check": "every_30_minutes", 
+    "dependency_update": "daily",
+    "performance_assessment": "after_each_build"
+  },
+  "alert_conditions": {
+    "build_failure": "immediate",
+    "test_failures": "within_15_minutes",
+    "performance_degradation": "within_1_hour",
+    "security_issues": "immediate"
+  }
+}
+```
+
+---
+
+## 📋 Human Oversight Integration
+
+### 🎛️ Control Levels
+
+```markdown
+**Level 0 - Full Autonomy**: 
+- Log monitoring and collection
+- Basic health checks
+- Performance metric gathering
+
+**Level 1 - Notification After Action**:
+- Dependency updates
+- Code quality analysis
+- Non-critical issue resolution
+
+**Level 2 - Approval Before Action**:
+- Build configuration changes
+- ML model updates
+- Major dependency modifications
+
+**Level 3 - Step-by-Step Guidance**:
+- Critical error resolution
+- Architecture modifications
+- Security-related changes
+```
+
+### 📊 Reporting Framework
+
+```json
+{
+  "report_structure": {
+    "executive_summary": {
+      "overall_status": "healthy|needs_attention|critical",
+      "key_metrics": {},
+      "critical_issues": [],
+      "recommendations": []
+    },
+    "detailed_findings": {
+      "build_analysis": {},
+      "code_quality": {},
+      "performance_metrics": {},
+      "ml_integration_status": {}
+    },
+    "action_items": {
+      "immediate": [],
+      "short_term": [],
+      "long_term": []
+    },
+    "logs_and_artifacts": {
+      "build_log": "build.log",
+      "console_log": "console.log", 
+      "test_results": "test_results.xml",
+      "performance_data": "performance_metrics.json"
+    }
+  }
+}
+```
+
+---
+
+## 🛡️ Safety & Rollback Mechanisms
+
+### 🔒 Guardrails
+
+- **Backup Creation**: Automatic git commits before major changes
+- **Resource Limits**: CPU and memory usage caps during builds
+- **Time Limits**: Maximum execution time for each phase
+- **Validation Gates**: Success criteria that must be met before proceeding
+
+### ↩️ Rollback Procedures
+
+```json
+{
+  "rollback_triggers": [
+    "build_success_rate < 50%",
+    "test_failure_rate > 20%", 
+    "performance_degradation > 30%",
+    "critical_errors_detected"
+  ],
+  "rollback_actions": [
+    "git reset --hard HEAD~1",
+    "restore previous dependency versions",
+    "revert configuration changes",
+    "notify human supervisor"
+  ]
+}
+```
+
+---
+
+*This framework provides comprehensive automation for rebuilding, monitoring, and assessing your BibleAppPOCV2 project while maintaining human oversight and safety controls.*

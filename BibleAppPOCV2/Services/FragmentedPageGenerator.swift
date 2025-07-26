@@ -13,22 +13,23 @@ import CoreGraphics
 
 /// Handles the generation of fragmented pages with cross-page verse continuation
 final class FragmentedPageGenerator {
-    static let shared = FragmentedPageGenerator()
-    
-    private init() {}
-    
+    private let loader: OptimizedBibleDataLoader
+
+    init(loader: OptimizedBibleDataLoader) {
+        self.loader = loader
+    }
+
     /// Generate fragmented page content with cross-page verse continuation
-    static func generateContent(
+    func generateContent(
         startingAt key: VerseKey,
         pageSize: CGSize,
-        fragmentPending: VerseFragment?,
-        using loader: OptimizedBibleDataLoader = OptimizedBibleDataLoader.shared
+        fragmentPending: VerseFragment?
     ) async throws -> (page: FragmentedPage, pendingFragment: VerseFragment?) {
         
         guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
             throw PageGenerationError.missingChapter(key)
         }
-        
+
         guard pageSize.width > 0 && pageSize.height > 0 else {
             throw PageGenerationError.layoutFailed(key)
         }
@@ -168,7 +169,6 @@ final class FragmentedPageGenerator {
             verse: fragment.reference.verse,
             text: fragment.displayText
         )
-        
         return JITTextFormatter.measureText(formatted, maxSize: maxSize).height
     }
 }

@@ -11,7 +11,7 @@ class MLXVerseSummarizer {
     
     // Model/config/tokenizer data
     private var config: [String: Any]?
-    private var vocab: [String: Int]?
+    internal var vocab: [String: Int]?
     
     init() {
         loadConfig()
