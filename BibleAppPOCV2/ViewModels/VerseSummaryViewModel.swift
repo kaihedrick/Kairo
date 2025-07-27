@@ -1,31 +1,40 @@
 // File: BibleAppPOCV2/ViewModels/VerseSummaryViewModel.swift
 // Directory: ViewModels
-// Purpose: Simulate decoder outputs and detokenize results for verse summarization
+// Purpose: Use BART model for real text generation and verse summarization
 
 import Foundation
 
 class VerseSummaryViewModel: ObservableObject {
     @Published var summaryText: String = ""
-    private let tokenizer = T5Tokenizer()
-    private let llmService = LLMService()
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String = ""
+    
+    private let bartService = BARTService()
 
-    // Accepts a verse string, runs through pipeline, and updates summaryText
+    // Accepts a verse string, runs through BART pipeline, and updates summaryText
     func summarize(verse: String) {
-        let tokens = tokenizer.tokenize(verse)
-        let encoderOutputs = llmService.encode(tokens: tokens)
-        // --- Decoder Simulation ---
-        // For demonstration, simulate decoder output as reversed encoder outputs mapped to token IDs
-        let summaryTokenIDs = encoderOutputs.map { Int($0) }.reversed()
-        // --- Detokenization ---
-        let summaryText = detokenize(tokenIDs: Array(summaryTokenIDs))
-        self.summaryText = summaryText
+        isLoading = true
+        errorMessage = ""
+        
+        // Run on background thread to avoid blocking UI
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let summary = self?.bartService.generateSummary(for: verse) ?? "Error: Could not generate summary"
+            
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                if summary.hasPrefix("Error:") {
+                    self?.errorMessage = summary
+                    self?.summaryText = "Failed to generate summary"
+                } else {
+                    self?.summaryText = summary
+                }
+            }
+        }
     }
-
-    // Detokenize token IDs to text using tokenizer's vocab
-    private func detokenize(tokenIDs: [Int]) -> String {
-        // Reverse vocab lookup: token ID → token string
-        let idToToken = tokenizer.vocab.reduce(into: [Int: String]()) { dict, pair in dict[pair.value] = pair.key }
-        let tokens = tokenIDs.compactMap { idToToken[$0] }
-        return tokens.joined(separator: " ")
+    
+    // Clear the current summary
+    func clearSummary() {
+        summaryText = ""
+        errorMessage = ""
     }
 }

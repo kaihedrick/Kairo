@@ -3,6 +3,12 @@ import SwiftUI
 
 @main
 struct OptimizedBibleApp: App {
+    // BARTService will be initialized when needed in VerseSummaryViewModel
+    
+    init() {
+        print("🚀 BibleAppPOCV2 starting up...")
+    }
+    
     var body: some Scene {
         WindowGroup {
             OptimizedBookGridView()

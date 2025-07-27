@@ -11,6 +11,10 @@ struct BibleReaderView: View {
     // For gesture handling
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging = false
+    
+    // For summary popup
+    @State private var showingSummaryPopup = false
+    @State private var selectedVerse: VerseSummary?
 
     let pageSize: CGSize
     let initialVerse: (book: String, chapter: Int, verse: Int)
@@ -69,6 +73,21 @@ struct BibleReaderView: View {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     pageGenerator.handleMemoryPressure()
                 }
+                
+                // Summary Popup Overlay
+                if showingSummaryPopup, let summary = selectedVerse {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            showingSummaryPopup = false
+                        }
+                    
+                    VerseSummaryPopupView(summary: summary) {
+                        showingSummaryPopup = false
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 50)
+                }
             }
         }
     }
@@ -83,26 +102,52 @@ struct BibleReaderView: View {
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
-        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
-            if let newPage = pageGenerator.currentPage {
-                updateCurrentPageInfo(newPage)
+            .onTapGesture { location in
+                handleTextTap(location: location, page: page, size: size)
             }
-        }
-        .onAppear {
-            updateCurrentPageInfo(page)
-        }
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onChanged { value in
-                    isDragging = true
-                    dragOffset = value.translation
+            .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
+                if let newPage = pageGenerator.currentPage {
+                    updateCurrentPageInfo(newPage)
                 }
-                .onEnded { value in
-                    isDragging = false
-                    dragOffset = .zero
-                    handleSwipeGesture(value)
-                }
+            }
+            .onAppear {
+                updateCurrentPageInfo(page)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        isDragging = true
+                        dragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        dragOffset = .zero
+                        handleSwipeGesture(value)
+                    }
+            )
+    }
+
+    /// Handles tap on text to show summary for the tapped verse
+    private func handleTextTap(location: CGPoint, page: OptimizedPageSlice, size: CGSize) {
+        // For now, just show the first verse of the page as a simple implementation
+        // In a more sophisticated version, you could map tap location to specific verses
+        guard let firstVerse = page.verseKeys.first else { return }
+        
+        // Get the verse text from the page content
+        let verseText = page.content.characters.map { String($0) }.joined()
+        
+        // Create verse summary
+        let summary = VerseSummary(
+            reference: firstVerse.description,
+            book: firstVerse.book,
+            chapter: firstVerse.chapter,
+            verse: firstVerse.verse,
+            summaryText: verseText,
+            modelVersion: "FLAN-T5 (Stub Decoder)"
         )
+        
+        selectedVerse = summary
+        showingSummaryPopup = true
     }
 
     /// Handles swipe gestures for navigation

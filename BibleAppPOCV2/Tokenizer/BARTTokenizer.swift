@@ -9,6 +9,7 @@ class BARTTokenizer {
     private var vocabulary: [String: Int] = [:]
     private var reverseVocabulary: [Int: String] = [:]
     private var tokenizerConfig: [String: Any] = [:]
+    private var vocabularyData: [String: Any] = [:]
     
     // Special tokens
     private let padToken = "<pad>"
@@ -16,10 +17,25 @@ class BARTTokenizer {
     private let eosToken = "</s>"
     private let unkToken = "<unk>"
     
+    // Token IDs (will be updated from config)
+    var padTokenId: Int = 1
+    var bosTokenId: Int = 0
+    var eosTokenId: Int = 2
+    var unkTokenId: Int = 3
+    
+    // Generation parameters (will be updated from config)
+    var maxNewTokens: Int = 128
+    var temperature: Double = 0.7
+    var topK: Int = 50
+    var topP: Double = 0.9
+    var repetitionPenalty: Double = 1.1
+    var minLength: Int = 10
+    
     // MARK: - Initialization
     init() {
         loadVocabulary()
         loadConfig()
+        loadVocabularyData()
     }
     
     // MARK: - Loading Methods
@@ -58,9 +74,63 @@ class BARTTokenizer {
             if let config = try JSONSerialization.jsonObject(with: configData) as? [String: Any] {
                 tokenizerConfig = config
                 print("✅ Loaded tokenizer configuration")
+                
+                // Update token IDs from config
+                if let specialTokens = config["special_tokens"] as? [String: Int] {
+                    padTokenId = specialTokens["<pad>"] ?? 1
+                    bosTokenId = specialTokens["<s>"] ?? 0
+                    eosTokenId = specialTokens["</s>"] ?? 2
+                    unkTokenId = specialTokens["<unk>"] ?? 3
+                }
+                
+                // Update generation parameters
+                if let generationParams = config["generation_params"] as? [String: Any] {
+                    maxNewTokens = generationParams["max_new_tokens"] as? Int ?? 128
+                    temperature = generationParams["temperature"] as? Double ?? 0.7
+                    topK = generationParams["top_k"] as? Int ?? 50
+                    topP = generationParams["top_p"] as? Double ?? 0.9
+                    repetitionPenalty = generationParams["repetition_penalty"] as? Double ?? 1.1
+                    minLength = generationParams["min_length"] as? Int ?? 10
+                }
             }
         } catch {
             print("❌ Error loading tokenizer config: \(error)")
+        }
+    }
+    
+    private func loadVocabularyData() {
+        guard let vocabURL = Bundle.main.url(forResource: "vocabulary", withExtension: "json") else {
+            print("❌ Warning: Could not find vocabulary.json")
+            return
+        }
+        
+        do {
+            let vocabData = try Data(contentsOf: vocabURL)
+            if let vocab = try JSONSerialization.jsonObject(with: vocabData) as? [String: Any] {
+                vocabularyData = vocab
+                print("✅ Loaded vocabulary data")
+                
+                // Update token IDs from vocabulary special tokens
+                if let specialTokens = vocab["special_tokens"] as? [String: Any] {
+                    padTokenId = specialTokens["pad_token_id"] as? Int ?? 1
+                    bosTokenId = specialTokens["bos_token_id"] as? Int ?? 0
+                    eosTokenId = specialTokens["eos_token_id"] as? Int ?? 2
+                    unkTokenId = specialTokens["unk_token_id"] as? Int ?? 3
+                }
+                
+                // Load id_to_token mapping
+                if let idToToken = vocab["id_to_token"] as? [String: String] {
+                    for (idString, token) in idToToken {
+                        if let id = Int(idString) {
+                            reverseVocabulary[id] = token
+                            vocabulary[token] = id
+                        }
+                    }
+                    print("✅ Loaded \(reverseVocabulary.count) vocabulary mappings")
+                }
+            }
+        } catch {
+            print("❌ Error loading vocabulary data: \(error)")
         }
     }
     
@@ -216,44 +286,93 @@ class BARTTokenizer {
         return vocabulary[token] != nil
     }
     
+    /// Get word for token ID
+    func getWord(for tokenId: Int) -> String? {
+        return reverseVocabulary[tokenId]
+    }
+    
     /// Decode token IDs to text (Int32 version)
     func decode(_ tokenIds: [Int32]) -> String {
         print("🔤 Decoding \(tokenIds.count) token IDs...")
         
-        var words: [String] = []
+        var result = ""
         
         for tokenId in tokenIds {
+            let intTokenId = Int(tokenId)
+            
             // Skip special tokens
-            if tokenId == Int32(vocabulary[padToken] ?? 1) ||
-               tokenId == Int32(vocabulary[bosToken] ?? 0) ||
-               tokenId == Int32(vocabulary[eosToken] ?? 2) {
+            if intTokenId == padTokenId ||
+               intTokenId == bosTokenId ||
+               intTokenId == eosTokenId {
                 continue
             }
             
             // Find the word for this token ID
-            if let word = reverseVocabulary[Int(tokenId)] {
-                words.append(word)
-                print("🔤 Token \(tokenId) -> '\(word)'")
+            if let token = reverseVocabulary[intTokenId] {
+                // Handle special tokens
+                if token == bosToken || token == eosToken {
+                    continue // Skip BOS and EOS tokens
+                }
+                if token == padToken {
+                    continue // Skip PAD tokens
+                }
+                if token == unkToken {
+                    result += "[UNKNOWN]"
+                    continue
+                }
+                
+                // Remove the leading space character (Ġ) if present
+                if token.hasPrefix("Ġ") {
+                    result += " " + String(token.dropFirst())
+                } else {
+                    result += token
+                }
+                
+                print("🔤 Token \(tokenId) -> '\(token)'")
             } else {
-                print("🔤 Unknown token ID: \(tokenId)")
-                // Try to find a close match or use a placeholder
-                words.append("[UNK]")
+                // If token not found in vocabulary, try to get it from the vocabulary data
+                if let idToToken = vocabularyData["id_to_token"] as? [String: String],
+                   let token = idToToken[String(intTokenId)] {
+                    // Handle special tokens
+                    if token == bosToken || token == eosToken {
+                        continue // Skip BOS and EOS tokens
+                    }
+                    if token == padToken {
+                        continue // Skip PAD tokens
+                    }
+                    if token == unkToken {
+                        result += "[UNKNOWN]"
+                        continue
+                    }
+                    
+                    // Remove the leading space character (Ġ) if present
+                    if token.hasPrefix("Ġ") {
+                        result += " " + String(token.dropFirst())
+                    } else {
+                        result += token
+                    }
+                    
+                    print("🔤 Token \(tokenId) -> '\(token)' (from vocabulary data)")
+                } else {
+                    print("🔤 Unknown token ID: \(tokenId)")
+                    result += "[UNKNOWN]"
+                }
             }
         }
         
-        // Join words and clean up
-        let result = words.joined(separator: " ")
+        // Clean up the result
+        let cleanedResult = result
             .replacingOccurrences(of: " ##", with: "") // Handle subword tokens
-            .replacingOccurrences(of: "[UNK]", with: "") // Remove unknown tokens
+            .replacingOccurrences(of: "[UNKNOWN]", with: "") // Remove unknown tokens
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
-        print("🔤 Decoded result: '\(result)'")
+        print("🔤 Decoded result: '\(cleanedResult)'")
         
-        if result.isEmpty {
+        if cleanedResult.isEmpty {
             return "Generated summary content"
         }
         
-        return result
+        return cleanedResult
     }
 }
 
