@@ -8,3 +8,8 @@ build.log
 *.log
 build.log
 *.log
+/BibleAppPOCV2/Resources/ML/BibleSummarizer_improved_full.mlpackage/Data/com.apple.CoreML
+/BibleAppPOCV2/Resources/ML
+/BibleAppPOCV2/Resources
+/DerivedData/Build/Intermediates.noindex/BibleAppPOCV2.build
+/DerivedData
