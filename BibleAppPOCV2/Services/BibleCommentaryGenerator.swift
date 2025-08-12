@@ -105,8 +105,8 @@ final class BibleCommentaryGenerator: ObservableObject {
     private var verseTextId: Int32 = 50259       // [VERSE_TEXT] - will be loaded from assets
     private var verseTagId: Int32 = 50260        // [VERSE] - will be loaded from assets
 
-    // Use existing tokenizer for prompt formatting (encoding is placeholder-level)
-    private let tokenizer = GPT2Tokenizer.shared
+    // Use BPE tokenizer for prompt formatting
+    private let tokenizer = GPT2BPEEncoder.shared
 
     private init() {
         if !Self.didInit {
@@ -350,20 +350,9 @@ final class BibleCommentaryGenerator: ObservableObject {
         print("   special_tokens_map.json: \(specialURL?.path ?? "❌ NOT FOUND")")
         print("   added_tokens.json: \(addedURL?.path ?? "❌ NOT FOUND")")
         
-        if let vocabURL = vocabURL, let mergesURL = mergesURL {
-            
-            do {
-                let enc = try GPT2BPEEncoder(vocabURL: vocabURL, mergesURL: mergesURL, specialTokensURL: specialURL, addedTokensURL: addedURL)
-                self.bpe = enc
-                print("✅ Found vocab.json @ \(vocabURL.path)")
-                print("✅ Found merges.txt @ \(mergesURL.path)")
-                print("✅ Loaded GPT-2 BPE (vocab count: \(enc.vocabCount))")
-            } catch {
-                print("❌ Failed to initialize BPE: \(error)")
-            }
-        } else {
-            print("⚠️ BPE assets not found; using placeholder tokenizer (special tokens only).")
-        }
+        // Use the singleton BPE tokenizer
+        self.bpe = GPT2BPEEncoder.shared
+        print("✅ BPE tokenizer loaded (vocab count: \(bpe!.vocabCount))")
     }
 
     private func parseExportReportIfAvailable() {
@@ -422,6 +411,12 @@ final class BibleCommentaryGenerator: ObservableObject {
         // Special IDs sanity (log expectations)
         let expected = [50257,50258,50259,50260,50261,50262,50263,50264,50265]
         print("🔢 Expected special IDs present range: \(expected.first!)..\(expected.last!)")
+        
+        // Set ready state if we have both model and vocab
+        if model != nil && vocab != nil {
+            isReady = true
+            print("✅ Generator marked as ready (model + vocab loaded)")
+        }
     }
     
     @MainActor

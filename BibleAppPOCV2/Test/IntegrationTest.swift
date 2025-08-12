@@ -7,7 +7,7 @@ class IntegrationTest {
     static func testSemanticIntegration() async {
         print("🧪 Testing Semantic Model Integration...")
         
-        // Test 1: Initialize improved summarizer on MainActor
+        // Test 1: Initialize improved summarizer (on MainActor)
         let summarizer = await MainActor.run { ImprovedBibleSummarizer() }
         print("✅ ImprovedBibleSummarizer initialized")
         
@@ -19,20 +19,21 @@ class IntegrationTest {
         print("🎉 Integration test completed successfully!")
     }
     
-    static func testSemanticGenerator() async {
-        print("🧪 Testing SemanticBibleGenerator directly...")
+    static func testCoreMLGenerator() async {
+        print("🧪 Testing CoreML BibleCommentaryGenerator...")
         
         do {
-            let generator = try SemanticBibleGenerator()
-            print("✅ SemanticBibleGenerator initialized successfully")
+            let generator = BibleCommentaryGenerator.shared
+            try await generator.ready()
+            print("✅ BibleCommentaryGenerator ready")
             
             let testVerse = "For God so loved the world, that he gave his only begotten Son."
-            let result = try await generator.generateCommentary(for: testVerse)
+            let result = await generator.generateCommentary(for: "John 3:16", verseText: testVerse)
             
             print("✅ Generated commentary: \(result.prefix(100))...")
             
         } catch {
-            print("❌ SemanticBibleGenerator test failed: \(error)")
+            print("❌ CoreML generator test failed: \(error)")
         }
     }
 } 
