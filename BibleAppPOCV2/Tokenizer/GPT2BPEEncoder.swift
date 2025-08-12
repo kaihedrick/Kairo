@@ -4,72 +4,28 @@ import Foundation
 /// Minimal GPT-2 BPE encoder. Loads vocab.json, merges.txt, and special token maps.
 /// Produces token IDs matching Python when assets are identical.
 final class GPT2BPEEncoder {
+    static let shared = GPT2BPEEncoder()
+    
     private let byteEncoder: [UInt8: String]
-    private let bpeRanks: [Pair: Int]
-    private let encoder: [String: Int]
-    private let specialTokens: [String: Int]
+    private var bpeRanks: [Pair: Int]
+    private var encoder: [String: Int]
+    private var specialTokens: [String: Int]
     var vocabCount: Int { encoder.count }
-
-    struct Pair: Hashable { let a: String; let b: String }
-
-    init(vocabURL: URL, mergesURL: URL, specialTokensURL: URL?, addedTokensURL: URL?) throws {
-        // Load vocab.json (token -> id)
-        let vocabData = try Data(contentsOf: vocabURL)
-        guard let vocabDict = try JSONSerialization.jsonObject(with: vocabData) as? [String: Int] else {
-            throw NSError(domain: "GPT2BPEEncoder", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid vocab.json"])
-        }
-        self.encoder = vocabDict
-
-        // Load merges.txt
-        let mergesText = try String(contentsOf: mergesURL)
-        let lines = mergesText.split(separator: "\n").dropFirst() // skip header
-        var ranks: [Pair: Int] = [:]
-        for (i, line) in lines.enumerated() {
-            let parts = line.split(separator: " ")
-            if parts.count == 2 {
-                let p = Pair(a: String(parts[0]), b: String(parts[1]))
-                ranks[p] = i
-            }
-        }
-        self.bpeRanks = ranks
-
-        // Load special tokens
-        var specials: [String: Int] = [:]
-        if let specialTokensURL = specialTokensURL {
-            if let data = try? Data(contentsOf: specialTokensURL),
-               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                // Extract map values that are string->id
-                for key in ["eos_token", "pad_token", "bos_token"] {
-                    if let token = (dict[key] as? [String: Any])?["content"] as? String,
-                       let id = (dict[key] as? [String: Any])?["id"] as? Int {
-                        specials[token] = id
-                    }
-                }
-                // Bible app specific tokens if present
-                for (_, v) in dict {
-                    if let inner = v as? [String: Any],
-                       let token = inner["content"] as? String,
-                       let id = inner["id"] as? Int {
-                        specials[token] = id
-                    }
-                }
-            }
-        }
-        if let addedTokensURL = addedTokensURL,
-           let data = try? Data(contentsOf: addedTokensURL),
-           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            for item in arr {
-                if let token = item["content"] as? String, let id = item["id"] as? Int {
-                    specials[token] = id
-                }
-            }
-        }
-        self.specialTokens = specials
-
-        // Byte encoder
+    var isReady: Bool { encoder.count > 0 && bpeRanks.count > 0 }
+    
+    private init() {
+        // Initialize with default values - will be loaded when needed
         self.byteEncoder = GPT2ByteEncoder.make()
+        self.bpeRanks = [:]
+        self.encoder = [:]
+        self.specialTokens = [:]
+        
+        // Load tokenizer assets
+        loadTokenizerAssets()
     }
-
+    
+    struct Pair: Hashable { let a: String; let b: String }
+    
     func encode(_ text: String, maxLength: Int = 512) -> [Int] {
         // Split by special tokens to preserve them
         let allSpecials = specialTokens.keys.sorted { $0.count > $1.count }
@@ -117,7 +73,14 @@ final class GPT2BPEEncoder {
 
         return Array(tokens.prefix(maxLength))
     }
-
+    
+    func decode(_ tokenIds: [Int]) -> String {
+        // Simple reverse lookup - in a real implementation you'd want more sophisticated decoding
+        let reverseVocab = Dictionary(uniqueKeysWithValues: encoder.map { ($1, $0) })
+        let tokens = tokenIds.compactMap { reverseVocab[$0] }
+        return tokens.joined(separator: "")
+    }
+    
     // Byte pair encoding for a single token-like string
     private func bpe(_ token: String) -> [String] {
         if token.isEmpty { return [] }
@@ -156,6 +119,84 @@ final class GPT2BPEEncoder {
         }
         return pairs
     }
+    
+    // Format input for Bible commentary generation
+    func formatInput(verseRef: String, verseText: String) -> String {
+        let verseId = verseRef
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: ":", with: "_")  // colon → underscore to match training
+            .replacingOccurrences(of: "-", with: "_")   // if any
+            .replacingOccurrences(of: "[^A-Z0-9_]+", with: "", options: .regularExpression)
+        return """
+        [VERSE_ID] \(verseId)
+        [VERSE_REF] \(verseRef)
+        [VERSE_TEXT] \(verseText)
+        [VERSE]
+        [START_COMMENTARY]
+        """
+    }
+    
+    private func loadTokenizerAssets() {
+        // Try to load tokenizer assets from bundle
+        
+        if let vocabURL = BundleLoader.url(name: "vocab", ext: "json"),
+           let mergesURL = BundleLoader.url(name: "merges", ext: "txt"),
+           let specialURL = BundleLoader.url(name: "special_tokens_map", ext: "json"),
+           let addedURL = BundleLoader.url(name: "added_tokens", ext: "json") {
+            
+            do {
+                // Load vocab.json
+                let vocabData = try Data(contentsOf: vocabURL)
+                if let vocabDict = try JSONSerialization.jsonObject(with: vocabData) as? [String: Int] {
+                    self.encoder = vocabDict
+                    print("✅ BPE: Loaded vocab.json (\(vocabDict.count) tokens)")
+                }
+                
+                // Load merges.txt
+                let mergesText = try String(contentsOf: mergesURL)
+                let lines = mergesText.split(separator: "\n").dropFirst() // skip header
+                var ranks: [Pair: Int] = [:]
+                for (i, line) in lines.enumerated() {
+                    let parts = line.split(separator: " ")
+                    if parts.count == 2 {
+                        let p = Pair(a: String(parts[0]), b: String(parts[1]))
+                        ranks[p] = i
+                    }
+                }
+                self.bpeRanks = ranks
+                print("✅ BPE: Loaded merges.txt (\(ranks.count) merges)")
+                
+                // Load special tokens
+                var specials: [String: Int] = [:]
+                if let data = try? Data(contentsOf: specialURL),
+                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    for (_, v) in dict {
+                        if let inner = v as? [String: Any],
+                           let token = inner["content"] as? String,
+                           let id = inner["id"] as? Int {
+                            specials[token] = id
+                        }
+                    }
+                }
+                
+                if let data = try? Data(contentsOf: addedURL),
+                   let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    for item in arr {
+                        if let token = item["content"] as? String, let id = item["id"] as? Int {
+                            specials[token] = id
+                        }
+                    }
+                }
+                
+                self.specialTokens = specials
+                print("✅ BPE: Loaded special tokens (\(specials.count) tokens)")
+                
+            } catch {
+                print("❌ BPE: Failed to load tokenizer assets: \(error)")
+            }
+        } else {
+            print("⚠️ BPE: Tokenizer assets not found in bundle")
+        }
+    }
 }
-
-

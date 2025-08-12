@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct OptimizedBibleApp: App {
-    // BARTService will be initialized when needed in VerseSummaryViewModel
+    // Core ML BibleCommentaryGenerator will be initialized when needed
     
     init() {
         print("🚀 BibleAppPOCV2 starting up...")
