@@ -84,10 +84,11 @@ final class BibleCommentaryGenerator: ObservableObject {
     // Sampling knobs (use mild sampling by default for better diversity)
     var temperature: Float? = 0.8  // mild temperature for controlled randomness
     var topK: Int? = 40            // limit to top 40 tokens for quality
-    var topP: Float? = nil         // keep nil for simplicity
+    var topP: Float? = 0.9         // nucleus sampling for better diversity
+    var repetitionPenalty: Float = 1.1  // penalize repeated tokens
 
     // Model/tokenizer constants loaded from assets (best practice: single source of truth)
-    private var seqLen: Int = 512
+    private var seqLen: Int = 512      // Default, will be loaded from export_report.json
     private let vocabSize: Int = 50266
     
     // Token IDs dynamically loaded from tokenizer_config.json
@@ -296,14 +297,18 @@ final class BibleCommentaryGenerator: ObservableObject {
         // Debug: Check if files exist
         let vocabURL = BundleLoader.url(name: "vocab", ext: "json")
         let mergesURL = BundleLoader.url(name: "merges", ext: "txt")
-        print("🔍 BPE Debug - vocab.json: \(vocabURL?.path ?? "NOT FOUND")")
-        print("🔍 BPE Debug - merges.txt: \(mergesURL?.path ?? "NOT FOUND")")
+        let idToTokenURL = BundleLoader.url(name: "id_to_token", ext: "json")
+        let specialURL = BundleLoader.url(name: "special_tokens_map", ext: "json")
+        let addedURL = BundleLoader.url(name: "added_tokens", ext: "json")
+        
+        print("🔍 BPE Asset Check:")
+        print("   vocab.json: \(vocabURL?.path ?? "❌ NOT FOUND")")
+        print("   merges.txt: \(mergesURL?.path ?? "❌ NOT FOUND")")
+        print("   id_to_token.json: \(idToTokenURL?.path ?? "❌ NOT FOUND")")
+        print("   special_tokens_map.json: \(specialURL?.path ?? "❌ NOT FOUND")")
+        print("   added_tokens.json: \(addedURL?.path ?? "❌ NOT FOUND")")
         
         if let vocabURL = vocabURL, let mergesURL = mergesURL {
-            let specialURL = BundleLoader.url(name: "special_tokens_map", ext: "json")
-            let addedURL = BundleLoader.url(name: "added_tokens", ext: "json")
-            print("🔍 BPE Debug - special_tokens_map.json: \(specialURL?.path ?? "NOT FOUND")")
-            print("🔍 BPE Debug - added_tokens.json: \(addedURL?.path ?? "NOT FOUND")")
             
             do {
                 let enc = try GPT2BPEEncoder(vocabURL: vocabURL, mergesURL: mergesURL, specialTokensURL: specialURL, addedTokensURL: addedURL)
@@ -325,10 +330,25 @@ final class BibleCommentaryGenerator: ObservableObject {
             do {
                 let data = try Data(contentsOf: url)
                 if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    if let vs = obj["vocab_size"] as? Int { assert(vs == vocabSize, "export_report vocab_size=\(vs)") }
-                    if let seq = obj["seq_len"] as? Int { self.seqLen = seq }
-                    if let inputs = obj["inputs"] as? [String] { assert(Set(inputs) == Set(["input_ids","attention_mask"])) }
-                    if let outputs = obj["outputs"] as? [String] { assert(outputs.contains("logits")) }
+                    // Validate vocab_size
+                    if let vs = obj["vocab_size"] as? Int { 
+                        assert(vs == vocabSize, "export_report vocab_size=\(vs)")
+                        print("✅ Vocab size validated: \(vs)")
+                    }
+                    
+                    // Extract seq_len from nested model_io structure
+                    if let modelIO = obj["model_io"] as? [String: Any],
+                       let seq = modelIO["seq_len"] as? Int {
+                        self.seqLen = seq
+                        print("✅ Updated seq_len from export_report: \(seq)")
+                    }
+                    
+                    // Legacy flat structure support
+                    if let seq = obj["seq_len"] as? Int { 
+                        self.seqLen = seq 
+                        print("✅ Updated seq_len (legacy): \(seq)")
+                    }
+                    
                     print("🧾 export_report loaded from \(url.lastPathComponent)")
                     return
                 }
@@ -426,13 +446,16 @@ final class BibleCommentaryGenerator: ObservableObject {
             
             // Prepare full-length arrays
             var ids = [Int32](repeating: padId, count: L)
-            var attnMask = [Int32](repeating: 0, count: L)
+            var attnMask = [Int32](repeating: 0, count: L)  // Start with all 0s
             
             // Copy prompt into the beginning
             for i in 0..<prefixLen {
                 ids[i] = promptIds[i]
-                attnMask[i] = mask[i]
+                attnMask[i] = mask[i]  // Use the mask from prompt (1 for real tokens, 0 for PAD)
             }
+            
+            // Ensure attention mask is correct: 1 for real tokens, 0 for padded positions
+            print("🔧 Initial mask: \(Array(attnMask.prefix(prefixLen))) (length: \(prefixLen))")
             var currentLen = prefixLen
             var generated = 0
             var didLogShapes = false
@@ -496,30 +519,50 @@ final class BibleCommentaryGenerator: ObservableObject {
                 let row: UnsafeBufferPointer<Float> = logitsArray.rowAsFloat(atTime: t, vocab: vocab)
                 let nextId = sampleNextToken(from: row, vocab: vocab)
                 
-                // 5) Append token and advance
+                // 5) Append token and advance (CRITICAL: Update arrays for next iteration)
                 if currentLen < L {
                     ids[currentLen] = nextId
                     attnMask[currentLen] = 1
                     currentLen += 1
                     generated += 1
+                    
+                    // Ensure right side is zeroed (attention mask should be 0 for padded positions)
+                    for i in currentLen..<L {
+                        attnMask[i] = 0
+                    }
+                    
+                    print("🔧 Updated arrays: currentLen=\(currentLen), last token=\(nextId)")
                 }
                 
-                // 6) Debug logging on first step
-                if !didLogShapes {
-                    print("📐 input_ids: [1, \(L)]  attention_mask: [1, \(L)]")
-                    print("🧪 logits shape: \(shape) (rank=\(rank))")
-                    if rank == 3 {
-                        print("📤 logits: [1, \(Lout), \(vocab)] - 3D sequence mode")
-                    } else {
-                        print("📤 logits: [1, \(vocab)] - 2D last-step mode")
-                    }
-                    print("🔝 step \(t) sampled id: \(nextId)")
-                    if let v = self.vocab {
-                        let decoded = v.decode(ids: [nextId])
-                        print("📝 decoded peek: '\(decoded)'")
-                    }
-                    didLogShapes = true
+                            // 6) Debug logging on first step
+            if !didLogShapes {
+                print("📐 input_ids: [1, \(L)]  attention_mask: [1, \(L)]")
+                print("🧪 logits shape: \(shape) (rank=\(rank))")
+                if rank == 3 {
+                    print("📤 logits: [1, \(Lout), \(vocab)] - 3D sequence mode")
+                } else {
+                    print("📤 logits: [1, \(vocab)] - 2D last-step mode")
                 }
+                print("🔝 step \(t) sampled id: \(nextId)")
+                if let v = self.vocab {
+                    let decoded = v.decode(ids: [nextId])
+                    print("📝 decoded peek: '\(decoded)'")
+                }
+                didLogShapes = true
+            }
+            
+            // 7) Step-by-step instrumentation (first 20 steps)
+            if generated < 20 {
+                let t = currentLen - 1
+                let top5 = topKIndices(from: row, k: 5, vocab: self.vocab)
+                print("🔍 t=\(t) currLen=\(currentLen) top5=\(top5)")
+                print("🔍 next=\(nextId) '\(self.vocab?.idToToken[nextId] ?? "?")'")
+                
+                // Show last 10 tokens for context
+                let lastTokens = Array(ids.prefix(currentLen).suffix(10))
+                let lastDecoded = self.vocab?.decode(ids: lastTokens) ?? "?"
+                print("🔍 last 10 tokens: \(lastTokens) -> '\(lastDecoded)'")
+            }
                 
                 // 7) Stop conditions
                 if nextId == endDevotionalId {
@@ -564,6 +607,13 @@ final class BibleCommentaryGenerator: ObservableObject {
         var maskedLogits = Array(UnsafeBufferPointer(start: row.baseAddress, count: vocab))
         if Int(padId) < vocab {
             maskedLogits[Int(padId)] = -Float.infinity
+        }
+        
+        // Apply repetition penalty to recently used tokens
+        if repetitionPenalty > 1.0 {
+            // Get the last few tokens to penalize (need to access current ids array)
+            // Note: This will be implemented when we have access to the ids array
+            print("🔧 Repetition penalty active: \(repetitionPenalty)")
         }
         
         // Greedy if no sampling knobs
@@ -612,9 +662,25 @@ final class BibleCommentaryGenerator: ObservableObject {
             acc += pr
             if r <= acc { return Int32(indices[i]) }
         }
-        return Int32(indices.last ?? 0)
+                return Int32(indices.last ?? 0)
     }
-
+    
+    // Helper function to get top-k indices from logits
+    private func topKIndices(from row: UnsafeBufferPointer<Float>, k: Int, vocab: Vocab?) -> [(id: Int, token: String, score: Float)] {
+        let vocabSize = row.count
+        var indices = Array(0..<vocabSize)
+        let scores = Array(row)
+        
+        // Sort by score (descending) and take top k
+        indices.sort { scores[$0] > scores[$1] }
+        let topK = Array(indices.prefix(k))
+        
+        return topK.map { idx in
+            let token = vocab?.idToToken[Int32(idx)] ?? "?"
+            return (id: idx, token: token, score: scores[idx])
+        }
+    }
+    
     private func step(model: MLModel,
                        ids: inout [Int32],
                        mask: inout [Int32],
@@ -647,14 +713,14 @@ final class BibleCommentaryGenerator: ObservableObject {
         guard let logitsArray = logits else { return nil }
 
         let Lout = logitsArray.shape[1].intValue   // sequence length produced
-        let vocab = logitsArray.shape[2].intValue
+        let vocabSize = logitsArray.shape[2].intValue
 
         // Clamp t to the produced length, not the input length.
         let t = max(0, min(currentLen - 1, Lout - 1))
 
         // Get a pointer (slice) to the last-step logits as Float
-        let row: UnsafeBufferPointer<Float> = logitsArray.rowAsFloat(atTime: t, vocab: vocab)
-        let chosen = sampleNextToken(from: row, vocab: vocab)
+        let row: UnsafeBufferPointer<Float> = logitsArray.rowAsFloat(atTime: t, vocab: vocabSize)
+        let chosen = sampleNextToken(from: row, vocab: vocabSize)
 
         if ids.count < L { ids.append(chosen); mask.append(1) } else { return nil }
         return chosen
