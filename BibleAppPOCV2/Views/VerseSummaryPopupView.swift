@@ -4,7 +4,14 @@ import SwiftUI
 struct VerseSummaryPopupView: View {
     let summary: VerseSummary
     let onClose: () -> Void
-    @StateObject private var viewModel = VerseSummaryViewModel()
+    @StateObject private var viewModel: VerseSummaryViewModel
+    
+    init(summary: VerseSummary, onClose: @escaping () -> Void) {
+        self.summary = summary
+        self.onClose = onClose
+        // Use shared instance to preserve modelAvailable state
+        self._viewModel = StateObject(wrappedValue: VerseSummaryViewModel.shared)
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -15,20 +22,30 @@ struct VerseSummaryPopupView: View {
                 .padding(.top, 10)
 
             // Header
-            Text("\(summary.reference) Summary")
+            Text("\(summary.reference) AI Commentary")
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
 
             Divider()
 
-            // Summary Content
+            // Content
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
                     if viewModel.isLoading {
                         HStack {
                             ProgressView()
                                 .scaleEffect(0.8)
-                            Text("Generating AI summary...")
+                            Text("Generating AI commentary...")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding()
+                    } else if !viewModel.modelAvailable {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Loading Core ML model...")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                         }
@@ -43,14 +60,56 @@ struct VerseSummaryPopupView: View {
                             Text(viewModel.errorMessage)
                                 .font(.body)
                                 .foregroundStyle(.secondary)
+                            
+                            Button("Retry") {
+                                viewModel.retryInitialization()
+                            }
+                            .buttonStyle(.bordered)
                         }
                         .padding()
                         .background(.red.opacity(0.1))
                         .cornerRadius(8)
                     } else {
-                        Text(viewModel.summaryText.isEmpty ? "No summary available" : viewModel.summaryText)
-                            .font(.body)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // Commentary Section
+                        if !viewModel.commentaryText.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Commentary", systemImage: "text.book.closed")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                
+                                Text(viewModel.commentaryText)
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding()
+                            .background(.blue.opacity(0.05))
+                            .cornerRadius(8)
+                        }
+                        
+                        // Devotional Section
+                        if !viewModel.devotionalText.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Devotional", systemImage: "heart")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                
+                                Text(viewModel.devotionalText)
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding()
+                            .background(.green.opacity(0.05))
+                            .cornerRadius(8)
+                        }
+                        
+                        // No content message
+                        if viewModel.commentaryText.isEmpty && viewModel.devotionalText.isEmpty {
+                            Text("No commentary available")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding()
+                        }
                     }
                 }
                 .padding(.horizontal)
@@ -66,9 +125,17 @@ struct VerseSummaryPopupView: View {
                         .foregroundStyle(.secondary)
                 }
                 
-                Text("BART Bible AI Model")
+                Text(viewModel.modelVersion)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(.blue.opacity(0.1))
+                    .cornerRadius(4)
+                
+                Text(viewModel.getSummarizerStatus())
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
 
             // Close Button

@@ -13,3 +13,20 @@ build.log
 /BibleAppPOCV2/Resources
 /DerivedData/Build/Intermediates.noindex/BibleAppPOCV2.build
 /DerivedData
+
+# Exclude large ONNX model files from build
+BibleAppPOCV2/decoder_model_merged.onnx
+BibleAppPOCV2/decoder_model.onnx
+BibleAppPOCV2/decoder_with_past_model.onnx
+BibleAppPOCV2/encoder_model.onnx
+BibleAppPOCV2/simple-verse-model-coreml.mlmodelc
+
+# Exclude large model files from Resources/ML
+BibleAppPOCV2/Resources/ML/decoder_model_merged.onnx
+BibleAppPOCV2/Resources/ML/decoder_model.onnx
+BibleAppPOCV2/Resources/ML/decoder_with_past_model.onnx
+BibleAppPOCV2/Resources/ML/encoder_model.onnx
+BibleAppPOCV2/Resources/ML/simple-verse-model-coreml.mlmodelc
+
+# Exclude large JSON files
+BibleAppPOCV2/KJV.json

@@ -83,6 +83,12 @@ public struct VerseFragment: Hashable, Identifiable, Codable {
         self.sequenceNumber = sequenceNumber
         self.totalFragments = totalFragments
     }
+    
+    // MARK: - Codable Implementation
+    private enum CodingKeys: String, CodingKey {
+        case reference, textFragment, isStartOfVerse, isEndOfVerse, 
+             fullVerseText, sequenceNumber, totalFragments
+    }
 }
 
 /// Collection of verse fragments that make up a page
@@ -150,5 +156,11 @@ public struct FragmentedPage: Identifiable, Codable, Hashable, Equatable {
         self.contentString = String(content.characters)
         self.measuredHeight = measuredHeight
         self.availableHeight = availableHeight
+    }
+    
+    // MARK: - Codable Implementation
+    private enum CodingKeys: String, CodingKey {
+        case fragments, navTitle, startVerse, endVerse, 
+             contentString, measuredHeight, availableHeight
     }
 }

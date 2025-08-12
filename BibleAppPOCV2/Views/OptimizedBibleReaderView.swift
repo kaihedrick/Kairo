@@ -94,6 +94,9 @@ struct OptimizedBibleReaderView: View {
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
+            .onTapGesture { location in
+                handleVerseTap(location: location, page: page, size: size)
+            }
             .background(
                 GeometryReader { textGeo in
                     Color.clear
@@ -106,7 +109,7 @@ struct OptimizedBibleReaderView: View {
                             // With precision pagination, overflow should be extremely rare
                             if actualContentHeight > availableHeight + 5 { // Very small tolerance
                                 print("⚠️ UNEXPECTED OVERFLOW: Content is \(actualContentHeight - availableHeight)pts too tall")
-                                print("� This indicates the measurement system needs refinement")
+                                print(" This indicates the measurement system needs refinement")
                                 // No longer calling reportOverflow - precision pagination should prevent this
                             } else {
                                 print("✅ PRECISION SUCCESS: Content fits perfectly within available space")
@@ -133,6 +136,100 @@ struct OptimizedBibleReaderView: View {
             )
     }
     
+    /// Handles tap on text to show summary for the tapped verse
+    private func handleVerseTap(location: CGPoint, page: OptimizedPageSlice, size: CGSize) {
+        // Find the verse that was tapped based on location
+        guard let tappedVerse = findVerseAtLocation(location: location, page: page, size: size) else {
+            print("⚠️ No verse found at tap location")
+            return
+        }
+        
+        // Get the verse text from the Bible data - extract ONLY the specific verse
+        Task {
+            let verseText = await extractVerseText(for: tappedVerse, from: String(page.content.characters))
+            
+            // Create a complete verse string that includes both reference and text
+            // This format matches what the VerseSummaryViewModel.parseVerse function expects
+            let completeVerseString = "\(tappedVerse.description) \(verseText)"
+            
+            print("🎯 Tapped verse: \(tappedVerse.description)")
+            print("📝 Complete verse string: '\(completeVerseString.prefix(100))...'")
+            print("📝 Extracted text length: \(verseText.count) characters")
+            
+            // TODO: Show verse summary popup
+            // For now, just log the extracted verse
+            print("📖 Verse text: '\(verseText.prefix(100))...'")
+        }
+    }
+    
+    /// Finds the verse at the given tap location
+    private func findVerseAtLocation(location: CGPoint, page: OptimizedPageSlice, size: CGSize) -> VerseKey? {
+        // Calculate which verse was tapped based on vertical position
+        let tapY = location.y
+        let pageHeight = size.height
+        let verseCount = page.verseKeys.count
+        
+        if verseCount == 0 { return nil }
+        
+        // Calculate verse height and find which verse was tapped
+        let verseHeight = pageHeight / CGFloat(verseCount)
+        let verseIndex = Int(tapY / verseHeight)
+        
+        // Ensure index is within bounds
+        let clampedIndex = max(0, min(verseIndex, verseCount - 1))
+        let tappedVerse = page.verseKeys[clampedIndex]
+        
+        print("📍 Tap at Y: \(tapY), page height: \(pageHeight), verse count: \(verseCount)")
+        print("🎯 Calculated verse index: \(clampedIndex), selected: \(tappedVerse.description)")
+        
+        return tappedVerse
+    }
+    
+    /// Extracts the text for a specific verse from the page content
+    private func extractVerseText(for verse: VerseKey, from content: String) async -> String {
+        // Instead of trying to parse the combined content, we should get the verse text
+        // directly from the Bible data loader for the specific verse
+        // This ensures we get exactly the verse we want, not parsed content from the page
+        
+        // Load the specific verse text from the Bible data
+        if let verseText = await loadSpecificVerseText(for: verse) {
+            print("✅ Loaded specific verse text for \(verse.description): '\(verseText.prefix(50))...'")
+            return verseText
+        }
+        
+        // Fallback: try to extract by looking for verse numbers in the content
+        let lines = content.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if trimmedLine.hasPrefix("\(verse.verse) ") {
+                let verseText = String(trimmedLine.dropFirst("\(verse.verse) ".count))
+                print("✅ Found verse \(verse.verse) in line: '\(verseText.prefix(50))...'")
+                return verseText
+            }
+        }
+        
+        // Last resort: return a small portion of content around where the verse should be
+        print("⚠️ Could not extract specific verse text, returning limited content")
+        let words = content.components(separatedBy: .whitespaces)
+        let maxWords = min(20, words.count)
+        return words.prefix(maxWords).joined(separator: " ")
+    }
+    
+    /// Loads the specific verse text from the Bible data loader
+    private func loadSpecificVerseText(for verse: VerseKey) async -> String? {
+        // Use the legacy loader that has a loadVerse method for single verses
+        let loader = LegacyOptimizedBibleDataLoader()
+        
+        // Load ONLY the specific verse, not the whole chapter
+        guard let verseData = await loader.loadVerse(book: verse.book, chapter: verse.chapter, verse: verse.verse) else {
+            print("❌ Could not load specific verse \(verse.description)")
+            return nil
+        }
+        
+        print("✅ Successfully loaded specific verse \(verse.description) from Bible data")
+        return verseData.text
+    }
+    
     private func fragmentedPageView(_ fragmentedPage: FragmentedPage, size: CGSize) -> some View {
         Text(fragmentedPage.content)
             .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
@@ -140,6 +237,9 @@ struct OptimizedBibleReaderView: View {
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .multilineTextAlignment(.leading)
             .clipped()
+            .onTapGesture { location in
+                handleFragmentedVerseTap(location: location, fragmentedPage: fragmentedPage, size: size)
+            }
             .background(
                 GeometryReader { textGeo in
                     Color.clear
@@ -185,6 +285,82 @@ struct OptimizedBibleReaderView: View {
                         }
                     }
             )
+    }
+    
+    /// Handles tap on fragmented page text to show summary for the tapped verse
+    private func handleFragmentedVerseTap(location: CGPoint, fragmentedPage: FragmentedPage, size: CGSize) {
+        // Find the verse that was tapped based on location
+        guard let tappedVerse = findVerseInFragmentedPage(location: location, fragmentedPage: fragmentedPage, size: size) else {
+            print("⚠️ No verse found at tap location in fragmented page")
+            return
+        }
+        
+        // Get the verse text from the fragmented page content
+        Task {
+            let verseText = await extractVerseTextFromFragments(for: tappedVerse, from: fragmentedPage)
+            
+            // Create a complete verse string that includes both reference and text
+            // This format matches what the VerseSummaryViewModel.parseVerse function expects
+            let completeVerseString = "\(tappedVerse.description) \(verseText)"
+            
+            print("🎯 Tapped verse in fragmented page: \(tappedVerse.description)")
+            print("📝 Complete verse string: '\(completeVerseString.prefix(100))...'")
+            print("📝 Extracted text length: \(verseText.count) characters")
+            
+            // TODO: Show verse summary popup
+            // For now, just log the extracted verse
+            print("📖 Fragment verse text: '\(verseText.prefix(100))...'")
+        }
+    }
+    
+    /// Finds the verse at the given tap location in a fragmented page
+    private func findVerseInFragmentedPage(location: CGPoint, fragmentedPage: FragmentedPage, size: CGSize) -> VerseKey? {
+        // Calculate which verse was tapped based on vertical position
+        let tapY = location.y
+        let pageHeight = size.height
+        let uniqueVerses = fragmentedPage.uniqueVerses
+        
+        if uniqueVerses.isEmpty { return nil }
+        
+        // Calculate verse height and find which verse was tapped
+        let verseHeight = pageHeight / CGFloat(uniqueVerses.count)
+        let verseIndex = Int(tapY / verseHeight)
+        
+        // Ensure index is within bounds
+        let clampedIndex = max(0, min(verseIndex, uniqueVerses.count - 1))
+        let tappedVerseRef = uniqueVerses[clampedIndex]
+        
+        // Convert VerseReference to VerseKey
+        let tappedVerse = VerseKey(
+            book: tappedVerseRef.book,
+            chapter: tappedVerseRef.chapter,
+            verse: tappedVerseRef.verse
+        )
+        
+        print("📍 Fragment tap at Y: \(tapY), page height: \(pageHeight), unique verses: \(uniqueVerses.count)")
+        print("🎯 Calculated verse index: \(clampedIndex), selected: \(tappedVerse.description)")
+        
+        return tappedVerse
+    }
+    
+    /// Extracts the text for a specific verse from fragmented page content
+    private func extractVerseTextFromFragments(for verse: VerseKey, from fragmentedPage: FragmentedPage) async -> String {
+        // Look for fragments that contain this verse
+        let relevantFragments = fragmentedPage.fragments.filter { fragment in
+            fragment.reference.book == verse.book &&
+            fragment.reference.chapter == verse.chapter &&
+            fragment.reference.verse == verse.verse
+        }
+        
+        if !relevantFragments.isEmpty {
+            // Combine all fragments for this verse
+            let verseText = relevantFragments.map { $0.textFragment }.joined(separator: " ")
+            print("✅ Found verse \(verse.description) in \(relevantFragments.count) fragments")
+            return verseText
+        }
+        
+        // Fallback: try to extract from the full content
+        return await extractVerseText(for: verse, from: String(fragmentedPage.content.characters))
     }
 }
 

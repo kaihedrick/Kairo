@@ -8,8 +8,6 @@
 //
 
 import Foundation
-import BibleAppPOCV2
-// ...existing code...
 import SwiftUI
 
 /// Generates verse fragments for optimal page layout
