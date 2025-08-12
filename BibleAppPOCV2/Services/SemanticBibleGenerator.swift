@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/SemanticBibleGenerator.swift
 import Foundation
 import CoreML
 

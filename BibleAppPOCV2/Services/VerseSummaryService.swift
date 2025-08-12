@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/VerseSummaryService.swift
 import Foundation
 
 protocol VerseSummaryServiceProtocol {

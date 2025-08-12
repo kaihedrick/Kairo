@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Tokenizer/BARTTokenizerSemantic.swift
 import Foundation
 
 class BARTTokenizerSemantic {

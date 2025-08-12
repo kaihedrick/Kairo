@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Tokenizer/GPT2ByteEncoder.swift
 import Foundation
 
 /// GPT-2 byte encoder mapping (bytes_to_unicode). Use for byte-level BPE encoding.

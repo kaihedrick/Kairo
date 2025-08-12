@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/ModelManagementView.swift
 import SwiftUI
 
 struct ModelManagementView: View {

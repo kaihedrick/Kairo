@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Tokenizer/GPT2BPEEncoder.swift
 import Foundation
 
 /// Minimal GPT-2 BPE encoder. Loads vocab.json, merges.txt, and special token maps.
