@@ -1,5 +1,4 @@
 // filepath: BibleAppPOCV2/ViewModifiers/GlassModifier.swift
-// filepath: BibleAppPOCV2/ViewModifiers/GlassModifier.swift
 import SwiftUI
 
 // MARK: - Glass Effect View Modifier

@@ -1,5 +1,4 @@
 // filepath: BibleAppPOCV2/Views/OptimizedBibleReaderView.swift
-// filepath: BibleAppPOCV2/Views/OptimizedBibleReaderView.swift
 import SwiftUI
 
 struct OptimizedBibleReaderView: View {
