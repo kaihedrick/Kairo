@@ -74,20 +74,21 @@ class VerseSummaryViewModel: ObservableObject {
         
         // Run on background thread to avoid blocking UI
         Task {
-            // Try GPT-2 commentary generator first
-            // Parse the verse to extract reference and text properly
-            let (verseRef, verseText) = parseVerse(verse)
-            
-            let commentaryResult = await commentaryGenerator.generateCommentary(for: verseRef, verseText: verseText)
-            
-            // For devotional, we'll use the same commentary for now
-            let devotionalResult = commentaryResult
+            do {
+                // Wait for generator to be ready (this prevents race conditions)
+                try await commentaryGenerator.ready()
+                
+                // Try GPT-2 commentary generator first
+                // Parse the verse to extract reference and text properly
+                let (verseRef, verseText) = parseVerse(verse)
+                
+                let combined = await commentaryGenerator.generateCommentary(for: verseRef, verseText: verseText)
             
             await MainActor.run {
                 self.isLoading = false
                 
-                // Parse the results to extract commentary and devotional
-                let (commentary, devotional) = self.parseStructuredOutput(commentaryResult, devotional: devotionalResult)
+                // Parse the results to extract commentary and devotional from combined output
+                let (commentary, devotional) = self.parseStructuredOutput(combined)
                 
                 self.commentaryText = commentary
                 self.devotionalText = devotional
@@ -99,6 +100,12 @@ class VerseSummaryViewModel: ObservableObject {
                     self.errorMessage = ""
                 }
             }
+        } catch {
+            await MainActor.run {
+                self.isLoading = false
+                self.errorMessage = "Generation failed: \(error.localizedDescription)"
+            }
+        }
         }
     }
     
@@ -113,7 +120,7 @@ class VerseSummaryViewModel: ObservableObject {
             let result = await summarizer.generateCommentary(for: verse)
             
             await MainActor.run {
-                let (commentary, devotional) = self.parseStructuredOutput(result, devotional: "")
+                let (commentary, devotional) = self.parseStructuredOutput(result)
                 
                 if !commentary.isEmpty || !devotional.isEmpty {
                     self.commentaryText = commentary
@@ -128,35 +135,14 @@ class VerseSummaryViewModel: ObservableObject {
     }
     
     // Parse structured output to extract commentary and devotional sections
-    private func parseStructuredOutput(_ commentaryText: String, devotional: String = "") -> (commentary: String, devotional: String) {
-        var commentary = ""
-        var devotionalText = devotional
-        
-        // Extract commentary from structured output
-        if let startRange = commentaryText.range(of: "[START_COMMENTARY]"),
-           let endRange = commentaryText.range(of: "[END_COMMENTARY]") {
-            let startIndex = commentaryText.index(startRange.upperBound, offsetBy: 0)
-            commentary = String(commentaryText[startIndex..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            // If no structured tokens found, treat the whole text as commentary
-            commentary = commentaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func parseStructuredOutput(_ text: String) -> (commentary: String, devotional: String) {
+        func slice(_ s: String, _ a: String, _ b: String) -> String {
+            guard let r1 = s.range(of: a), let r2 = s.range(of: b), r1.upperBound <= r2.lowerBound else { return "" }
+            return String(s[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        
-        // Extract devotional from structured output
-        if let startRange = devotionalText.range(of: "[START_DEVOTIONAL]"),
-           let endRange = devotionalText.range(of: "[END_DEVOTIONAL]") {
-            let startIndex = devotionalText.index(startRange.upperBound, offsetBy: 0)
-            devotionalText = String(devotionalText[startIndex..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if devotionalText.isEmpty {
-            // If no devotional text provided, try to extract from commentary text
-            if let startRange = commentaryText.range(of: "[START_DEVOTIONAL]"),
-               let endRange = commentaryText.range(of: "[END_DEVOTIONAL]") {
-                let startIndex = commentaryText.index(startRange.upperBound, offsetBy: 0)
-                devotionalText = String(commentaryText[startIndex..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        
-        return (commentary, devotionalText)
+        let commentary = slice(text, "[START_COMMENTARY]", "[END_COMMENTARY]")
+        let devotional = slice(text, "[START_DEVOTIONAL]", "[END_DEVOTIONAL]")
+        return (commentary, devotional)
     }
     
     // Clear the current summary

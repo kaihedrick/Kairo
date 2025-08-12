@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2Tests/BibleCommentaryGeneratorTests.swift
 import XCTest
 @testable import BibleAppPOCV2
 

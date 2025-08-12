@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Views/ContentView.swift
 import SwiftUI
 
 struct ContentView: View {

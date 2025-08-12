@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/BibleCommentaryGenerator.swift
 import Foundation
 import CoreML
 import SwiftUI
@@ -75,17 +76,20 @@ final class BibleCommentaryGenerator: ObservableObject {
     @Published var generatedText = ""
     @Published var error: String?
     @Published private(set) var mode: InferenceMode = .fallback
+    @Published private(set) var isReady = false
 
     private(set) var model: MLModel?
     private var vocab: Vocab?
     private var bpe: GPT2BPEEncoder?
     private(set) var outputName: String = "logits"
+    
+    private var loadTask: Task<Void, Error>?
 
     // Sampling knobs (use mild sampling by default for better diversity)
     var temperature: Float? = 0.8  // mild temperature for controlled randomness
-    var topK: Int? = 40            // limit to top 40 tokens for quality
-    var topP: Float? = 0.9         // nucleus sampling for better diversity
-    var repetitionPenalty: Float = 1.1  // penalize repeated tokens
+    var topK: Int? = 100           // limit to top 100 tokens for quality (increased from 40)
+    var topP: Float? = 0.92        // nucleus sampling for better diversity (increased from 0.9)
+    var repetitionPenalty: Float = 1.15  // penalize repeated tokens (increased from 1.1)
 
     // Model/tokenizer constants loaded from assets (best practice: single source of truth)
     private var seqLen: Int = 512      // Default, will be loaded from export_report.json
@@ -124,6 +128,44 @@ final class BibleCommentaryGenerator: ObservableObject {
         mode = (model != nil && vocab != nil) ? .coreml : .fallback
         print("✅ Inference mode: \(mode)")
         print("🔍 Final state - BPE loaded: \(bpe != nil), Vocab loaded: \(vocab != nil)")
+    }
+    
+    func ready() async throws {
+        if isReady { return }
+        if let t = loadTask { return try await t.value }
+        
+        loadTask = Task {
+            // Wait for resources to be loaded
+            while !isReady && mode == .fallback {
+                try await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+            }
+            
+            // Run a quick self-test
+            guard let testModel = model, let testVocab = vocab else {
+                throw NSError(domain: "BibleCommentaryGenerator", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model or vocab not loaded"])
+            }
+            
+            // Test tokenization round-trip
+            let testText = "Test"
+            if let bpe = bpe {
+                let encoded = bpe.encode(testText, maxLength: 10)
+                let encodedInt32 = encoded.map { Int32($0) }
+                let decoded = testVocab.decode(ids: encodedInt32)
+                guard decoded == testText else {
+                    throw NSError(domain: "BibleCommentaryGenerator", code: 2, userInfo: [NSLocalizedDescriptionKey: "Tokenizer round-trip failed"])
+                }
+            }
+            
+            self.isReady = true
+            print("✅ Generator ready and self-tested")
+        }
+        
+        do { 
+            try await loadTask!.value 
+        } catch {
+            loadTask = nil
+            throw error
+        }
     }
 
     private func loadTokenizerConfig() {
@@ -442,7 +484,7 @@ final class BibleCommentaryGenerator: ObservableObject {
             let L = seqLen
             let endId = endDevotionalId  // 50264
             let prefixLen = min(promptIds.count, L)
-            let maxNew = L - prefixLen  // Use remaining sequence length instead of fixed 128
+            let maxNew = 400  // Allow enough tokens to reach both commentary and devotional sections
             
             // Prepare full-length arrays
             var ids = [Int32](repeating: padId, count: L)
@@ -517,7 +559,7 @@ final class BibleCommentaryGenerator: ObservableObject {
                 
                 // Get safe Float row
                 let row: UnsafeBufferPointer<Float> = logitsArray.rowAsFloat(atTime: t, vocab: vocab)
-                let nextId = sampleNextToken(from: row, vocab: vocab)
+                let nextId = sampleNextToken(from: row, vocab: vocab, step: generated, recentTokens: Array(ids.prefix(currentLen)))
                 
                 // 5) Append token and advance (CRITICAL: Update arrays for next iteration)
                 if currentLen < L {
@@ -562,6 +604,27 @@ final class BibleCommentaryGenerator: ObservableObject {
                 let lastTokens = Array(ids.prefix(currentLen).suffix(10))
                 let lastDecoded = self.vocab?.decode(ids: lastTokens) ?? "?"
                 print("🔍 last 10 tokens: \(lastTokens) -> '\(lastDecoded)'")
+                
+                // Health checks
+                if generated < 10 {
+                    print("🚫 Whitespace ban active for step \(generated)")
+                }
+                if generated < 3 {
+                    print("🚀 Primer boost active for step \(generated)")
+                }
+                print("🔧 3-gram blocking active for step \(generated)")
+                
+                // Log banned tokens for debugging
+                if generated < 10 {
+                    print("🚫 Banned tokens: 198(Ċ), 628(ĊĊ), 220(space)")
+                }
+            }
+            
+            // Watch for [END_COMMENTARY] to start monitoring for [START_DEVOTIONAL]
+            if nextId == endCommentaryId {
+                print("👀 [END_COMMENTARY] detected - switching to devotional mode...")
+                // Switch to devotional phase - could inject [START_DEVOTIONAL] here
+                print("🔄 Phase: Commentary complete, starting devotional generation...")
             }
                 
                 // 7) Stop conditions
@@ -570,7 +633,8 @@ final class BibleCommentaryGenerator: ObservableObject {
                     break
                 } else if nextId == endCommentaryId {
                     print("🛑 Stopped at END_COMMENTARY token")
-                    break
+                    // Don't stop here - continue to generate devotional section
+                    print("🔄 Continuing to generate devotional section...")
                 }
                 
                 // Progress update
@@ -602,21 +666,134 @@ final class BibleCommentaryGenerator: ObservableObject {
         return arr
     }
 
-    private func sampleNextToken(from row: UnsafeBufferPointer<Float>, vocab: Int) -> Int32 {
+    private func shouldBanPunctuation(_ tokens: [Int32]) -> Bool {
+        // Ban punctuation if last 2 tokens are punctuation
+        let last2 = tokens.suffix(2)
+        return last2.count == 2 && last2.allSatisfy { isPunctToken($0) }
+    }
+    
+    private func isPunctToken(_ id: Int32) -> Bool {
+        // Common punctuation tokens: , . : ; ) " ( 
+        let punctIds: Set<Int32> = [11, 13, 25, 26, 8, 357]
+        return punctIds.contains(id)
+    }
+    
+    private func isLetterToken(_ id: Int32) -> Bool {
+        // Check if token represents a letter (this is a simplified check)
+        // In practice, you'd want to decode and check the actual content
+        return id > 1000 && id < 50000  // Most letter tokens are in this range
+    }
+    
+    private func applyMasksAndPenalties(_ logits: inout [Float],
+                                       ids: [Int32],
+                                       step: Int,
+                                       vocabSize: Int,
+                                       padId: Int,
+                                       earlyWS: Bool,
+                                       banPunctNow: Bool,
+                                       noRepeatN: Int = 3,
+                                       repPenalty: Float = 1.15,
+                                       bannedSpecials: Set<Int>) {
+        
+        // 0) never sample PAD & banned specials
+        for id in bannedSpecials.union([padId]) { 
+            if id < logits.count { logits[id] = -Float.infinity } 
+        }
+        
+        // 1) repetition penalty (window 128)
+        var freq: [Int:Int] = [:]
+        for id in ids.suffix(128) { 
+            freq[Int(id), default: 0] += 1 
+        }
+        for (i,c) in freq { 
+            if i < logits.count {
+                logits[i] /= pow(repPenalty, Float(c)) 
+            }
+        }
+        
+        // 2) early whitespace ban
+        if earlyWS {
+            for id in [198, 628, 220] { 
+                if id < logits.count { logits[id] = -Float.infinity } 
+            } // Ċ, ĊĊ, space
+            print("🚫 Step \(step): Hard banned whitespace tokens 198, 628, 220")
+        }
+        
+        // 3) punctuation cooldown
+        if banPunctNow {
+            for id in [11, 13, 25, 26, 8, 357] { 
+                if id < logits.count { logits[id] = -Float.infinity } 
+            } // , . : ; ) " ( 
+            print("🚫 Step \(step): Banned punctuation due to recent punctuation")
+        }
+        
+        // 4) true no-repeat-n-gram mask
+        if ids.count >= noRepeatN - 1 {
+            var seen: [ArraySlice<Int32>: Set<Int>] = [:]
+            for i in 0..<(ids.count - (noRepeatN - 1)) {
+                let prefix = ids[i..<(i + noRepeatN - 1)]
+                let next = Int(ids[i + noRepeatN - 1])
+                seen[prefix, default: []].insert(next)
+            }
+            let currentPrefix = ids.suffix(noRepeatN - 1)
+            if let forbid = seen[currentPrefix] {
+                for id in forbid { 
+                    if id < logits.count { logits[id] = -Float.infinity } 
+                }
+                print("🚫 Step \(step): Blocked \(forbid.count) tokens due to n-gram repetition")
+            }
+        }
+    }
+    
+    private func sampleNextToken(from row: UnsafeBufferPointer<Float>, vocab: Int, step: Int, recentTokens: [Int32]) -> Int32 {
         // Mask PAD token by setting its logit to -inf
         var maskedLogits = Array(UnsafeBufferPointer(start: row.baseAddress, count: vocab))
         if Int(padId) < vocab {
             maskedLogits[Int(padId)] = -Float.infinity
         }
         
-        // Apply repetition penalty to recently used tokens
+        // Apply repetition penalty to recently used tokens (only to recent tokens, not globally)
         if repetitionPenalty > 1.0 {
-            // Get the last few tokens to penalize (need to access current ids array)
             // Note: This will be implemented when we have access to the ids array
             print("🔧 Repetition penalty active: \(repetitionPenalty)")
         }
         
-        // Greedy if no sampling knobs
+
+        
+        // Apply all masks and penalties BEFORE sampling
+        applyMasksAndPenalties(&maskedLogits, 
+                              ids: recentTokens, 
+                              step: step, 
+                              vocabSize: vocab, 
+                              padId: Int(padId), 
+                              earlyWS: step < 10, 
+                              banPunctNow: shouldBanPunctuation(recentTokens), 
+                              noRepeatN: 3, 
+                              repPenalty: repetitionPenalty, 
+                              bannedSpecials: [Int(endCommentaryId), Int(endDevotionalId)])
+        
+        // Primer token bias for early steps (nudge into narrative mode)
+        // Token 770 = "ĠThis" - common high-probability narrative starter
+        if step < 3 {  // Only for first 2-3 steps after [START_COMMENTARY]
+            if 770 < vocab { 
+                maskedLogits[770] += 3.0  // Boost "ĠThis" 
+                print("🚀 Step \(step): Boosted primer token 770 (ĠThis)")
+            }
+        }
+        
+        // Deterministic warm-up for early steps (greedy-ish to avoid newline spirals)
+        if step < 4 {  // First 2-4 tokens after [START_COMMENTARY]
+            var bestIdx = 0
+            var bestVal = -Float.infinity
+            for i in 0..<vocab { 
+                let v = maskedLogits[i]; 
+                if v > bestVal { bestVal = v; bestIdx = i } 
+            }
+            print("🎯 Step \(step): Deterministic warm-up, selected token \(bestIdx)")
+            return Int32(bestIdx)
+        }
+        
+        // Normal sampling for later steps
         if temperature == nil && topK == nil && topP == nil {
             var bestIdx = 0
             var bestVal = -Float.infinity
@@ -720,7 +897,7 @@ final class BibleCommentaryGenerator: ObservableObject {
 
         // Get a pointer (slice) to the last-step logits as Float
         let row: UnsafeBufferPointer<Float> = logitsArray.rowAsFloat(atTime: t, vocab: vocabSize)
-        let chosen = sampleNextToken(from: row, vocab: vocabSize)
+        let chosen = sampleNextToken(from: row, vocab: vocabSize, step: 0, recentTokens: [])
 
         if ids.count < L { ids.append(chosen); mask.append(1) } else { return nil }
         return chosen

@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/ImprovedBibleSummarizer.swift
 import Foundation
 import CoreML
 
@@ -98,7 +99,8 @@ class ImprovedBibleSummarizer {
                 
                 let commentaryResult = await commentaryGen.generateCommentary(for: verseRef, verseText: verseText)
                 if !commentaryResult.isEmpty && !commentaryResult.contains("Unable to generate devotional") {
-                    return commentaryResult
+                    // Don't return the commentary string as devotional - let parseStructuredOutput handle it
+                    return ""
                 }
             } catch {
                 // Continue to fallback

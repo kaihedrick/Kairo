@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Services/ModelManager.swift
 import Foundation
 import CoreML
 

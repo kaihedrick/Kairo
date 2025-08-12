@@ -1,3 +1,4 @@
+// filepath: BibleAppPOCV2/Test/IntegrationTest.swift
 import Foundation
 
 // Simple integration test to verify semantic model works
