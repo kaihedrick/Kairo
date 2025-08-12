@@ -3,7 +3,7 @@ import Foundation
 import CoreML
 
 /// Service class for handling Bible text encoding using Core ML
-class BibleTextEncoder: ObservableObject {
+class BibleTextEncoder: ObservableObject, @unchecked Sendable {
     
     // MARK: - Properties
     private var model: MLModel?
@@ -48,14 +48,14 @@ class BibleTextEncoder: ObservableObject {
     /// Encode text and prefer generated_ids output if present, fallback to embeddings
     func encode(text: String) async -> [Float]? {
         guard let model = model else {
-            DispatchQueue.main.async {
-                self.errorMessage = "Model not loaded"
+            DispatchQueue.main.async { [weak self] in
+                self?.errorMessage = "Model not loaded"
             }
             return nil
         }
         guard let tokenizer = tokenizer else {
-            DispatchQueue.main.async {
-                self.errorMessage = "Tokenizer not initialized"
+            DispatchQueue.main.async { [weak self] in
+                self?.errorMessage = "Tokenizer not initialized"
             }
             return nil
         }
@@ -90,8 +90,8 @@ class BibleTextEncoder: ObservableObject {
             // Fallback to embeddings
             return extractEmbeddings(from: output)
         } catch {
-            DispatchQueue.main.async {
-                self.errorMessage = "Error during encoding: \(error.localizedDescription)"
+            DispatchQueue.main.async { [weak self] in
+                self?.errorMessage = "Error during encoding: \(error.localizedDescription)"
             }
             return nil
         }
@@ -158,7 +158,6 @@ class BibleTextEncoder: ObservableObject {
         let embeddingDim = multiArray.shape[2].intValue
         
         var embeddings: [Float] = []
-        var validTokenCount = 0
         
         // Average pooling across sequence length
         for embIdx in 0..<embeddingDim {
@@ -175,7 +174,6 @@ class BibleTextEncoder: ObservableObject {
             
             if count > 0 {
                 embeddings.append(sum / Float(count))
-                if embIdx == 0 { validTokenCount = count }
             }
         }
         

@@ -26,20 +26,15 @@ class VerseSummaryService: VerseSummaryServiceProtocol, ObservableObject {
             isLoading = false
         }
         
-        do {
-            // Use existing LLM infrastructure for summary generation
-            let tokens = tokenizer.tokenize(text)
-            let encoderOutputs = llmService.encode(tokens: tokens)
-            
-            // Simple decoder simulation (same as VerseSummaryViewModel)
-            let summaryTokenIDs = encoderOutputs.map { Int($0) }.reversed()
-            let summaryText = detokenize(tokenIDs: Array(summaryTokenIDs))
-            
-            return summaryText
-        } catch {
-            lastError = error.localizedDescription
-            throw error
-        }
+        // Use existing LLM infrastructure for summary generation
+        let tokens = tokenizer.tokenize(text)
+        let encoderOutputs = llmService.encode(tokens: tokens)
+        
+        // Simple decoder simulation (same as VerseSummaryViewModel)
+        let summaryTokenIDs = encoderOutputs.map { Int($0) }.reversed()
+        let summaryText = detokenize(tokenIDs: Array(summaryTokenIDs))
+        
+        return summaryText
     }
     
     // MARK: - Helper Methods

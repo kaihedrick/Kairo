@@ -87,12 +87,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		4F195C592E36DA92002C146D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		4F9C0B2F2DFD3757007ED13A = {
 			isa = PBXGroup;
 			children = (
 				4F9C0B3A2DFD3757007ED13A /* BibleAppPOCV2 */,
 				4F9C0B482DFD3758007ED13A /* BibleAppPOCV2Tests */,
 				4F9C0B522DFD3758007ED13A /* BibleAppPOCV2UITests */,
+				4F195C592E36DA92002C146D /* Frameworks */,
 				4F9C0B392DFD3757007ED13A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -210,6 +218,8 @@
 			);
 			mainGroup = 4F9C0B2F2DFD3757007ED13A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4F9C0B392DFD3757007ED13A /* Products */;
 			projectDirPath = "";
@@ -337,7 +347,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -395,7 +405,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -423,6 +433,20 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/google/_upb",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/safetensors",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/_core/lib",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/random/lib",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/hf_xet",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/functorch/.dylibs",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/torch/lib",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/coremltools",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/tokenizers",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/.dylibs",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/core/lib",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hedrick.BibleAppPOCV2;
@@ -452,6 +476,20 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/google/_upb",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/safetensors",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/_core/lib",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/random/lib",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/hf_xet",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/functorch/.dylibs",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/torch/lib",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/coremltools",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/tokenizers",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/.dylibs",
+					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/core/lib",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hedrick.BibleAppPOCV2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -469,7 +507,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 98K3ABFK9Y;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hedrick.BibleAppPOCV2Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -488,7 +526,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 98K3ABFK9Y;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hedrick.BibleAppPOCV2Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";

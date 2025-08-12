@@ -626,7 +626,7 @@ final class OnDemandPageGenerator: ObservableObject {
         let entryKey = VerseKey(book: entry.book, chapter: entry.chapter, verse: entry.verse)
         
         // Check if we can load the chapter to create a proper page
-        if let chapter = await loader.loadChapterContent(book: entry.book, chapter: entry.chapter) {
+        if await loader.loadChapterContent(book: entry.book, chapter: entry.chapter) != nil {
             // Try to generate the page starting from this verse
             let result = await PageContentGenerator.generate(
                 from: entryKey,
