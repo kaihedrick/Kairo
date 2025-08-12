@@ -4,9 +4,6 @@ import Foundation
 enum BundleLoader {
     // Common subdirectory layouts inside the app bundle
     static let subdirs: [String] = [
-        "Resources/ML/ios_integration_assets",
-        "ML/ios_integration_assets",
-        "ios_integration_assets",
         "Resources/ML",
         "ML",
         "" // root
