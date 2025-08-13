@@ -24,7 +24,10 @@ class IntegrationTest {
         
         do {
             let generator = BibleCommentaryGenerator.shared
-            try await generator.ready()
+            // Wait for the generator to be ready (it's already initialized in init)
+            while !(await MainActor.run { generator.isReady }) {
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            }
             print("✅ BibleCommentaryGenerator ready")
             
             let testVerse = "For God so loved the world, that he gave his only begotten Son."

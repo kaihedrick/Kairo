@@ -91,7 +91,9 @@ class VerseSummaryViewModel: ObservableObject {
         Task {
             do {
                 // Wait for generator to be ready (this prevents race conditions)
-                try await commentaryGenerator.ready()
+                while !commentaryGenerator.isReady {
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                }
                 
                 // Try GPT-2 commentary generator first
                 // Parse the verse to extract reference and text properly
