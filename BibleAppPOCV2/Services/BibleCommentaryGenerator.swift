@@ -2,51 +2,59 @@
 import Foundation
 import CoreML
 import SwiftUI
-import Accelerate
 
+// Keep the enum tiny and local.
 enum InferenceMode { case coreml, fallback }
+
+/// Minimal half→float for reading f16 logits quickly
+@inline(__always) private func f16to32(_ h: UInt16) -> Float {
+    let s = (h & 0x8000) != 0
+    let e = Int((h & 0x7C00) >> 10)
+    var f = Int(h & 0x03FF)
+    let val: Float
+    if e == 0 {
+        if f == 0 { val = 0 }
+        else {
+            var exp = -14
+            while (f & 0x400) == 0 { f <<= 1; exp -= 1 }
+            f &= 0x3FF
+            val = ldexpf(Float(f) / 1024 + 1, Int32(exp))
+        }
+    } else if e == 31 { val = .infinity }
+    else { val = ldexpf(Float(f) / 1024 + 1, Int32(e - 15)) }
+    return s ? -val : val
+}
 
 @MainActor
 final class BibleCommentaryGenerator: ObservableObject {
     static let shared = BibleCommentaryGenerator()
     private static var didInit = false
 
+    // UI state
     @Published var isGenerating = false
     @Published var generatedText = ""
     @Published var error: String?
     @Published private(set) var mode: InferenceMode = .fallback
     @Published private(set) var isReady = false
 
+    // Core pieces
     private(set) var model: MLModel?
     private var vocab: Vocab?
     private var bpe: GPT2BPEEncoder?
-    private var tokenizerSvc: TokenizerService?
     private(set) var outputName: String = "logits"
 
-    // ===== generation controls =====
-    // Fast default: greedy on simulator (CPU only), mild sampling on device (ANE)
-#if targetEnvironment(simulator)
-    var temperature: Float? = nil   // greedy
-    var topK: Int? = nil
-    var topP: Float? = nil
-#else
-    var temperature: Float? = 0.8
-    var topK: Int? = 60
-    var topP: Float? = nil // avoid full-vocab sort
-#endif
-    var repetitionPenalty: Float = 1.10
+    // Generation knobs (mild defaults for quality)
+    private let MAX_NEW: Int = 800
+    private let REP_PENALTY: Float = 1.15
+    private let TOP_K: Int = 100
+    private let TOP_P: Float = 0.95
+    private let TEMPERATURE: Float = 0.9
 
-    // --- Generation controls (tuneable) ---
-    private let windowSize = 192               // reduces per-step compute (much faster than 512)
-    private let noRepeatNGram = 3              // strong tri-gram block stops "Matthew Matthew ..."
-    private let minTokensBeforeTransition = 140// when to start biasing to [END_COMMENTARY] -> [START_DEVOTIONAL]
-    private let maxNewTokens = 384             // upper bound for new tokens
+    // Export-driven constants
+    private var seqLen: Int = 512
+    private let exportedVocabSize: Int = 50266
 
-    // ===== model/tokenizer constants =====
-    private var seqLen: Int = 512        // from export_report.json
-    private let exportedVocabSize = 50266 // guide: 50266. used for checks only. :contentReference[oaicite:3]{index=3}
-
-    // special ids (filled from tokenizer_config.json)
+    // Special IDs (populated from tokenizer_config.json)
     private var padId: Int32 = 50265
     private var startCommentaryId: Int32 = 50261
     private var endCommentaryId: Int32 = 50262
@@ -57,14 +65,6 @@ final class BibleCommentaryGenerator: ObservableObject {
     private var verseTextId: Int32 = 50259
     private var verseTagId: Int32 = 50260
 
-    // Cached token IDs for guidance (optional if not found)
-    private var _cachedMatthew: Int32?
-    private var _cachedMark: Int32?
-    private var _cachedLuke: Int32?
-    private var _cachedJohn: Int32?
-
-    private var loadTask: Task<Void, Error>?
-
     private init() {
         if !Self.didInit {
             Self.didInit = true
@@ -72,71 +72,38 @@ final class BibleCommentaryGenerator: ObservableObject {
         }
     }
 
-    // ========== startup ==========
+    // MARK: - Startup
 
     private func loadResources() {
-        print("🚀 Starting resource loading...")
+        print("🚀 Starting resource loading…")
 
-        // 1) load vocab & BPE files used for decoding/encoding
-        loadVocab()
-        loadBPE()
+        // 1) Vocab + BPE
+        do {
+            self.vocab = try Vocab.loadBestFromBundle()
+            if let v = vocab {
+                print("✅ Vocab loaded (\(v.idToToken.count) entries)")
+                assert(v.idToToken.count == exportedVocabSize, "Vocab size mismatch: expected \(exportedVocabSize)")
+            }
+        } catch {
+            print("❌ Vocab load error: \(error.localizedDescription)")
+        }
 
-        // 2) parse export report for seq_len and sanity
+        self.bpe = GPT2BPEEncoder.shared
+        print("✅ BPE ready (vocab: \(bpe?.vocabCount ?? 0))")
+
+        // 2) Parse export report for seq_len
         parseExportReport()
 
-        // 3) read special ids from tokenizer_config.json
+        // 3) Special token IDs
         loadSpecialIdsFromTokenizerConfig()
 
-        // 4) init tokenizer service (uses IDs + BPE)
-        if let bpe = self.bpe {
-            tokenizerSvc = TokenizerService(
-                bpe: bpe,
-                ids: .init(verseId: verseId, verseRefId: verseRefId, verseTextId: verseTextId, verseTagId: verseTagId,
-                           startCommentaryId: startCommentaryId, endCommentaryId: endCommentaryId,
-                           startDevotionalId: startDevotionalId, endDevotionalId: endDevotionalId, padId: padId)
-            )
-        }
-
-        // 5) load model (inputs/outputs per guide) :contentReference[oaicite:4]{index=4}
+        // 4) Load model
         loadModel()
 
-        // 6) finalize
-        isReady = (model != nil && vocab != nil && tokenizerSvc != nil)
+        // Ready?
+        isReady = (model != nil && vocab != nil && bpe != nil)
         mode = isReady ? .coreml : .fallback
-        if isReady {
-            NotificationCenter.default.post(name: .coreMLBibleModelReady, object: nil)
-            print("🟢 Core ML Bible model ready")
-        } else {
-            print("⚠️ Fallback mode")
-        }
-    }
-
-    private func loadVocab() {
-        guard let url = Bundle.main.url(forResource: "id_to_token", withExtension: "json") else {
-            print("❌ id_to_token.json missing"); return
-        }
-        do {
-            vocab = try Vocab.load(from: url)
-            if let v = vocab {
-                print("✅ Vocab loaded (\(v.idToToken.count))")
-                if v.idToToken.count != exportedVocabSize {
-                    print("⚠️ Vocab count != exported size (\(exportedVocabSize))")
-                }
-                
-                // Cache useful ids for guidance (optional if not found)
-                _cachedMatthew = v.id(forToken: "ĠMatthew")
-                _cachedMark = v.id(forToken: "ĠMark")
-                _cachedLuke = v.id(forToken: "ĠLuke")
-                _cachedJohn = v.id(forToken: "ĠJohn")
-            }
-        } catch { print("❌ Vocab load error:", error.localizedDescription) }
-    }
-
-    private func loadBPE() {
-        // your GPT2ByteDecoder.swift + tokenizer assets must be in app bundle
-        // BPE encoder should already load vocab.json + merges.txt
-        bpe = GPT2BPEEncoder.shared
-        print("✅ BPE ready (vocab: \(bpe?.vocabCount ?? 0))")
+        print(isReady ? "🟢 Core ML ready" : "⚠️ Fallback mode")
     }
 
     private func parseExportReport() {
@@ -144,50 +111,53 @@ final class BibleCommentaryGenerator: ObservableObject {
         do {
             let data = try Data(contentsOf: url)
             if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let vs = obj["vocab_size"] as? Int { print("✅ Vocab size (export): \(vs)") }
+                if let vs = obj["vocab_size"] as? Int { print("ℹ️ export_report vocab_size=\(vs)") }
                 if let io = obj["model_io"] as? [String: Any], let L = io["seq_len"] as? Int {
                     seqLen = L
                 } else if let L = obj["seq_len"] as? Int {
                     seqLen = L
                 }
-                print("✅ Sequence length: \(seqLen)")
+                print("✅ Sequence length set to \(seqLen)")
             }
-        } catch { print("⚠️ export_report parse error:", error.localizedDescription) }
+        } catch {
+            print("⚠️ export_report parse error: \(error.localizedDescription)")
+        }
     }
 
     private func loadSpecialIdsFromTokenizerConfig() {
         guard let url = Bundle.main.url(forResource: "tokenizer_config", withExtension: "json") else { return }
         do {
             let data = try Data(contentsOf: url)
-            if let cfg = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let dec = cfg["added_tokens_decoder"] as? [String: [String: Any]] {
-                for (k, v) in dec {
-                    guard let id = Int32(k), let content = v["content"] as? String else { continue }
-                    switch content {
-                    case "[VERSE_ID]": verseId = id
-                    case "[VERSE_REF]": verseRefId = id
-                    case "[VERSE_TEXT]": verseTextId = id
-                    case "[VERSE]": verseTagId = id
-                    case "[START_COMMENTARY]": startCommentaryId = id
-                    case "[END_COMMENTARY]": endCommentaryId = id
-                    case "[START_DEVOTIONAL]": startDevotionalId = id
-                    case "[END_DEVOTIONAL]": endDevotionalId = id
-                    case "[PAD]": padId = id
-                    default: break
-                    }
+            guard let cfg = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let dec = cfg["added_tokens_decoder"] as? [String: [String: Any]] else { return }
+            for (k, v) in dec {
+                guard let id = Int32(k), let content = v["content"] as? String else { continue }
+                switch content {
+                case "[PAD]": padId = id
+                case "[VERSE_ID]": verseId = id
+                case "[VERSE_REF]": verseRefId = id
+                case "[VERSE_TEXT]": verseTextId = id
+                case "[VERSE]": verseTagId = id
+                case "[START_COMMENTARY]": startCommentaryId = id
+                case "[END_COMMENTARY]": endCommentaryId = id
+                case "[START_DEVOTIONAL]": startDevotionalId = id
+                case "[END_DEVOTIONAL]": endDevotionalId = id
+                default: break
                 }
-                print("✅ Special IDs loaded (PAD=\(padId))")
             }
-        } catch { print("⚠️ tokenizer_config parse error:", error.localizedDescription) }
+            print("✅ Special token IDs loaded (PAD=\(padId))")
+        } catch {
+            print("⚠️ tokenizer_config parse error: \(error.localizedDescription)")
+        }
     }
 
     private func loadModel() {
         do {
             let cfg = MLModelConfiguration()
 #if targetEnvironment(simulator)
-            cfg.computeUnits = .cpuOnly   // Simulator = CPU, slow (expected)
+            cfg.computeUnits = .cpuOnly               // simulator: CPU only
 #else
-            cfg.computeUnits = .cpuAndNeuralEngine
+            cfg.computeUnits = .cpuAndNeuralEngine    // device: ANE if possible
 #endif
             if let gen = try? bible_commentary_model(configuration: cfg) {
                 model = gen.model
@@ -199,266 +169,214 @@ final class BibleCommentaryGenerator: ObservableObject {
                          Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlpackage") {
                 model = try MLModel(contentsOf: url, configuration: cfg)
                 outputName = "logits"
-                print("🟢 Loaded mlmodel from bundle")
+                print("🟢 Loaded model from bundle")
+                return
             }
+            print("❌ No Core ML model found")
         } catch {
-            print("❌ Model load error:", error.localizedDescription)
+            print("❌ Model load error: \(error.localizedDescription)")
         }
     }
 
-    // ========== generation ==========
+    // MARK: - Encoding
 
-    /// Primary API
+    /// Formats the prompt and encodes with GPT-2 BPE.
+    private func encodePrompt(verseRef: String, verseText: String) -> [Int32] {
+        guard let bpe = bpe else { return [] }
+        // Format matches training:
+        // [VERSE_ID] BOOK_CHAPTER_VERSE
+        // [VERSE_REF] <ref>
+        // [VERSE_TEXT] <text>
+        // [VERSE]
+        // [START_COMMENTARY]
+        let bookRef = verseRef.replacingOccurrences(of: " ", with: "_").uppercased()
+        let prompt =
+        """
+        [VERSE_ID] \(bookRef)
+        [VERSE_REF] \(verseRef)
+        [VERSE_TEXT] \(verseText)
+        [VERSE]
+        [START_COMMENTARY]
+        """
+        let ids = bpe.encode(prompt, maxLength: seqLen)
+        return ids.map { Int32($0) }
+    }
+
+    // MARK: - Generation
+
+    @MainActor
     func generateCommentary(for verseRef: String, verseText: String) async -> String {
-        guard !isGenerating else { return generatedText }
-        guard let model, let vocab, let tokenizerSvc else {
-            error = "Model/tokenizer not ready"; return ""
+        guard let model, let vocab else {
+            error = "Model/vocab not loaded"; return ""
         }
-
         isGenerating = true
         error = nil
         generatedText = ""
 
-        // Build tokenized prompt as IDs (no raw "[TOKEN]" strings)
-        let promptIds = tokenizerSvc.encodePrompt(verseRef: verseRef, verseText: verseText, seqLen: seqLen)
+        // Build input ids + attention mask
+        var ids = encodePrompt(verseRef: verseRef, verseText: verseText)
+        if ids.isEmpty { isGenerating = false; return "" }
+        ids = Array(ids.prefix(seqLen))
 
-        // Allocate sequence state
-        let L = seqLen
-        var ids = [Int32](repeating: tokenizerSvc.padId, count: L)
-        var mask = [Int32](repeating: 0, count: L)
+        var attn = [Int32](repeating: 0, count: seqLen)
+        for i in 0..<ids.count { attn[i] = 1 }
 
-        let prefix = min(promptIds.count, L)
-        for i in 0..<prefix { ids[i] = promptIds[i]; mask[i] = 1 }
+        var produced = 0
+        var stop = false
 
-        var t = prefix
+        while produced < MAX_NEW && !stop && ids.count < seqLen {
+            // 1) Prepare full-length inputs (simple, robust; works on simulator too)
+            let inputIds = try? makeInt32Array([1, seqLen], fill: padId)
+            let mask     = try? makeInt32Array([1, seqLen], fill: 0)
+            if let inputIds, let mask {
+                // copy current state
+                let baseI = UnsafeMutablePointer<Int32>(OpaquePointer(inputIds.dataPointer))
+                let baseM = UnsafeMutablePointer<Int32>(OpaquePointer(mask.dataPointer))
+                for i in 0..<ids.count { baseI[i] = ids[i]; baseM[i] = 1 }
 
-
-
-        // Pre-allocate Core ML arrays once
-        let inputIds = try? MLMultiArray(shape: [1, NSNumber(value: L)], dataType: .int32)
-        let attnMask = try? MLMultiArray(shape: [1, NSNumber(value: L)], dataType: .int32)
-        /// Copy last `windowSize` tokens into buffers at positions [0..len-1], pad the rest.
-        func fillBuffers(
-            ids fullIds: [Int32],
-            mask fullMask: [Int32],
-            currentLen: Int,
-            seqLen: Int,
-            input: MLMultiArray,
-            attn: MLMultiArray
-        ) {
-            let start = max(0, currentLen - windowSize)
-            let len   = min(windowSize, currentLen) // how many "real" tokens we're sending now
-
-            let pIds  = UnsafeMutablePointer<Int32>(OpaquePointer(input.dataPointer))
-            let pMask = UnsafeMutablePointer<Int32>(OpaquePointer(attn.dataPointer))
-
-            // Copy the visible slice into the *front* of the arrays (positions 0..len-1)
-            if len > 0 {
-                (0..<len).forEach { i in
-                    pIds[i]  = fullIds[start + i]
-                    pMask[i] = 1
-                }
-            }
-
-            // Right-pad the rest with PAD / 0
-            if len < seqLen {
-                // pad ids
-                pIds.advanced(by: len).initialize(repeating: padId, count: seqLen - len)
-                // pad mask
-                pMask.advanced(by: len).initialize(repeating: 0,    count: seqLen - len)
-            }
-        }
-
-        // simple softmax over a small candidate set
-        @inline(__always) func softmax(_ x: inout [Float]) {
-            let m = x.max() ?? 0
-            var s: Float = 0
-            for i in 0..<x.count { x[i] = expf(x[i] - m); s += x[i] }
-            if s > 0 { for i in 0..<x.count { x[i] /= s } }
-        }
-
-        // O(V) single pass to keep topK indices without sorting entire vocab
-        func topKCandidates(_ row: UnsafeBufferPointer<Float>, k: Int) -> [Int] {
-            if k <= 0 { return Array(0..<row.count) }    // greedy/temperature only
-            var best: [(i: Int, v: Float)] = []
-            best.reserveCapacity(k)
-            for i in 0..<row.count {
-                let v = row[i]
-                if best.count < k { best.append((i, v)); best.sort { $0.v > $1.v } }
-                else if v > best.last!.v { best.removeLast(); best.append((i, v)); best.sort { $0.v > $1.v } }
-            }
-            return best.map { $0.i }
-        }
-        
-        /// Applies masks/penalties and samples the next token greedily among survivors.
-        func sampleNextToken(
-            from row: [Float],
-            vocab: Int,
-            step: Int,
-            recentTokens: [Int32],
-            generatedSoFar: Int
-        ) -> Int32 {
-            var logits = row
-            let count  = min(vocab, logits.count)
-
-            // 1) Hard masks: PAD should never be produced
-            if padId >= 0 && Int(padId) < count { logits[Int(padId)] = -.infinity }
-
-            // 2) No-repeat tri-gram
-            if recentTokens.count >= noRepeatNGram - 1 {
-                var seen: [ArraySlice<Int32>: Set<Int32>] = [:]
-                let n = noRepeatNGram
-                for i in 0..<(recentTokens.count - (n - 1)) {
-                    let prefix = recentTokens[i..<(i + n - 1)]
-                    let next   = recentTokens[i + n - 1]
-                    seen[prefix, default: []].insert(next)
-                }
-                let currentPrefix = recentTokens.suffix(n - 1)
-                if let forbid = seen[currentPrefix] {
-                    for id in forbid { let i = Int(id); if i >= 0 && i < count { logits[i] = -.infinity } }
-                }
-            }
-
-            // 3) Short-window repetition penalty (last 64 tokens)
-            if repetitionPenalty > 1.0, !recentTokens.isEmpty {
-                for id in recentTokens.suffix(64) {
-                    let i = Int(id)
-                    if i >= 0 && i < count, logits[i].isFinite {
-                        logits[i] /= repetitionPenalty
-                    }
-                }
-            }
-
-            // 4) Light dampening of Gospel book tokens in early steps
-            if generatedSoFar < 64 {
-                for t in [_cachedMatthew, _cachedMark, _cachedLuke, _cachedJohn].compactMap({ $0 }) {
-                    let i = Int(t)
-                    if i >= 0 && i < count, logits[i].isFinite {
-                        logits[i] *= 0.85 // 15% downweight so we don't loop on them
-                    }
-                }
-            }
-
-            // 5) Transition guidance after we've written a while:
-            //    nudge toward [END_COMMENTARY] then [START_DEVOTIONAL].
-            if generatedSoFar >= minTokensBeforeTransition {
-                // tiny bias for [END_COMMENTARY]
-                let endComm = Int(endCommentaryId)
-                if endComm >= 0 && endComm < count, logits[endComm].isFinite {
-                    logits[endComm] += 0.80 // small push
-                }
-                // if we just emitted [END_COMMENTARY], bias next to [START_DEVOTIONAL]
-                if recentTokens.last == endCommentaryId {
-                    let startDevo = Int(startDevotionalId)
-                    if startDevo >= 0 && startDevo < count, logits[startDevo].isFinite {
-                        logits[startDevo] += 1.10
-                    }
-                }
-            }
-
-            // 6) Temperature / Top-k / Top-p
-            if let t = temperature, t > 0, t != 1 { for i in 0..<count { logits[i] /= t } }
-            if let k = topK, k > 0 && k < count {
-                let threshold = logits.enumerated().sorted { $0.element > $1.element }[k - 1].element
-                for i in 0..<count where logits[i] < threshold { logits[i] = -.infinity }
-            }
-            if let p = topP, p < 1.0 {
-                let m = logits.prefix(count).max() ?? 0
-                var exps = logits.prefix(count).map { expf($0 - m) }
-                let total = exps.reduce(0, +)
-                if total > 0 {
-                    for i in 0..<count { exps[i] /= total }
-                    let sorted = exps.enumerated().sorted { $0.element > $1.element }
-                    var keep = Set<Int>(); var cum: Float = 0
-                    for (i,e) in sorted { cum += e; keep.insert(i); if cum >= p { break } }
-                    for i in 0..<count where !keep.contains(i) { logits[i] = -.infinity }
-                }
-            }
-
-            // 7) Greedy among survivors
-            let best = (0..<count).max(by: { logits[$0] < logits[$1] }) ?? 0
-            return Int32(best)
-        }
-
-        do {
-            while t < L && (t - prefix) < maxNewTokens {
-                // 1) Fill buffers with a sliding context window (much faster)
-                fillBuffers(
-                    ids: ids,
-                    mask: mask,
-                    currentLen: t,
-                    seqLen: L,
-                    input: inputIds!,
-                    attn: attnMask!
-                )
-
-                // 2) Predict
-                let provider = try MLDictionaryFeatureProvider(dictionary: [
-                    "input_ids": MLFeatureValue(multiArray: inputIds!),
-                    "attention_mask": MLFeatureValue(multiArray: attnMask!)
+                // 2) Run once
+                let provider = try? MLDictionaryFeatureProvider(dictionary: [
+                    "input_ids": MLFeatureValue(multiArray: inputIds),
+                    "attention_mask": MLFeatureValue(multiArray: mask)
                 ])
-                let out = try await model.prediction(from: provider)
-
-                // 3) Read logits and sample
-                guard let logitsArray = out.featureValue(for: outputName)?.multiArrayValue else {
-                    print("❌ No logits in output"); break
-                }
-                let shape = logitsArray.shape.map { $0.intValue }
-                let vsize = shape.last ?? exportedVocabSize
-                let rowPtr = logitsArray.rowAsFloat(atTime: t - 1, vocab: vsize)
-                let row = Array(rowPtr)
-
-                // IMPORTANT: recent tokens are the same slice we fed in
-                let recentStart = max(0, t - windowSize)
-                let recent = Array(ids[recentStart..<t])
-
-                let next = sampleNextToken(
-                    from: row, vocab: vsize, step: t - prefix,
-                    recentTokens: recent, generatedSoFar: t - prefix
-                )
-
-                // Stop on any end-token
-                if next == endDevotionalId || next == endCommentaryId {
-                    ids[t] = next
-                    mask[t] = 1
-                    t += 1
-                    print("🏁 Hit end token \(next).")
+                guard let provider,
+                      let out = try? model.prediction(from: provider),
+                      let logits = out.featureValue(for: outputName)?.multiArrayValue
+                else {
+                    error = "Model prediction failed"
                     break
                 }
 
-                // 6) append/update
-                ids[t] = next
-                mask[t] = 1
-                t += 1
+                // 3) Read last-step logits row and sample next id
+                let row = readLogitsRow(logits)
+                let next = sample(
+                    logits: row,
+                    recent: ids.suffix(64),
+                    topK: TOP_K,
+                    topP: TOP_P,
+                    temperature: TEMPERATURE,
+                    repPenalty: REP_PENALTY,
+                    padId: padId
+                )
 
+                ids.append(next)
+                produced += 1
+                stop = (next == endDevotionalId)
 
+                // 4) Stream every few tokens to keep the UI responsive
+                if produced % 8 == 0 || stop {
+                    let partial = vocab.decode(ids: ids)
+                    self.generatedText = partial
+                }
+            } else {
+                error = "Failed to allocate MLMultiArray buffers"
+                break
+            }
+        }
 
-                // incremental UI (cheap)
-                if let vocab = self.vocab, (t - prefix) % 8 == 0 {
-                    self.generatedText = vocab.decode(ids: Array(ids.prefix(t)))
+        let text = vocab.decode(ids: ids)
+        self.generatedText = text
+        self.isGenerating = false
+        return text
+    }
+
+    // MARK: - Sampling + helpers
+
+    private func softmax(_ x: inout [Float]) {
+        let m = x.max() ?? 0
+        var s: Float = 0
+        for i in 0..<x.count { x[i] = expf(x[i] - m); s += x[i] }
+        if s > 0 { for i in 0..<x.count { x[i] /= s } }
+    }
+
+    private func sample(
+        logits: [Float],
+        recent: ArraySlice<Int32>,
+        topK: Int,
+        topP: Float,
+        temperature: Float,
+        repPenalty: Float,
+        padId: Int32
+    ) -> Int32 {
+        var log = logits
+        let n = log.count
+
+        // Mask PAD
+        if Int(padId) < n { log[Int(padId)] = -.infinity }
+
+        // Light repetition penalty
+        if repPenalty > 1 {
+            for id in recent {
+                let i = Int(id)
+                if i >= 0 && i < n, log[i].isFinite {
+                    log[i] /= repPenalty
                 }
             }
-
-            let final = vocab.decode(ids: Array(ids.prefix(t)))
-            self.generatedText = final
-            self.isGenerating = false
-            return final
-        } catch {
-            self.error = error.localizedDescription
-            self.isGenerating = false
-            return ""
         }
+
+        // Temperature
+        if temperature > 0 && temperature != 1 {
+            for i in 0..<n { log[i] /= temperature }
+        }
+
+        // Top-k
+        if topK > 0 && topK < n {
+            let thr = log.enumerated().sorted(by: { $0.element > $1.element })[topK-1].element
+            for i in 0..<n where log[i] < thr { log[i] = -.infinity }
+        }
+
+        // Top-p (nucleus)
+        var probs = log
+        softmax(&probs)
+        let sorted = probs.enumerated().sorted { $0.element > $1.element }
+        var cum: Float = 0
+        var keep = Set<Int>()
+        for (i, p) in sorted {
+            cum += p; keep.insert(i)
+            if cum >= topP { break }
+        }
+        for i in 0..<n where !keep.contains(i) { log[i] = -.infinity }
+
+        // Greedy among survivors
+        let argmax = (0..<n).max(by: { log[$0] < log[$1] }) ?? 0
+        return Int32(argmax)
+    }
+
+    /// Safe reader for logits last row: supports [1, vocab] / [1, 1, vocab] and f16/f32.
+    private func readLogitsRow(_ logits: MLMultiArray) -> [Float] {
+        let shape = logits.shape.map { $0.intValue }
+        let v = shape.last ?? logits.count
+        switch logits.dataType {
+        case .float32:
+            let base = logits.dataPointer.bindMemory(to: Float.self, capacity: logits.count)
+            return Array(UnsafeBufferPointer(start: base.advanced(by: logits.count - v), count: v))
+        case .float16:
+            let src = logits.dataPointer.bindMemory(to: UInt16.self, capacity: logits.count)
+            var out = [Float](repeating: 0, count: v)
+            let offset = logits.count - v
+            for i in 0..<v { out[i] = f16to32(src[offset + i]) }
+            return out
+        default:
+            fatalError("Unsupported logits dtype \(logits.dataType)")
+        }
+    }
+
+    private func makeInt32Array(_ shape: [Int], fill: Int32 = 0) throws -> MLMultiArray {
+        let arr = try MLMultiArray(shape: shape.map(NSNumber.init), dataType: .int32)
+        let total = shape.reduce(1, *)
+        let base = UnsafeMutablePointer<Int32>(OpaquePointer(arr.dataPointer))
+        base.initialize(repeating: fill, count: total)
+        return arr
     }
 }
 
-// MARK: - Commentary/Devotional Split Parser
+// MARK: - Commentary/Devotional Split (unchanged API)
 
-/// Represents the parsed sections of generated Bible commentary
 struct ParsedBibleContent {
     let commentary: String
     let devotional: String
     let rawText: String
-    
+
     init(commentary: String, devotional: String, rawText: String) {
         self.commentary = commentary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.devotional = devotional.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -467,72 +385,40 @@ struct ParsedBibleContent {
 }
 
 extension BibleCommentaryGenerator {
-    
-    /// Parse generated text into commentary and devotional sections
-    /// - Parameter text: The raw generated text containing special tokens
-    /// - Returns: ParsedBibleContent with separated commentary and devotional sections
     func parseGeneratedContent(_ text: String) -> ParsedBibleContent {
-        print("🔍 Parsing generated content for commentary/devotional split...")
-        
-        // Default values
         var commentary = ""
         var devotional = ""
-        
-        // Parse commentary section: [START_COMMENTARY] ... [END_COMMENTARY]
-        if let startRange = text.range(of: "[START_COMMENTARY]"),
-           let endRange = text.range(of: "[END_COMMENTARY]") {
-            let startIndex = text.index(startRange.upperBound, offsetBy: 0)
-            let endIndex = endRange.lowerBound
-            if startIndex < endIndex {
-                commentary = String(text[startIndex..<endIndex])
-                print("✅ Found commentary section: \(commentary.prefix(100))...")
-            }
+
+        if let s = text.range(of: "[START_COMMENTARY]"),
+           let e = text.range(of: "[END_COMMENTARY]"),
+           s.upperBound < e.lowerBound {
+            commentary = String(text[s.upperBound..<e.lowerBound])
         }
-        
-        // Parse devotional section: [START_DEVOTIONAL] ... [END_DEVOTIONAL]
-        if let startRange = text.range(of: "[START_DEVOTIONAL]"),
-           let endRange = text.range(of: "[END_DEVOTIONAL]") {
-            let startIndex = text.index(startRange.upperBound, offsetBy: 0)
-            let endIndex = endRange.lowerBound
-            if startIndex < endIndex {
-                devotional = String(text[startIndex..<endIndex])
-                print("✅ Found devotional section: \(devotional.prefix(100))...")
-            }
+
+        if let s = text.range(of: "[START_DEVOTIONAL]"),
+           let e = text.range(of: "[END_DEVOTIONAL]"),
+           s.upperBound < e.lowerBound {
+            devotional = String(text[s.upperBound..<e.lowerBound])
         }
-        
-        // If no sections found, treat the entire text as commentary
-        if commentary.isEmpty && devotional.isEmpty {
-            commentary = text
-            print("⚠️ No special tokens found, treating entire text as commentary")
+
+        if commentary.isEmpty && devotional.isEmpty { commentary = text }
+
+        func clean(_ s: String) -> String {
+            s.trimmingCharacters(in: .whitespacesAndNewlines)
+             .replacingOccurrences(of: "\n\n\n", with: "\n\n")
+             .replacingOccurrences(of: "  ", with: " ")
         }
-        
-        // Clean up the sections
-        commentary = cleanSectionText(commentary)
-        devotional = cleanSectionText(devotional)
-        
-        print("📝 Parsed sections - Commentary: \(commentary.count) chars, Devotional: \(devotional.count) chars")
-        
-        return ParsedBibleContent(commentary: commentary, devotional: devotional, rawText: text)
+
+        return ParsedBibleContent(
+            commentary: clean(commentary),
+            devotional: clean(devotional),
+            rawText: text
+        )
     }
-    
-    /// Clean up section text by removing extra whitespace and formatting
-    /// - Parameter text: Raw section text
-    /// - Returns: Cleaned section text
-    private func cleanSectionText(_ text: String) -> String {
-        return text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\n\n\n", with: "\n\n") // Remove excessive line breaks
-            .replacingOccurrences(of: "  ", with: " ") // Remove double spaces
-    }
-    
-    /// Generate commentary and devotional content, returning parsed sections
-    /// - Parameters:
-    ///   - verseRef: Bible verse reference (e.g., "John 3:16")
-    ///   - verseText: The actual verse text
-    /// - Returns: ParsedBibleContent with separate commentary and devotional sections
+
     @MainActor
     func generateCommentaryAndDevotional(for verseRef: String, verseText: String) async -> ParsedBibleContent {
-        let rawText = await generateCommentary(for: verseRef, verseText: verseText)
-        return parseGeneratedContent(rawText)
+        let raw = await generateCommentary(for: verseRef, verseText: verseText)
+        return parseGeneratedContent(raw)
     }
 }
