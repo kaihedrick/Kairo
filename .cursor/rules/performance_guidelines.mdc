@@ -1,0 +1,408 @@
+
+# ⚡ Performance Guidelines - BibleAppPOCV2
+
+## 🎯 Performance Philosophy
+
+### 1. **User Experience First** 👤
+**Reference**: `Automation_of_AI_in_Agent.md` - Performance monitoring framework
+- **Responsive UI**: Maintain 60fps for smooth interactions
+- **Fast Loading**: Minimize app launch and page load times
+- **Efficient ML**: Optimize inference times for local models
+- **Battery Optimization**: Minimize battery impact of operations
+
+**Cross-Reference**: See `core_architecture.md` for overall architecture rules
+
+### 2. **Performance Budgets** 💰
+- **App Launch**: <3 seconds on modern devices
+- **Page Navigation**: <500ms for page transitions
+- **ML Inference**: <2 seconds for commentary generation
+- **Memory Usage**: <200MB for typical usage patterns
+
+## 🧠 ML Performance Optimization
+
+### 1. **CoreML Optimization** 🎯
+**Reference**: `flan-t5plan.md` - ML performance requirements
+- **Neural Engine**: Use `.cpuAndNeuralEngine` for device, `.cpuOnly` for simulator
+- **Model Quantization**: Use FP16 weights where applicable
+- **Batch Processing**: Process multiple requests when possible
+- **Model Caching**: Cache loaded models to avoid reloading
+
+### 2. **Inference Optimization** ⚡
+**Reference**: `Services/BibleCommentaryGenerator.swift` - Generation optimization
+```swift
+class BibleCommentaryGenerator {
+    // Performance optimization settings
+    private let maxSequenceLength = 512
+    private let temperature = 0.3 // Lower for faster, more focused generation
+    private let topK = 40 // Limit vocabulary for faster sampling
+    
+    func generateCommentary(for verse: String) async throws -> VerseSummary {
+        // Measure performance
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        // Optimize input processing
+        let normalizedInput = normalizeInput(verse)
+        let tokens = try tokenizer.encode(normalizedInput)
+        
+        // Batch processing if possible
+        let result = try await generateWithOptimizedSettings(tokens)
+        
+        // Performance monitoring
+        let generationTime = CFAbsoluteTimeGetCurrent() - startTime
+        PerformanceMonitor.shared.recordMLInference(time: generationTime)
+        
+        return result
+    }
+}
+```
+
+### 3. **Memory Management** 💾
+- **Model Lifecycle**: Load models only when needed
+- **Memory Pressure**: Respond to memory warnings
+- **Cache Limits**: Implement LRU caching with size limits
+- **Background Cleanup**: Clean up resources in background
+
+## 📱 UI Performance Optimization
+
+### 1. **SwiftUI Performance** 🎨
+**Reference**: `Views/OptimizedBibleReaderView.swift` - Performance patterns
+```swift
+struct OptimizedBibleReaderView: View {
+    // Use @StateObject for ViewModels to avoid recreation
+    @StateObject private var viewModel: OptimizedBibleViewModel
+    
+    // Lazy loading for large lists
+    var body: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(viewModel.verses) { verse in
+                VerseView(verse: verse)
+                    .id(verse.id) // Stable identity for performance
+            }
+        }
+        .background(BackgroundView())
+    }
+}
+
+// Optimize verse rendering
+struct VerseView: View {
+    let verse: Verse
+    
+    var body: some View {
+        Text(verse.content)
+            .font(.body)
+            .lineLimit(nil) // Allow natural text wrapping
+            .fixedSize(horizontal: false, vertical: true) // Optimize layout
+    }
+}
+```
+
+### 2. **Animation Performance** 🎭
+**Reference**: `GLASS_EFFECTS_SUMMARY.md` - Animation optimization
+```swift
+// Use spring animations for natural feel
+.animation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0.1), value: searchText)
+
+// Coordinate animations for smooth transitions
+.matchedGeometryEffect(id: "bookTile", in: bookTileNamespace)
+
+// Avoid expensive animations during scrolling
+.animation(.none, value: scrollOffset)
+```
+
+### 3. **View Optimization** 🔧
+- **View Recycling**: Reuse views in lists and collections
+- **Conditional Rendering**: Use computed properties for dynamic UI
+- **Lazy Loading**: Load content only when visible
+- **Background Processing**: Handle heavy operations off main thread
+
+## 🧭 Navigation Performance
+
+### 1. **Page Generation Optimization** 📄
+**Reference**: `Services/OnDemandPageGenerator.swift` - Page generation
+```swift
+class OnDemandPageGenerator {
+    // Cache for generated pages
+    private var pageCache: [String: FragmentedPage] = [:]
+    private let maxCacheSize = 50
+    
+    func generatePage() async throws -> FragmentedPage {
+        let cacheKey = generateCacheKey()
+        
+        // Check cache first
+        if let cachedPage = pageCache[cacheKey] {
+            return cachedPage
+        }
+        
+        // Generate new page
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let page = try await generateFragmentedPage()
+        let generationTime = CFAbsoluteTimeGetCurrent() - startTime
+        
+        // Performance monitoring
+        PerformanceMonitor.shared.recordPageGeneration(time: generationTime)
+        
+        // Cache the result
+        cachePage(page, for: cacheKey)
+        
+        return page
+    }
+    
+    private func cachePage(_ page: FragmentedPage, for key: String) {
+        // Implement LRU caching
+        if pageCache.count >= maxCacheSize {
+            // Remove oldest entry
+            let oldestKey = pageCache.keys.first!
+            pageCache.removeValue(forKey: oldestKey)
+        }
+        pageCache[key] = page
+    }
+}
+```
+
+### 2. **History Management Performance** 📚
+**Reference**: `Services/FragmentedPageNavigationManager.swift` - History optimization
+- **Efficient Storage**: Use compact data structures for history entries
+- **Quick Lookup**: Implement fast search and retrieval
+- **Memory Limits**: Enforce strict memory limits for history
+- **Background Cleanup**: Clean up old entries in background
+
+## 💾 Memory Management
+
+### 1. **Memory Pressure Handling** 🚨
+**Reference**: `Utilities/PerformanceMonitor.swift` - Memory monitoring
+```swift
+class PerformanceMonitor {
+    static let shared = PerformanceMonitor()
+    
+    func handleMemoryWarning() {
+        // Clear non-essential caches
+        clearPageCache()
+        clearImageCache()
+        clearTemporaryData()
+        
+        // Force garbage collection
+        autoreleasepool {
+            // Perform cleanup operations
+        }
+    }
+    
+    func monitorMemoryUsage() {
+        let memoryUsage = getCurrentMemoryUsage()
+        
+        if memoryUsage > MemoryThreshold.warning {
+            // Log warning
+            DebugLogger.shared.logWarning("High memory usage: \(memoryUsage)MB")
+        }
+        
+        if memoryUsage > MemoryThreshold.critical {
+            // Take immediate action
+            handleMemoryWarning()
+        }
+    }
+}
+
+enum MemoryThreshold {
+    static let warning = 150 * 1024 * 1024  // 150MB
+    static let critical = 200 * 1024 * 1024 // 200MB
+}
+```
+
+### 2. **Resource Management** 🔧
+- **File Access**: Minimize file I/O operations
+- **Image Caching**: Implement efficient image caching
+- **Network Independence**: Work offline without external dependencies
+- **Background Tasks**: Handle cleanup in background
+
+## 📊 Performance Monitoring
+
+### 1. **Metrics Collection** 📈
+**Reference**: `Utilities/PerformanceMonitor.swift` - Performance tracking
+```swift
+class PerformanceMonitor {
+    // Performance metrics
+    private var metrics: [String: PerformanceMetric] = [:]
+    
+    func recordMLInference(time: CFAbsoluteTime) {
+        let metric = PerformanceMetric(
+            name: "ML Inference",
+            value: time,
+            timestamp: Date(),
+            category: .ml
+        )
+        recordMetric(metric)
+    }
+    
+    func recordPageGeneration(time: CFAbsoluteTime) {
+        let metric = PerformanceMetric(
+            name: "Page Generation",
+            value: time,
+            timestamp: Date(),
+            category: .navigation
+        )
+        recordMetric(metric)
+    }
+    
+    func generatePerformanceReport() -> PerformanceReport {
+        return PerformanceReport(
+            metrics: metrics,
+            summary: calculateSummary(),
+            recommendations: generateRecommendations()
+        )
+    }
+}
+```
+
+### 2. **Performance Thresholds** 🎯
+```swift
+struct PerformanceThresholds {
+    // App launch
+    static let appLaunchWarning = 3.0
+    static let appLaunchCritical = 5.0
+    
+    // Page navigation
+    static let pageNavigationWarning = 0.5
+    static let pageNavigationCritical = 1.0
+    
+    // ML inference
+    static let mlInferenceWarning = 2.0
+    static let mlInferenceCritical = 5.0
+    
+    // Memory usage
+    static let memoryWarning = 150 * 1024 * 1024  // 150MB
+    static let memoryCritical = 200 * 1024 * 1024 // 200MB
+}
+```
+
+### 3. **Real-time Monitoring** 📱
+- **Frame Rate Monitoring**: Track UI frame rates
+- **Memory Usage Tracking**: Monitor memory consumption
+- **Battery Impact**: Measure battery usage impact
+- **User Experience Metrics**: Track user interaction performance
+
+## 🔧 Optimization Strategies
+
+### 1. **Code Optimization** 💻
+```swift
+// Use value types for performance
+struct VerseReference: Hashable, Codable {
+    let book: String
+    let chapter: Int
+    let verse: Int
+}
+
+// Avoid unnecessary allocations
+func processVerses(_ verses: [Verse]) -> [ProcessedVerse] {
+    return verses.map { verse in
+        // Process in place to avoid allocations
+        ProcessedVerse(
+            reference: verse.reference,
+            content: processContent(verse.content),
+            metadata: extractMetadata(from: verse)
+        )
+    }
+}
+
+// Use efficient data structures
+private var verseIndex: [String: Verse] = [:] // Fast lookup
+private var chapterIndex: [String: [Verse]] = [:] // Grouped access
+```
+
+### 2. **Algorithm Optimization** 🧮
+- **Efficient Search**: Use binary search for sorted data
+- **Caching Strategies**: Implement smart caching policies
+- **Batch Processing**: Process multiple items together
+- **Lazy Evaluation**: Defer computation until needed
+
+### 3. **Data Structure Optimization** 📊
+- **Memory Layout**: Optimize data structure memory layout
+- **Cache Locality**: Improve cache hit rates
+- **Reduced Allocations**: Minimize object creation
+- **Efficient Serialization**: Use fast serialization formats
+
+## 📱 Device-Specific Optimization
+
+### 1. **iOS Version Optimization** 📱
+- **iOS 18.0+**: Target latest features for performance
+- **Device Capabilities**: Adapt to device performance characteristics
+- **Background Processing**: Use background tasks efficiently
+- **System Integration**: Leverage system optimizations
+
+### 2. **Device Type Optimization** 📱
+```swift
+class DeviceOptimizer {
+    static func getOptimizationLevel() -> OptimizationLevel {
+        let device = UIDevice.current
+        
+        switch device.userInterfaceIdiom {
+        case .phone:
+            return .standard
+        case .pad:
+            return .enhanced // Can handle more complex operations
+        default:
+            return .standard
+        }
+    }
+    
+    static func getMemoryLimit() -> Int {
+        let device = UIDevice.current
+        
+        // Adjust memory limits based on device
+        if device.userInterfaceIdiom == .pad {
+            return 300 * 1024 * 1024 // 300MB for iPad
+        } else {
+            return 200 * 1024 * 1024 // 200MB for iPhone
+        }
+    }
+}
+
+enum OptimizationLevel {
+    case standard
+    case enhanced
+    case maximum
+}
+```
+
+## 📋 Implementation Checklist
+
+### ✅ **Required for Performance**
+- [ ] Implement performance monitoring
+- [ ] Set performance budgets and thresholds
+- [ ] Optimize ML inference times
+- [ ] Implement efficient caching strategies
+- [ ] Monitor memory usage and pressure
+- [ ] Test on various device types
+
+### ✅ **Required for ML Performance**
+- [ ] Use CoreML optimization features
+- [ ] Implement model caching
+- [ ] Monitor inference times
+- [ ] Handle memory pressure
+- [ ] Test on physical devices
+
+### ✅ **Required for UI Performance**
+- [ ] Maintain 60fps frame rates
+- [ ] Optimize view rendering
+- [ ] Implement lazy loading
+- [ ] Use efficient animations
+- [ ] Test on different screen sizes
+
+## 🔗 Cross-Reference Index
+
+- **Core Architecture**: `bible_app_core_architecture.mdc`
+- **ML Integration**: `ml_integration.mdc`
+- **Navigation System**: `navigation_system.mdc`
+- **UI/UX Patterns**: `ui_ux_patterns.mdc`
+- **Error Handling**: `error_handling.mdc`
+- **Testing Strategy**: `testing_strategy.mdc`
+
+## 📚 Reference Documents
+
+- **Automation of AI in Agent**: `Automation_of_AI_in_Agent.md`
+- **ML Integration Plan**: `flan-t5plan.md`
+- **Migration Guide**: `MIGRATION_GUIDE.md`
+
+---
+
+*These rules ensure optimal performance and efficient resource usage throughout BibleAppPOCV2. Always cross-reference related rule files and reference documents for comprehensive guidance.*
+
+

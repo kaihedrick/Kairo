@@ -1,0 +1,137 @@
+
+# 🚨 Error Handling Rules - BibleAppPOCV2
+
+## 🎯 **Core Principle: Clean Export > Manual Sanitization**
+
+**NEW APPROACH**: The character encoding corruption issues have been resolved at the **root cause** through clean Core ML model export with byte-safe, UTF-8-clean fast tokenizer. This eliminates the need for extensive post-generation sanitization.
+
+**OLD APPROACH (DEPRECATED)**: Complex text sanitization layers in Swift that treated symptoms rather than causes.
+
+## 🚨 **Critical Issue Resolution Status**
+
+### ✅ **RESOLVED: Character Encoding Corruption**
+- **Root Cause**: Fixed through clean model export with `byte_fallback: true`
+- **Result**: Zero mojibake characters at source
+- **Implementation**: Clean `id_to_token.json` and proper tokenizer configuration
+
+### ✅ **RESOLVED: Text Sanitization Complexity**
+- **Old Approach**: Multiple sanitization layers in `Vocab.swift` and `TextSanitizer.swift`
+- **New Approach**: Single source of truth from clean exported data
+- **Result**: Simplified, maintainable code with better performance
+
+## 🔧 **Current Error Handling Strategy**
+
+### **1. Prevention at Source**
+- **Model Export**: Ensure byte-safe, UTF-8-clean tokenizer
+- **Parity Verification**: Use `parity_fixture.json` to verify model output consistency
+- **Asset Validation**: Verify all exported assets are properly loaded
+
+### **2. Graceful Degradation**
+- **Fallback Mode**: If Core ML model fails, fall back to simpler text generation
+- **Asset Loading**: Clear error messages if required files are missing
+- **Parity Failures**: Log warnings but continue operation
+
+### **3. Diagnostic Tools**
+- **Debug Logging**: Log first 200 bytes of text as hex for UTF-8 diagnosis
+- **Special Token Validation**: Assert special tokens never leak into user-visible strings
+- **Performance Monitoring**: Track generation speed and memory usage
+
+## 📋 **Error Types and Handling**
+
+### **Asset Loading Errors**
+```swift
+// Clear, actionable error messages
+guard let url = Bundle.main.url(forResource: "id_to_token", withExtension: "json", subdirectory: "Models") else {
+    throw NSError(domain: "VocabService", code: -1, 
+                  userInfo: [NSLocalizedDescriptionKey: "id_to_token.json not found in Models/ subdirectory"])
+}
+```
+
+### **Model Loading Errors**
+```swift
+// Graceful fallback to simpler generation
+if let model = try? MLModel(contentsOf: url) {
+    self.model = model
+    self.mode = .coreml
+} else {
+    self.mode = .fallback
+    print("⚠️ Core ML model failed to load, using fallback mode")
+}
+```
+
+### **Parity Verification Errors**
+```swift
+// Log warnings but continue operation
+if !verifyParity() {
+    print("⚠️ Parity check failed - model output may differ from Python")
+    #if DEBUG
+    // Show banner in debug builds
+    #endif
+}
+```
+
+## 🎯 **Implementation Guidelines**
+
+### **DO: Clean Integration**
+- ✅ Use `VocabService` as single source of truth for token decoding
+- ✅ Load special token IDs from `export_report.json`
+- ✅ Implement parity verification for confidence
+- ✅ Apply formatting after clean text generation
+
+### **DON'T: Complex Sanitization**
+- ❌ Don't implement aggressive text sanitization
+- ❌ Don't use multiple fallback decoding strategies
+- ❌ Don't treat symptoms instead of root causes
+- ❌ Don't bypass the clean exported data
+
+## 🔍 **Debugging and Validation**
+
+### **UTF-8 Health Checks**
+```swift
+func logTextHealth(_ text: String, label: String) {
+    let first200Bytes = String(text.prefix(200))
+    let hexBytes = first200Bytes.utf8.map { String(format: "%02X", $0) }.joined(separator: " ")
+    print("🔍 \(label) - First 200 bytes: \(hexBytes)")
+}
+```
+
+### **Special Token Validation**
+```swift
+func validateNoSpecialTokens(_ text: String) -> Bool {
+    let specialTokens = ExportReportService.shared.report.special_token_ids.keys
+    return !specialTokens.contains { text.contains($0) }
+}
+```
+
+### **Parity Testing**
+```swift
+#if DEBUG
+func runParityCheck() {
+    if verifyParity() {
+        print("✅ Parity check passed - model output consistent")
+    } else {
+        print("⚠️ Parity check failed - investigate model export")
+    }
+}
+#endif
+```
+
+## 📚 **Related Rules**
+
+- **`bible_app_core_architecture.mdc`** - Follow clean architecture principles
+- **`ml_integration.mdc`** - Use clean Core ML integration patterns
+- **`ui_ux_patterns.mdc`** - Apply formatting after clean text generation
+
+## 🎯 **Success Criteria**
+
+- ✅ **Zero mojibake characters** without sanitization
+- ✅ **Clean, maintainable code** with single source of truth
+- ✅ **Parity verification** passing consistently
+- ✅ **Graceful degradation** when needed
+- ✅ **Clear error messages** for debugging
+
+---
+
+**Updated**: December 2024  
+**Status**: ✅ Clean Core ML Integration Implemented  
+**Approach**: Prevention at source > reactive sanitization

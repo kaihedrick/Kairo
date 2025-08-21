@@ -30,3 +30,4 @@ BibleAppPOCV2/Resources/ML/simple-verse-model-coreml.mlmodelc
 
 # Exclude large JSON files
 BibleAppPOCV2/KJV.json
+/BibleAppPOCV2/ML
