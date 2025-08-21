@@ -1,0 +1,174 @@
+
+# 🏗️ BibleAppPOCV2 Core Architecture Rules
+
+## 🎯 Project Overview
+BibleAppPOCV2 is a Swift-based iOS Bible reader with advanced ML features including:
+- Verse-by-verse reading with smooth pagination
+- AI-generated summaries using local CoreML models
+- No internet connection required
+- Optimized for iOS 18.0+
+
+## 🏛️ Architecture Principles
+
+### 1. **N-Layer Architecture Pattern** ⚡
+**Reference**: `MIGRATION_GUIDE.md` - Modern architecture implementation
+- **Domain Layer**: Pure business logic models (`ImprovedBibleModels.swift`)
+- **Service Layer**: Business operations (`SimpleBibleService.swift`, `CompleteBibleService.swift`)
+- **Presentation Layer**: ViewModels and Views (`ModernBibleViewModel.swift`, `WorkingSimpleBibleView.swift`)
+- **Infrastructure Layer**: Data access and external services
+
+**Cross-Reference**: See `architecture_modernization.md` for detailed migration patterns
+
+### 2. **Dependency Injection Pattern** 🔌
+**Reference**: `DI/DependencyContainer.swift`
+- Use protocol-based abstractions for testability
+- Constructor injection in ViewModels
+- Environment-based DI for Views
+- Avoid singleton dependencies where possible
+
+### 3. **Protocol-Oriented Programming** 📋
+- Define protocols for all major services
+- Use `ServiceResult<T>` wrapper for error handling
+- Implement `BibleError` enum for type-safe errors
+- Reference: `Infrastructure/ServiceProtocols.swift`
+
+## 🧠 ML Integration Rules
+
+### 1. **CoreML-First Approach** 🎯
+**Reference**: `flan-t5plan.md` - ML integration strategy
+- **NO ONNX**: Use only CoreML `.mlpackage` files
+- **Local Inference**: All ML runs on-device, no server calls
+- **Model Placement**: Place in `Resources/ML/` directory
+- **Fallback System**: Implement graceful degradation when models unavailable
+
+**Cross-Reference**: See `ml_integration.md` for detailed ML patterns
+
+### 2. **Model Loading Strategy** 📱
+**Reference**: `Services/LLMService.swift`
+- Multi-layered fallback approach
+- Bundle subdirectory search
+- Automatic model copying to documents directory
+- Comprehensive error handling and logging
+
+### 3. **Tokenization Requirements** 🔤
+**Reference**: `INTEGRATION_TODO.md` - Tokenizer integration
+- Use canonical GPT-2 token patterns
+- Support BPE merges and special tokens
+- Validate encoder/decoder pair matches bundled assets
+- Handle Unicode letters/numbers with underscore preservation
+
+## 📱 UI/UX Architecture Rules
+
+### 1. **SwiftUI Best Practices** 🎨
+**Reference**: `GLASS_EFFECTS_SUMMARY.md` - Modern UI implementation
+- Use `.glassTile()` ViewModifier for iOS 18.5+ compatibility
+- Implement smooth spring animations for interactions
+- Apply glass effects to interactive elements
+- Maintain proper semantic structure for accessibility
+
+### 2. **Navigation Architecture** 🧭
+**Reference**: `ENHANCED_BACKWARD_NAVIGATION_V2.md` - Navigation system
+- **Exact Page Reproduction**: Use history-based restoration, not recalculation
+- **Bidirectional Navigation**: Support forward/backward with 100-page history limit
+- **Layout Compatibility**: Hash-based validation for screen size changes
+- **No Verse-by-Verse Fallback**: Eliminate unreliable estimation logic
+
+**Cross-Reference**: See `navigation_system.md` for detailed navigation patterns
+
+### 3. **State Management** 📊
+- Use `@StateObject` for ViewModels
+- Implement proper loading states and error handling
+- Use `@Published` properties for reactive updates
+- Reference: `ViewModels/OptimizedBibleViewModel.swift`
+
+## 🔧 Development Workflow Rules
+
+### 1. **Code Quality Standards** ✨
+**Reference**: `Automation_of_architecture_check.md` - Quality patterns
+- Follow discovered architectural patterns
+- Use consistent naming conventions
+- Implement comprehensive error handling
+- Maintain separation of concerns
+
+### 2. **Testing Strategy** 🧪
+- Create protocol-based mocks for testing
+- Use dependency injection for testability
+- Implement unit tests for all service layers
+- Reference: `Test/IntegrationTest.swift`
+
+### 3. **Documentation Requirements** 📚
+**Reference**: `README_DOC_INDEX.md` - Documentation structure
+- Keep all markdown documentation current
+- Update documentation when making significant changes
+- Use consistent documentation format
+- Include cross-references between related documents
+
+## 🚨 Error Handling Rules
+
+### 1. **Graceful Degradation** 🛡️
+**Reference**: `KnownIssuesandToDos.md` - Current limitations
+- Implement fallback responses when ML models unavailable
+- Show clear error messages to users
+- Provide retry functionality where appropriate
+- Log errors for debugging
+
+### 2. **Error Types** ⚠️
+- Use `BibleError` enum for all app-specific errors
+- Implement `LocalizedError` for user-friendly messages
+- Provide recovery suggestions in error descriptions
+- Reference: `Models/ImprovedBibleModels.swift`
+
+## 🔄 Migration and Compatibility
+
+### 1. **Backward Compatibility** 🔙
+**Reference**: `MIGRATION_GUIDE.md` - Migration strategy
+- Maintain support for existing functionality
+- Use architecture toggle for gradual migration
+- Preserve existing data and user preferences
+- Test thoroughly before removing legacy code
+
+### 2. **Performance Optimization** ⚡
+- Optimize for CoreML and Neural Engine
+- Implement efficient memory management
+- Use background processing for ML operations
+- Monitor performance metrics during development
+
+## 📋 Implementation Checklist
+
+### ✅ **Required for New Features**
+- [ ] Follow N-layer architecture pattern
+- [ ] Implement dependency injection
+- [ ] Add comprehensive error handling
+- [ ] Include proper loading states
+- [ ] Follow established naming conventions
+- [ ] Add appropriate documentation
+- [ ] Implement fallback mechanisms
+
+### ✅ **Required for ML Features**
+- [ ] Use CoreML models only (no ONNX)
+- [ ] Implement robust model loading
+- [ ] Add tokenization support
+- [ ] Include fallback responses
+- [ ] Test on physical devices
+- [ ] Monitor memory usage
+
+### ✅ **Required for UI Features**
+- [ ] Use SwiftUI best practices
+- [ ] Implement glass effects for iOS 18.5+
+- [ ] Add smooth animations
+- [ ] Maintain accessibility
+- [ ] Test on different screen sizes
+
+## 🔗 Cross-Reference Index
+
+- **Architecture Migration**: `architecture_modernization.md`
+- **ML Integration**: `ml_integration.mdc`
+- **Navigation System**: `navigation_system.mdc`
+- **UI/UX Patterns**: `ui_ux_patterns.mdc`
+- **Error Handling**: `error_handling.mdc`
+- **Testing Strategy**: `testing_strategy.mdc`
+- **Performance Guidelines**: `performance_guidelines.mdc`
+
+---
+
+*These rules establish the foundation for all development decisions in BibleAppPOCV2. Always cross-reference related rule files for comprehensive guidance.*

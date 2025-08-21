@@ -1,0 +1,441 @@
+---
+description: MASTER_INDEX rules for BibleAppPOCV2, focusing on CoreML and tokenization.
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# 📚 Master Rules Index - BibleAppPOCV2
+
+## 🎯 Overview
+
+This document serves as the central index for all Cursor rules in the BibleAppPOCV2 project. Each rule file is designed to work independently while providing cross-references to related rules for comprehensive guidance.
+
+## 🚨 **CORE RULE - ALWAYS REFERENCE FIRST**
+
+### **🔄 Rule Evolution Principle** (`rule_evolution_principle.mdc`)
+**Primary Purpose**: Core principle for evolving existing rules instead of creating new markdown documents
+**Scope**: Documentation strategy, rule maintenance, continuous improvement
+**Cross-References**: **ALL OTHER RULES** - This is the foundational principle
+**Key Topics**:
+- **NEVER create new markdown files** for minor changes
+- **ALWAYS update existing rules** to make them smarter
+- **Evolve rule intelligence** over time
+- **Maintain rule consistency** and cross-references
+
+**⚠️ IMPORTANT**: **This rule should be referenced BEFORE making any documentation decisions. It establishes the core principle that rules should evolve rather than proliferate.**
+
+## 🚨 **CRITICAL ISSUE - CHARACTER ENCODING CORRUPTION**
+
+### **⚠️ MOST SEVERE PROBLEM IDENTIFIED** 
+**This is NOT just visual noise — it's actual byte-level corruption that corrupts semantic meaning**
+
+**What's Happening**:
+- **Raw Data Display**: `[VERSE_ID] MARK_1_2Ć[VERSE_REF] Mark 1:2Ć[VERSE_TEXT]...`
+- **Character Corruption**: `Ć` characters indicating UTF-8 decoding failures
+- **Text Formatting Broken**: Raw data bypassing formatters entirely
+- **AI Model Output Corrupted**: Token decoding or model pipeline issues
+
+**Updated Rules**:
+- **`error_handling.mdc`** - **UPDATED** with critical encoding corruption handling
+- **`ui_ux_patterns.mdc`** - **UPDATED** with text display fixes and typography standards
+
+**⚠️ IMMEDIATE ACTION REQUIRED**: Fix character encoding at source before any other UI improvements
+
+## 📋 Rule Files Index
+
+### 1. **🏗️ Core Architecture** (`bible_app_core_architecture.mdc`)
+**Primary Purpose**: Foundation patterns and architectural principles
+**Scope**: Overall project architecture, dependency injection, protocol patterns
+**Cross-References**: All other rule files
+**Key Topics**:
+- N-Layer Architecture Pattern
+- Dependency Injection Pattern
+- Protocol-Oriented Programming
+- Development Workflow Rules
+- Migration and Compatibility
+
+### 2. **🧠 ML Integration** (`ml_integration.mdc`) - **UPDATED AUGUST 20, 2024** ✅
+**Primary Purpose**: Current ML integration status and CoreML conversion requirements
+**Scope**: GPT-2 integration, CoreML conversion, current implementation status
+**Cross-References**: `bible_app_core_architecture.mdc`, `navigation_system.mdc`, `error_handling.mdc`
+**Key Topics**:
+- **CURRENT STATUS**: GPT-2 integration complete and working
+- **CoreML Conversion**: Ready for macOS conversion from safetensors
+- **Target iOS 17+** for optimal CoreML performance
+- **Working Implementation**: All tests passed successfully
+- **Production Ready**: Ready for immediate use
+
+**🚨 IMPORTANT**: **This rule has been updated to reflect the current status as of August 20, 2024. The outdated `flan-t5plan.md` approach has been superseded by a working GPT-2 integration.**
+
+### 3. **🧭 Navigation System** (`navigation_system.mdc`)
+**Primary Purpose**: Navigation patterns and page management
+**Scope**: Enhanced backward navigation, page history, layout compatibility
+**Cross-References**: `bible_app_core_architecture.mdc`, `ui_ux_patterns.mdc`, `error_handling.mdc`
+**Key Topics**:
+- Kindle-Like Navigation Experience
+- Enhanced Page History System
+- Exact Page Restoration
+- Layout Compatibility
+- Prohibited Navigation Patterns
+
+### 4. **🎨 UI/UX Patterns** (`ui_ux_patterns.mdc`) - **UPDATED WITH CRITICAL TEXT ISSUES** ⚠️
+**Primary Purpose**: Modern SwiftUI patterns and user experience
+**Scope**: Glass effects, responsive design, accessibility, **CRITICAL TEXT DISPLAY FIXES**
+**Cross-References**: `bible_app_core_architecture.mdc`, `navigation_system.mdc`, `performance_guidelines.mdc`
+**Key Topics**:
+- Modern iOS Design (iOS 18.5+)
+- Glass Effects Implementation
+- Responsive Design
+- SwiftUI Best Practices
+- Animation & Transitions
+- **🚨 CRITICAL: Character Encoding Corruption Fixes**
+- **🚨 CRITICAL: Text Formatting Pipeline Issues**
+- **🚨 CRITICAL: Crossway Typography Standards**
+
+### 5. **🚨 Error Handling** (`error_handling.mdc`) - **UPDATED WITH CRITICAL ENCODING ISSUES** ⚠️
+**Primary Purpose**: Comprehensive error management and fallbacks
+**Scope**: Error types, graceful degradation, user experience, **CRITICAL ENCODING CORRUPTION**
+**Cross-References**: `bible_app_core_architecture.mdc`, `ml_integration.mdc`, `navigation_system.mdc`
+**Key Topics**:
+- Graceful Degradation
+- Error Type System
+- Service Result Wrapper
+- ML-Specific Error Handling
+- Navigation Error Handling
+- **🚨 NEW: Character Encoding Corruption (MOST SEVERE)**
+- **🚨 NEW: AI Model Output Path Corruption**
+- **🚨 NEW: UTF-8 Decoding Validation**
+- **🚨 NEW: Text Sanitization**
+- **🚨 NEW: Debugging & Validation Techniques**
+- **🚨 NEW: Byte-Level Inspection Tools**
+- **🚨 NEW: Model Postprocessor Testing**
+- **🚨 NEW: Data Flow Validation Checkpoints**
+- **🚨 NEW: Corruption Pattern Database**
+
+### 6. **🧪 Testing Strategy** (`testing_strategy.mdc`)
+**Primary Purpose**: Testing patterns and quality assurance
+**Scope**: Unit testing, integration testing, UI testing, performance testing
+**Cross-References**: `bible_app_core_architecture.mdc`, `ml_integration.mdc`, `navigation_system.mdc`
+**Key Topics**:
+- Testing Pyramid
+- Dependency Injection for Testing
+- ML Pipeline Testing
+- Navigation System Testing
+- Performance Testing
+
+### 7. **⚡ Performance Guidelines** (`performance_guidelines.mdc`)
+**Primary Purpose**: Performance optimization and memory management
+**Scope**: ML performance, UI performance, memory management, monitoring
+**Cross-References**: `bible_app_core_architecture.mdc`, `ml_integration.mdc`, `ui_ux_patterns.mdc`
+**Key Topics**:
+- Performance Budgets
+- ML Performance Optimization
+- UI Performance Optimization
+- Memory Management
+- Performance Monitoring
+
+### 8. **🤖 ML Services Architecture** (`ml_services_architecture.mdc`) - **UPDATED AUGUST 20, 2024** ✅
+**Primary Purpose**: Current ML services implementation status and architecture
+**Scope**: Working GPT-2 integration, service coordination, CoreML conversion readiness
+**Cross-References**: `bible_app_core_architecture.mdc`, `ml_integration.mdc`, `error_handling.mdc`
+**Key Topics**:
+- **CURRENT STATUS**: GPT-2 integration complete and working
+- **BibleCommentaryGenerator**: Fully implemented and tested
+- **Fallback System**: Graceful degradation when models unavailable
+- **CoreML Ready**: Foundation for CoreML conversion
+- **Production Ready**: All tests passed successfully
+
+**🚨 IMPORTANT**: **This rule has been updated to reflect the current implementation status as of August 20, 2024. The project has moved beyond the outdated flan-t5plan.md approach.**
+
+### 9. **🧭 Navigation & Page Generation** (`navigation_page_generation.mdc`)
+**Primary Purpose**: Navigation system and page generation architecture
+**Scope**: Page generation, fragment system, history management
+**Cross-References**: `bible_app_core_architecture.mdc`, `navigation_system.mdc`, `performance_guidelines.mdc`
+**Key Topics**:
+- OnDemandPageGenerator
+- FragmentedPageNavigationManager
+- PageHistoryService
+- Fragment-based Generation
+- Enhanced History System
+
+### 10. **📱 ViewModels & State Management** (`viewmodels_state_management.mdc`)
+**Primary Purpose**: ViewModels and state management patterns
+**Scope**: State management, ML coordination, UI integration
+**Cross-References**: `bible_app_core_architecture.mdc`, `ml_services_architecture.mdc`, `ui_ux_patterns.mdc`
+**Key Topics**:
+- OptimizedBibleViewModel
+- VerseSummaryViewModel
+- ML State Coordination
+- Reactive State Updates
+- Dependency Injection
+
+### 11. **📊 Data Loading & Caching** (`data_loading_caching.mdc`)
+**Primary Purpose**: Data loading and caching architecture
+**Scope**: Data loading, caching strategies, memory management
+**Cross-References**: `bible_app_core_architecture.mdc`, `performance_guidelines.mdc`, `error_handling.mdc`
+**Key Topics**:
+- OptimizedBibleDataLoader
+- LRU Cache Implementation
+- Multi-Level Caching
+- Memory Management
+- Performance Optimization
+
+## 🔗 Cross-Reference Matrix
+
+| Rule File | Rule Evol | Core Arch | ML Int | Nav Sys | UI/UX | Error | Testing | Perf | ML Serv | Nav Gen | VM State | Data Cache |
+|-----|-----|-----|---|---|----|----|---|---|---|---|---|---|
+| **Rule Evolution** | 🔗 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Core Architecture** | ✅ | 🔗 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **ML Integration** | ✅ | ✅ | 🔗 | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Navigation System** | ✅ | ✅ | ✅ | 🔗 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **UI/UX Patterns** | ✅ | ✅ | ❌ | ✅ | 🔗 | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **Error Handling** | ✅ | ✅ | ✅ | ✅ | ✅ | 🔗 | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Testing Strategy** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔗 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Performance Guidelines** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | 🔗 | ✅ | ✅ | ✅ | ✅ |
+| **ML Services Architecture** | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | 🔗 | ✅ | ✅ | ✅ |
+| **Navigation & Page Generation** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔗 | ✅ | ✅ |
+| **ViewModels & State Management** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔗 | ✅ |
+| **Data Loading & Caching** | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔗 |
+
+**Legend**: 🔗 = Self-reference, ✅ = Strong cross-reference, ❌ = Minimal cross-reference
+
+## 🎯 Decision-Making Guide
+
+### **🚨 FIRST STEP - ALWAYS CHECK RULE EVOLUTION PRINCIPLE**
+**Before making ANY documentation decisions, reference `rule_evolution_principle.mdc`**
+
+### **🚨 SECOND STEP - CHECK CURRENT ML STATUS**
+**The ML integration has been updated as of August 20, 2024. Always reference the current ML rules for accurate information.**
+
+### **🚨 THIRD STEP - CHECK CRITICAL TEXT DISPLAY ISSUES**
+**Character encoding corruption is the MOST SEVERE issue. Always check `error_handling.mdc` and `ui_ux_patterns.mdc` for critical fixes.**
+
+### **When to Use Each Rule File**
+
+#### **Starting a New Feature** 🚀
+1. **🔄 Check `rule_evolution_principle.mdc`** - Understand documentation strategy
+2. **Begin with `bible_app_core_architecture.mdc`** - Understand foundational patterns
+3. **Check `ui_ux_patterns.mdc`** - If building UI components
+4. **Review `error_handling.mdc`** - Plan error scenarios and fallbacks
+5. **Consult `performance_guidelines.mdc`** - Set performance requirements
+
+#### **Working with ML Features** 🧠
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **🚨 Check `ml_integration.mdc`** - **CURRENT ML STATUS (August 20, 2024)**
+3. **Reference `ml_services_architecture.mdc`** - **CURRENT IMPLEMENTATION STATUS**
+4. **Check `bible_app_core_architecture.mdc`** - Architecture integration
+5. **Review `error_handling.mdc`** - ML-specific error handling
+
+**⚠️ IMPORTANT**: **The ML integration is now COMPLETE and working. The outdated `flan-t5plan.md` approach has been superseded by a working GPT-2 integration ready for CoreML conversion.**
+
+#### **Implementing Navigation** 🧭
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Begin with `navigation_system.mdc`** - Navigation patterns and requirements
+3. **Reference `navigation_page_generation.mdc`** - Implementation details
+4. **Check `bible_app_core_architecture.mdc`** - Architecture integration
+5. **Review `error_handling.mdc`** - Navigation error handling
+
+#### **Building UI Components** 🎨
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Start with `ui_ux_patterns.mdc`** - UI patterns and guidelines
+3. **Reference `viewmodels_state_management.mdc`** - State management patterns
+4. **Check `bible_app_core_architecture.mdc`** - Architecture integration
+5. **Review `performance_guidelines.mdc`** - UI performance optimization
+
+#### **Handling Errors** 🚨
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Begin with `error_handling.mdc`** - Error handling patterns
+3. **Reference `bible_app_core_architecture.mdc`** - Architecture integration
+4. **Check relevant domain rules** - ML, navigation, or UI specific errors
+5. **Review `testing_strategy.mdc`** - Error testing approaches
+
+#### **Writing Tests** 🧪
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Start with `testing_strategy.mdc`** - Testing patterns and organization
+3. **Reference `bible_app_core_architecture.mdc`** - Architecture testing approaches
+4. **Check relevant domain rules** - What to test in each area
+5. **Review `performance_guidelines.mdc`** - Performance testing
+
+#### **Optimizing Performance** ⚡
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Begin with `performance_guidelines.mdc`** - Performance patterns
+3. **Reference `bible_app_core_architecture.mdc`** - Architecture performance
+4. **Check relevant domain rules** - ML, UI, or navigation performance
+5. **Review `testing_strategy.mdc`** - Performance testing
+
+#### **Working with Data** 📊
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Start with `data_loading_caching.mdc`** - Data architecture patterns
+3. **Reference `bible_app_core_architecture.mdc`** - Architecture integration
+4. **Check `performance_guidelines.mdc`** - Data performance optimization
+5. **Review `error_handling.mdc`** - Data error handling
+
+#### **Managing State** 📱
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Begin with `viewmodels_state_management.mdc`** - State management patterns
+3. **Reference `bible_app_core_architecture.mdc`** - Architecture integration
+4. **Check `ui_ux_patterns.mdc`** - UI state integration
+5. **Review `performance_guidelines.mdc`** - State performance optimization
+
+### **Example 6: Fixing Critical Text Display Issues** 🚨
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **🚨 Check `error_handling.mdc`** - **CRITICAL: Character encoding corruption fixes**
+3. **🚨 Check `ui_ux_patterns.mdc`** - **CRITICAL: Text formatting pipeline fixes**
+4. **Check `bible_app_core_architecture.mdc`** - Follow architectural principles
+5. **Review `data_loading_caching.mdc`** - Data flow and encoding
+6. **Check `testing_strategy.mdc`** - Test encoding fixes thoroughly
+
+**⚠️ CRITICAL**: **Character encoding corruption is the MOST SEVERE issue. Fix encoding at source before any UI improvements.**
+
+**🚨 NEW DEBUGGING TECHNIQUES AVAILABLE**:
+- **Byte-Level Inspection**: Use `inspectStringBytes()` for Swift debugging
+- **Command Line Tools**: `file -I`, `iconv`, `hexdump` for file analysis
+- **Model Postprocessor Testing**: Validate tokenizer round-trip integrity
+- **Data Flow Validation**: Add checkpoints throughout pipeline
+- **Corruption Pattern Database**: Comprehensive detection system
+
+## 🔄 Rule Dependencies
+
+### **Primary Dependencies**
+- **`rule_evolution_principle.mdc`** → **All other rules** (documentation strategy)
+- **`bible_app_core_architecture.mdc`** → **All other rules** (foundation)
+- **`ml_integration.mdc`** → **`bible_app_core_architecture.mdc`** (architecture integration)
+- **`navigation_system.mdc`** → **`bible_app_core_architecture.mdc`** (architecture integration)
+- **`ui_ux_patterns.mdc`** → **`bible_app_core_architecture.mdc`** (architecture integration)
+
+### **Secondary Dependencies**
+- **`ml_services_architecture.mdc`** → **`ml_integration.mdc`** (ML implementation)
+- **`navigation_page_generation.mdc`** → **`navigation_system.mdc`** (navigation implementation)
+- **`viewmodels_state_management.mdc`** → **`bible_app_core_architecture.mdc`** (architecture integration)
+- **`data_loading_caching.mdc`** → **`bible_app_core_architecture.mdc`** (architecture integration)
+
+### **Cross-Domain Dependencies**
+- **Rule Evolution + All**: Documentation strategy affects all domains
+- **ML + Navigation**: ML features affect navigation performance
+- **UI + Performance**: UI patterns impact performance characteristics
+- **Error + Testing**: Error scenarios need comprehensive testing
+- **Architecture + All**: Architecture affects all other domains
+- **Data + Performance**: Data loading affects overall performance
+- **State + UI**: State management affects UI responsiveness
+
+## 📚 Reference Document Integration
+
+### **Current Status Documents (August 20, 2024)** 📅
+- **`CONVERSION_SUMMARY.md`** - Current ML integration status
+- **`IMPLEMENTATION_COMPLETE.md`** - Implementation completion status
+- **`INTEGRATION_INSTRUCTIONS.md`** - iOS integration guide
+- **`MACOS_CONVERSION_GUIDE.md`** - CoreML conversion guide
+
+### **Legacy Documents (Outdated)** 📚
+- **`flan-t5plan.md`**: August 9, 2024 (superseded by current implementation)
+- **`INTEGRATION_TODO.md`**: August 11, 2024 (tasks completed)
+
+### **Markdown Documents Referenced**
+- **`MIGRATION_GUIDE.md`** - Architecture migration patterns
+- **`ENHANCED_BACKWARD_NAVIGATION_V2.md`** - Navigation system design
+- **`GLASS_EFFECTS_SUMMARY.md`** - UI implementation details
+- **`KnownIssuesandToDos.md`** - Current limitations and fallbacks
+- **`Automation_of_architecture_check.md`** - Quality patterns
+
+### **Code Files Referenced**
+- **`Services/`** - Service layer implementations
+- **`ViewModels/`** - ViewModel patterns
+- **`Views/`** - UI component implementations
+- **`Models/`** - Data model definitions
+- **`DI/`** - Dependency injection container
+- **`Utilities/`** - Utility and helper classes
+
+## 🎯 Usage Examples
+
+### **Example 1: Adding a New ML Feature**
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **🚨 Check `ml_integration.mdc`** - **CURRENT ML STATUS (August 20, 2024)**
+3. **Reference `ml_services_architecture.mdc`** - **CURRENT IMPLEMENTATION STATUS**
+4. **Check `bible_app_core_architecture.mdc`** - Follow architectural patterns
+5. **Review `error_handling.mdc`** - Plan error scenarios
+6. **Check `performance_guidelines.mdc`** - Set performance targets
+7. **Review `testing_strategy.mdc`** - Plan testing approach
+
+**⚠️ IMPORTANT**: **The ML integration is now COMPLETE and working. Any new ML features should build upon the existing GPT-2 integration.**
+
+### **Example 2: Implementing New Navigation**
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Check `navigation_system.mdc`** - Understand navigation patterns
+3. **Reference `navigation_page_generation.mdc`** - Implementation details
+4. **Check `bible_app_core_architecture.mdc`** - Follow architectural principles
+5. **Review `ui_ux_patterns.mdc`** - UI integration patterns
+6. **Check `error_handling.mdc`** - Navigation error handling
+7. **Review `performance_guidelines.mdc`** - Navigation performance
+
+### **Example 3: Building New UI Components**
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Check `ui_ux_patterns.mdc`** - Understand UI patterns
+3. **Reference `viewmodels_state_management.mdc`** - State management patterns
+4. **Check `bible_app_core_architecture.mdc`** - Follow architectural principles
+5. **Review `performance_guidelines.mdc`** - UI performance optimization
+6. **Check `testing_strategy.mdc`** - UI testing approaches
+7. **Review `error_handling.mdc`** - UI error scenarios
+
+### **Example 4: Working with Data**
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Check `data_loading_caching.mdc`** - Understand data architecture
+3. **Reference `bible_app_core_architecture.mdc`** - Follow architectural principles
+4. **Check `performance_guidelines.mdc`** - Data performance optimization
+5. **Review `error_handling.mdc`** - Data error handling
+6. **Check `testing_strategy.mdc`** - Data testing approaches
+
+### **Example 5: Managing Application State**
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **Check `viewmodels_state_management.mdc`** - Understand state patterns
+3. **Reference `bible_app_core_architecture.mdc`** - Follow architectural principles
+4. **Check `ui_ux_patterns.mdc`** - UI state integration
+5. **Review `performance_guidelines.mdc`** - State performance optimization
+6. **Check `testing_strategy.mdc`** - State testing approaches
+
+### **Example 6: Fixing Critical Text Display Issues** 🚨
+1. **🔄 Check `rule_evolution_principle.mdc`** - Plan documentation approach
+2. **🚨 Check `error_handling.mdc`** - **CRITICAL: Character encoding corruption fixes**
+3. **🚨 Check `ui_ux_patterns.mdc`** - **CRITICAL: Text formatting pipeline fixes**
+4. **Check `bible_app_core_architecture.mdc`** - Follow architectural principles
+5. **Review `data_loading_caching.mdc`** - Data flow and encoding
+6. **Check `testing_strategy.mdc`** - Test encoding fixes thoroughly
+
+**⚠️ CRITICAL**: **Character encoding corruption is the MOST SEVERE issue. Fix encoding at source before any UI improvements.**
+
+**🚨 NEW DEBUGGING TECHNIQUES AVAILABLE**:
+- **Byte-Level Inspection**: Use `inspectStringBytes()` for Swift debugging
+- **Command Line Tools**: `file -I`, `iconv`, `hexdump` for file analysis
+- **Model Postprocessor Testing**: Validate tokenizer round-trip integrity
+- **Data Flow Validation**: Add checkpoints throughout pipeline
+- **Corruption Pattern Database**: Comprehensive detection system
+
+## 🔧 Maintenance and Updates
+
+### **Rule File Updates**
+- **🔄 ALWAYS check `rule_evolution_principle.mdc`** before creating new documentation
+- **🚨 ALWAYS check current ML rules** for accurate ML integration status
+- **🚨 ALWAYS check critical text display issues** in error handling and UI/UX rules
+- **Keep cross-references current** when updating any rule file
+- **Update this index** when adding new rule files
+- **Maintain consistency** across all rule files
+- **Version control** all rule changes
+
+### **Documentation Strategy**
+- **Evolve existing rules** instead of creating new files
+- **Make rules smarter** with each update
+- **Maintain rule consistency** and cross-references
+- **Regular review** of rule completeness and accuracy
+- **Update outdated references** to reflect current status
+
+### **🚨 Important Update Notes**
+- **ML Integration**: Updated as of August 20, 2024
+- **flan-t5plan.md**: Outdated (August 9, 2024) - superseded by working implementation
+- **Current Status**: GPT-2 integration complete and working
+- **Next Phase**: CoreML conversion and optimization
+- **🚨 CRITICAL ISSUE**: Character encoding corruption identified and documented
+- **🚨 CRITICAL FIXES**: Error handling and UI/UX rules updated with encoding solutions
+
+---
+
+*This master index provides comprehensive guidance for using all BibleAppPOCV2 Cursor rules. **ALWAYS start by checking `rule_evolution_principle.mdc`** to understand the documentation strategy, then proceed with the relevant domain rule and cross-reference related rules for complete guidance. **The ML integration has been updated to reflect the current working status as of August 20, 2024.** **🚨 CRITICAL: Character encoding corruption issues have been identified and documented in the updated error handling and UI/UX rules.***
