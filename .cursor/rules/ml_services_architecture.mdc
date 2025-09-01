@@ -35,50 +35,30 @@ class BibleCommentaryGenerator: ObservableObject {
 ```
 
 ### **2. ModelManager** 🔧
-**Reference**: `Services/ModelManager.swift` - Model management service
-```swift
-class ModelManager {
-    // Current Status: WORKING WITH SAFETENSORS
-    func scanForModels() -> [ModelInfo] {
-        // Scans bundle and documents directory
-        // Currently finds safetensors model files
-        // Ready for CoreML model integration
-    }
-    
-    func prioritizeModels(_ models: [ModelInfo]) -> [ModelInfo] {
-        // Prioritizes CoreML models over safetensors
-        // Ready for conversion workflow
-    }
-}
-```
+**Status**: **NOT IMPLEMENTED** - This service does not exist in the current codebase
+- **File**: `Services/ModelManager.swift` - **DOES NOT EXIST**
+- **Current Status**: Model management is handled directly in `BibleCommentaryGenerator.swift`
+- **Recommendation**: Implement if you need centralized model management
 
 ### **3. ImprovedBibleSummarizer** 🛡️
-**Reference**: `Services/ImprovedBibleSummarizer.swift` - Fallback ML service
-```swift
-class ImprovedBibleSummarizer {
-    // Current Status: FALLBACK SERVICE WORKING
-    func generateCommentary(for verse: String) -> VerseSummary {
-        // Provides fallback responses when GPT-2 unavailable
-        // Generates meaningful content without ML models
-        // Ensures app always provides value to users
-    }
-}
-```
+**Status**: **NOT IMPLEMENTED** - This service does not exist in the current codebase
+- **File**: `Services/ImprovedBibleSummarizer.swift` - **DOES NOT EXIST**
+- **Current Status**: Fallback system is referenced in `VerseSummaryViewModel` but not implemented
+- **Recommendation**: Implement if you need fallback responses when CoreML model is unavailable
 
 ### **4. GenerationRuntime** ⚙️
 **Reference**: `Services/GenerationRuntime.swift` - Runtime mode management
 ```swift
 class GenerationRuntime {
-    // Current Status: READY FOR COREML INTEGRATION
+    // Current Status: BASIC IMPLEMENTATION
     enum InferenceMode {
-        case coreML      // Will use converted CoreML model
-        case fallback    // Currently using ImprovedBibleSummarizer
+        case coreml      // Uses CoreML model when available
+        case fallback    // Fallback mode (currently no implementation)
     }
     
-    func broadcastModeChange(_ mode: InferenceMode) {
-        // Notifies system of mode changes
-        // Ready for CoreML model integration
-    }
+    // Basic mode switching without advanced features
+    func switchToCoreML() { currentMode = .coreml }
+    func switchToFallback() { currentMode = .fallback }
 }
 ```
 
@@ -89,8 +69,7 @@ class GenerationRuntime {
 - **BibleCommentaryGenerator**: Fully implemented and tested
 - **TokenizerService**: Working GPT-2 tokenization
 - **VerseSummaryViewModel**: ML state coordination
-- **Fallback System**: Graceful degradation when models unavailable
-- **Error Handling**: Comprehensive error management
+- **Error Handling**: Basic error management
 - **UI Integration**: Modern popup with loading states
 
 ### **2. Ready for Enhancement** 🔮
@@ -98,6 +77,7 @@ class GenerationRuntime {
 - **Performance Optimization**: Will benefit from CoreML native optimization
 - **Model Caching**: Ready for CoreML model caching
 - **Advanced Features**: Foundation for additional ML capabilities
+- **Fallback System**: Needs implementation for graceful degradation
 
 ## 📊 Tokenization Architecture
 
@@ -122,12 +102,12 @@ class GPT2BPEEncoder {
 ### **2. Tokenization Service** 🔧
 **Reference**: `Services/TokenizerService.swift` - Service layer
 ```swift
-class TokenizerService {
+struct TokenizerService {
     // Current Status: WORKING WITH GPT-2
-    func tokenize(_ input: String) -> TokenizationResult {
+    func encodePrompt(verseRef: String, verseText: String, seqLen: Int) -> [Int32] {
         // Handles GPT-2 tokenization
         // Manages special tokens
-        // Provides error handling
+        // Provides prompt formatting
         // Ready for CoreML integration
     }
 }
@@ -166,7 +146,7 @@ class TokenizerService {
 **Reference**: `ViewModels/VerseSummaryViewModel.swift` - Current implementation
 ```swift
 class VerseSummaryViewModel: ObservableObject {
-    // Current Status: FULLY INTEGRATED
+    // Current Status: PARTIALLY INTEGRATED
     @Published var isGenerating = false
     @Published var commentaryText = ""
     @Published var devotionalText = ""
@@ -174,7 +154,7 @@ class VerseSummaryViewModel: ObservableObject {
     
     // ML Integration:
     // ✅ BibleCommentaryGenerator integration
-    // ✅ Fallback to ImprovedBibleSummarizer
+    // ❌ Fallback to ImprovedBibleSummarizer (NOT IMPLEMENTED)
     // ✅ Loading states and error handling
     // ✅ User feedback and retry functionality
 }
@@ -188,7 +168,7 @@ class VerseSummaryViewModel: ObservableObject {
 // ✅ Generation failures
 // ✅ Tokenization errors
 // ✅ Network independence
-// ✅ Graceful degradation
+// ❌ Graceful degradation (fallback system not implemented)
 // ✅ User-friendly error messages
 ```
 
@@ -230,10 +210,14 @@ class VerseSummaryViewModel: ObservableObject {
 - [x] GPT-2 model integration
 - [x] iOS integration code
 - [x] Tokenization service
-- [x] Fallback system
-- [x] Error handling
+- [x] Basic error handling
 - [x] User interface
 - [x] Testing and validation
+
+### ❌ **Missing Features** ⚠️
+- [ ] Fallback system (ImprovedBibleSummarizer not implemented)
+- [ ] ModelManager service (centralized model management)
+- [ ] Advanced error recovery mechanisms
 
 ### 🔄 **Next Steps** 🚀
 - [ ] Convert safetensors to CoreML format

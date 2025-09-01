@@ -102,8 +102,8 @@ class VerseSummaryViewModel: ObservableObject {
     
     // ML service dependencies
     private var bibleCommentaryGenerator: BibleCommentaryGenerator?
-    private var improvedSummarizer: ImprovedBibleSummarizer?
     private var pendingVerse: String?
+    // Note: improvedSummarizer is not implemented in current codebase
 }
 ```
 
@@ -114,13 +114,9 @@ private func initializeGenerators() async {
     bibleCommentaryGenerator = BibleCommentaryGenerator.shared
     print("✅ BibleCommentaryGenerator initialized successfully")
     
-    // Initialize the improved summarizer only if Core ML is not active
-    if GenerationRuntime.shared.mode == .fallback {
-        improvedSummarizer = ImprovedBibleSummarizer()
-        print("✅ ImprovedBibleSummarizer initialized as fallback")
-    } else {
-        print("ℹ️ Skipping fallback init: Core ML is active")
-    }
+    // Note: Fallback summarizer is not implemented in current codebase
+    // The app will show error messages when Core ML model is unavailable
+    print("ℹ️ Fallback summarizer not implemented - Core ML model required")
 }
 ```
 

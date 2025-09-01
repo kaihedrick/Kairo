@@ -87,6 +87,11 @@ def create_tokenizer_files(tokenizer, output_dir):
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
+    # Ensure PAD token consistency: PAD should equal EOS
+    if tokenizer.pad_token is None:
+        print("⚠️ Setting PAD token to EOS token for consistency")
+        tokenizer.pad_token = tokenizer.eos_token
+    
     # Save vocabulary
     vocab = tokenizer.get_vocab()
     vocab_path = os.path.join(output_dir, "vocab.json")
@@ -94,10 +99,52 @@ def create_tokenizer_files(tokenizer, output_dir):
         json.dump(vocab, f, indent=2)
     print(f"✅ Vocabulary saved to: {vocab_path}")
     
-    # Save tokenizer config
+    # Save BPE merges (critical for exact tokenization consistency)
+    try:
+        # Get the merges from the tokenizer
+        if hasattr(tokenizer, 'bpe_ranks'):
+            merges = []
+            for pair, rank in sorted(tokenizer.bpe_ranks.items(), key=lambda x: x[1]):
+                merges.append(f"{pair[0]} {pair[1]}")
+            
+            merges_path = os.path.join(output_dir, "merges.txt")
+            with open(merges_path, 'w') as f:
+                f.write("#version: 0.2\n")
+                f.write("\n".join(merges))
+            print(f"✅ BPE merges saved to: {merges_path}")
+    except Exception as e:
+        print(f"⚠️ Could not save BPE merges: {e}")
+    
+    # Save tokenizer config with comprehensive special token information
+    tokenizer_config = {
+        "vocab_size": len(vocab),
+        "model_max_length": getattr(tokenizer, 'model_max_length', 1024),
+        "bos_token": tokenizer.bos_token,
+        "eos_token": tokenizer.eos_token,
+        "unk_token": tokenizer.unk_token,
+        "pad_token": tokenizer.pad_token,
+        "additional_special_tokens": tokenizer.additional_special_tokens,
+        "add_prefix_space": getattr(tokenizer, 'add_prefix_space', False),
+        "added_tokens_decoder": {}
+    }
+    
+    # Build comprehensive added_tokens_decoder for Swift compatibility
+    # This ensures Swift can load the exact same special token IDs
+    for token, token_id in vocab.items():
+        if token in [tokenizer.bos_token, tokenizer.eos_token, tokenizer.unk_token, tokenizer.pad_token] or \
+           token in tokenizer.additional_special_tokens:
+            tokenizer_config["added_tokens_decoder"][str(token_id)] = {
+                "content": token,
+                "lstrip": False,
+                "normalized": False,
+                "rstrip": False,
+                "single_word": False,
+                "special": True
+            }
+    
     config_path = os.path.join(output_dir, "tokenizer_config.json")
     with open(config_path, 'w') as f:
-        json.dump(tokenizer.init_kwargs, f, indent=2)
+        json.dump(tokenizer_config, f, indent=2)
     print(f"✅ Tokenizer config saved to: {config_path}")
     
     # Save special tokens map
@@ -112,6 +159,37 @@ def create_tokenizer_files(tokenizer, output_dir):
     with open(special_tokens_path, 'w') as f:
         json.dump(special_tokens, f, indent=2)
     print(f"✅ Special tokens map saved to: {special_tokens_path}")
+    
+    # Create added_tokens.json for additional special tokens
+    added_tokens = []
+    for token in tokenizer.additional_special_tokens:
+        if token in vocab:
+            added_tokens.append({
+                "id": vocab[token],
+                "content": token,
+                "single_word": False,
+                "lstrip": False,
+                "rstrip": False,
+                "normalized": False,
+                "special": True
+            })
+    
+    if added_tokens:
+        added_tokens_path = os.path.join(output_dir, "added_tokens.json")
+        with open(added_tokens_path, 'w') as f:
+            json.dump(added_tokens, f, indent=2)
+        print(f"✅ Added tokens saved to: {added_tokens_path}")
+    
+    # PAD token consistency validation
+    pad_id = vocab.get(tokenizer.pad_token)
+    eos_id = vocab.get(tokenizer.eos_token)
+    print(f"🔍 Token consistency check:")
+    print(f"    PAD token: '{tokenizer.pad_token}' (ID: {pad_id})")
+    print(f"    EOS token: '{tokenizer.eos_token}' (ID: {eos_id})")
+    if pad_id == eos_id:
+        print(f"✅ PAD == EOS: Consistent token handling")
+    else:
+        print(f"⚠️ PAD != EOS: Potential mismatch between training and Swift")
 
 def main():
     """Main conversion function."""

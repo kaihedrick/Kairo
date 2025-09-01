@@ -16,62 +16,54 @@
 - **Status**: Production ready with zero mojibake
 
 ### ✅ **IMPLEMENTED: Clean Architecture**
-- **VocabService**: Single source of truth for token decoding
-- **ExportReportService**: Loads special token IDs from `export_report.json`
-- **CommentaryModel**: Clean Core ML model loading
-- **Generator**: Single-token step with KV cache management
+- **Vocab**: Token decoding from `vocab.json` (loaded in BibleCommentaryGenerator)
+- **BibleCommentaryGenerator**: Core ML model loading and generation
+- **TokenizerService**: Prompt formatting and tokenization
+- **GPT2BPEEncoder**: BPE tokenization implementation
 
 ## 🏗️ **Clean ML Architecture**
 
 ### **1. Single Source of Truth**
 ```swift
-// VocabService.swift - Single source for token decoding
-final class VocabService {
-    static let shared = VocabService()
-    private let map: [Int: String]
+// Vocab.swift - Token decoding from vocab.json
+final class Vocab {
+    let idToToken: [Int: String]
     
-    private init() {
-        let url = Bundle.main.url(forResource: "id_to_token", withExtension: "json", subdirectory: "Models")!
-        let data = try! Data(contentsOf: url)
-        let raw = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
-        var temp = [Int: String]()
-        temp.reserveCapacity(raw.count)
-        for (k, v) in raw {
-            if let id = Int(k), let tok = v as? String { temp[id] = tok }
-        }
-        self.map = temp
+    static func load() throws -> Vocab {
+        // Loads vocab.json from bundle
+        // Provides token decoding for generated text
     }
     
-    func token(for id: Int) -> String { map[id] ?? "[UNK]" }
+    func decode(ids: [Int32]) -> String {
+        // Converts token IDs back to text
+        // Handles special tokens and regular vocabulary
+    }
 }
 ```
 
 ### **2. Clean Token Decoding**
 ```swift
-extension Array where Element == Int {
-    func decodeToString() -> String {
-        let vocab = VocabService.shared
-        // Naive join; post-formatters can be applied outside
-        return self.map { vocab.token(for: $0) }.joined()
-    }
-}
+// In BibleCommentaryGenerator.swift
+let final = vocab.decode(ids: ids)
+self.generatedText = final
 ```
 
 ### **3. Special Token Management**
 ```swift
-// ExportReportService.swift - Load special token IDs
-final class ExportReportService {
-    static let shared = ExportReportService()
-    let report: ExportReport
-    
-    private init() {
-        let url = Bundle.main.url(forResource: "export_report", withExtension: "json", subdirectory: "Models")!
-        let data = try! Data(contentsOf: url)
-        self.report = try! JSONDecoder().decode(ExportReport.self, from: data)
-    }
-    
-    func id(for special: Special) -> Int? { 
-        report.special_token_ids[special.rawValue] 
+// In BibleCommentaryGenerator.swift - Special token ID loading
+if let cfgURL = BundleLoader.url(name: "tokenizer_config", ext: "json"),
+   let data = try? Data(contentsOf: cfgURL),
+   let cfg = try? JSONSerialization.jsonObject(with: data) as? [String:Any],
+   let dec = cfg["added_tokens_decoder"] as? [String:[String:Any]] {
+    for (k,v) in dec {
+        guard let id = Int32(k), let content = v["content"] as? String else { continue }
+        switch content {
+        case "[VERSE_ID]": verseId = id
+        case "[VERSE_REF]": verseRefId = id
+        case "[START_COMMENTARY]": startCommentaryId = id
+        case "[END_COMMENTARY]": endCommentaryId = id
+        // ... other special tokens
+        }
     }
 }
 ```
@@ -80,28 +72,32 @@ final class ExportReportService {
 
 ### **1. Model Loading**
 ```swift
-// CommentaryModel.swift - Clean model loading
-final class CommentaryModel {
-    static let shared = CommentaryModel()
-    let model: MLModel
-    let nLayer: Int, nHead: Int, headDim: Int
-    
-    private init() {
-        let url = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlpackage", subdirectory: "Models")!
-        self.model = try! MLModel(contentsOf: url)
-        let io = ExportReportService.shared.report.model_io
-        nLayer = io.n_layer
-        nHead = io.n_head
-        headDim = io.head_dim
+// BibleCommentaryGenerator.swift - Model loading
+private func loadModel() {
+    let cfg = MLModelConfiguration()
+    if let gen = try? bible_commentary_model(configuration: cfg) {
+        model = gen.model
+        outputName = "logits"
+        print("🟢 Core ML (generated class) loaded")
+        return
+    }
+    if let url = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlpackage") {
+        model = try? MLModel(contentsOf: url, configuration: cfg)
+        outputName = "logits"
+        print("🟢 Core ML (bundle) loaded")
     }
 }
 ```
 
 ### **2. Generation Runtime**
 ```swift
-// Generator.swift - Single-token step with KV cache
-final class Generator {
-    private let ml = CommentaryModel.shared.model
+// BibleCommentaryGenerator.swift - Generation with KV cache
+@MainActor
+func generateCommentary(for verseRef: String, verseText: String) async -> String {
+    // Single-token generation loop with KV cache management
+    // Handles stop conditions and sampling
+    // Returns generated commentary text
+}
     private let nLayer = CommentaryModel.shared.nLayer
     private let nHead = CommentaryModel.shared.nHead
     private let headDim = CommentaryModel.shared.headDim
