@@ -14,7 +14,6 @@ class VerseSummaryViewModel: ObservableObject {
     @Published var modelAvailable: Bool = false
     
     private var bibleCommentaryGenerator: BibleCommentaryGenerator?
-    private var improvedSummarizer: ImprovedBibleSummarizer?
     private var pendingVerse: String?
 
     init() {
@@ -47,17 +46,9 @@ class VerseSummaryViewModel: ObservableObject {
 
     @MainActor
     private func initializeGenerators() async {
-        // Initialize the new GPT-2 Bible commentary generator first
+        // Initialize the GPT-2 Bible commentary generator
         bibleCommentaryGenerator = BibleCommentaryGenerator.shared
         print("✅ BibleCommentaryGenerator initialized successfully")
-        
-        // Initialize the improved summarizer only if Core ML is not active
-        if GenerationRuntime.shared.mode == .fallback {
-            improvedSummarizer = ImprovedBibleSummarizer()
-            print("✅ ImprovedBibleSummarizer initialized as fallback")
-        } else {
-            print("ℹ️ Skipping fallback init: Core ML is active")
-        }
     }
 
     // Accepts a verse string, runs through GPT-2 commentary generator pipeline, and updates commentary and devotional
@@ -137,29 +128,14 @@ class VerseSummaryViewModel: ObservableObject {
             return
         }
         
-        guard let summarizer = improvedSummarizer else {
-            errorMessage = "No AI models available"
-            return
-        }
+        // Note: improvedSummarizer is not currently implemented
+        // Fallback to simple static response for now
+        commentaryText = "Fallback commentary not currently available. Please ensure Core ML model is loaded."
+        devotionalText = "Fallback devotional not currently available. Please ensure Core ML model is loaded."
+        errorMessage = "Fallback summarizer not implemented"
+        return
         
-        print("🔄 Using fallback summarizer in fallback mode")
-        
-        Task {
-            let result = await summarizer.generateCommentary(for: verse)
-            
-            await MainActor.run {
-                let (commentary, devotional) = self.parseStructuredOutput(result)
-                
-                if !commentary.isEmpty || !devotional.isEmpty {
-                    self.commentaryText = commentary
-                    self.devotionalText = devotional
-                    self.modelVersion = "Improved Bible AI Model (Fallback)"
-                    self.errorMessage = ""
-                } else {
-                    self.errorMessage = "No content generated from any model"
-                }
-            }
-        }
+
     }
     
     // Parse structured output to extract commentary and devotional sections
@@ -247,8 +223,8 @@ class VerseSummaryViewModel: ObservableObject {
             return "GPT-2 Bible Commentary Model Ready"
         } else if bibleCommentaryGenerator != nil {
             return "GPT-2 Bible Commentary Model Loading..."
-        } else if improvedSummarizer != nil && GenerationRuntime.shared.mode == .fallback {
-            return "Improved Bible AI Model Ready (Fallback)"
+        } else if GenerationRuntime.shared.mode == .fallback {
+            return "Fallback Mode (Improved Bible AI Model Not Implemented)"
         } else {
             return "No models available"
         }
@@ -259,7 +235,7 @@ class VerseSummaryViewModel: ObservableObject {
         if let commentaryGenerator = bibleCommentaryGenerator {
             return commentaryGenerator.isReady
         } else if GenerationRuntime.shared.mode == .fallback {
-            return improvedSummarizer != nil
+            return false  // improvedSummarizer is not implemented
         }
         return false
     }
@@ -275,11 +251,7 @@ class VerseSummaryViewModel: ObservableObject {
             status += "BibleCommentaryGenerator: Not Initialized\n"
         }
         
-        if let summarizer = improvedSummarizer {
-            status += "ImprovedBibleSummarizer: Available\n"
-        } else {
-            status += "ImprovedBibleSummarizer: Not Available\n"
-        }
+        status += "ImprovedBibleSummarizer: Not Implemented\n"
         
         return status
     }

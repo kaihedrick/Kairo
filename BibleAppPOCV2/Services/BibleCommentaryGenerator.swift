@@ -338,8 +338,18 @@ final class BibleCommentaryGenerator: ObservableObject {
                 ids.append(next); produced += 1
 
                 // prevent too-early stop
-                if next == endDevotionalId && produced < MIN_NEW { continue }
-                if next == endDevotionalId { done = true }
+                if (next == endDevotionalId || next == endCommentaryId) && produced < MIN_NEW { continue }
+                
+                // Stop on either end token
+                if next == endDevotionalId || next == endCommentaryId { 
+                    done = true 
+                }
+                
+                // Additional safety: stop if we hit sequence length limit
+                if ids.count >= seqLen {
+                    print("⚠️ Stopping generation: reached sequence length limit (\(seqLen))")
+                    done = true
+                }
 
                 if produced % 8 == 0 || done {
                     self.generatedText = vocab.decode(ids: ids)
