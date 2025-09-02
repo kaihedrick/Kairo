@@ -7,13 +7,13 @@ class IntegrationTest {
     static func testSemanticIntegration() async {
         print("🧪 Testing Semantic Model Integration...")
         
-        // Test 1: Initialize improved summarizer (on MainActor)
-        let summarizer = await MainActor.run { ImprovedBibleSummarizer() }
-        print("✅ ImprovedBibleSummarizer initialized")
+        // Test 1: Initialize Bible commentary generator (on MainActor)
+        let generator = await BibleCommentaryGenerator.shared
+        print("✅ BibleCommentaryGenerator initialized")
         
         // Test 2: Generate commentary
         let testVerse = "In the beginning God created the heaven and the earth."
-        let result = await summarizer.generateCommentary(for: testVerse)
+        let result = await generator.generateCommentary(for: "Genesis 1:1", verseText: testVerse)
         
         print("✅ Generated commentary: \(result.prefix(100))...")
         print("🎉 Integration test completed successfully!")
@@ -23,7 +23,7 @@ class IntegrationTest {
         print("🧪 Testing CoreML BibleCommentaryGenerator...")
         
         do {
-            let generator = BibleCommentaryGenerator.shared
+            let generator = await BibleCommentaryGenerator.shared
             // Wait for the generator to be ready (it's already initialized in init)
             while !(await MainActor.run { generator.isReady }) {
                 try await Task.sleep(nanoseconds: 100_000_000) // 100ms

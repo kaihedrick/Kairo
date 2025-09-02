@@ -212,4 +212,77 @@ struct BibleAppPOCV2Tests {
         #expect(sanitizedText.contains("Commentary here"), "Should preserve commentary")
         #expect(sanitizedText.contains("Devotional here"), "Should preserve devotional")
     }
+
+    // MARK: - Complete Debugging Output Tests
+
+    /// Test to demonstrate the complete debugging output functionality
+    /// This will show the entire generated commentary text in console
+    @Test @MainActor func testBibleCommentaryGenerationWithDebugOutput() async throws {
+        print("\n🧪 TEST: Starting Bible Commentary Generation Test")
+        print("====================================================")
+
+        // Test data - Genesis 1:1
+        let verseRef = "Genesis 1:1"
+        let verseText = "In the beginning God created the heaven and the earth."
+
+        print("📖 Test Verse: \(verseRef)")
+        print("📝 Test Text: \(verseText)")
+        print("⏳ Generating commentary... (this may take a moment)")
+
+        // Generate commentary - this will trigger the debugging output
+        let generatedText = await BibleCommentaryGenerator.shared.generateCommentary(
+            for: verseRef,
+            verseText: verseText
+        )
+
+        print("\n✅ Test completed!")
+        print("📊 Generated text length: \(generatedText.count) characters")
+
+        // Verify we got some content back
+        #expect(generatedText.count > 10, "Generated text should be substantial")
+
+        print("\n🎯 DEBUGGING OUTPUT:")
+        print("==================")
+        print("📋 The complete generated commentary text has been output above")
+        print("📋 Look for the sections marked with 🎯 FINAL GENERATED COMMENTARY TEXT 🎯")
+        print("📋 You can copy and paste the entire text between the === markers")
+        print("==================")
+    }
+
+    /// Test to demonstrate parsed content debugging output
+    @Test @MainActor func testParsedBibleContentWithDebugOutput() async throws {
+        print("\n🧪 TEST: Starting Parsed Bible Content Test")
+        print("============================================")
+
+        // Test data
+        let verseRef = "Genesis 1:1"
+        let verseText = "In the beginning God created the heaven and the earth."
+
+        print("📖 Test Verse: \(verseRef)")
+        print("📝 Test Text: \(verseText)")
+        print("⏳ Generating and parsing content...")
+
+        // Generate parsed content - this will trigger both debugging outputs
+        let parsedContent = await BibleCommentaryGenerator.shared.generateCommentaryAndDevotional(
+            for: verseRef,
+            verseText: verseText
+        )
+
+        print("\n✅ Parsed content test completed!")
+
+        // Verify we got parsed content
+        #expect(parsedContent.commentary.count > 10, "Commentary should be substantial")
+        #expect(parsedContent.devotional.count > 10, "Devotional should be substantial")
+
+        print("📊 Commentary length: \(parsedContent.commentary.count) characters")
+        print("📊 Devotional length: \(parsedContent.devotional.count) characters")
+
+        print("\n🎯 DEBUGGING OUTPUT:")
+        print("==================")
+        print("📋 Both the raw generated text AND parsed sections are shown above")
+        print("📋 Look for:")
+        print("   • 🎯 FINAL GENERATED COMMENTARY TEXT 🎯 (raw text)")
+        print("   • 🎯 FINAL PARSED BIBLE CONTENT 🎯 (separated commentary/devotional)")
+        print("==================")
+    }
 }

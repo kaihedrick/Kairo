@@ -111,9 +111,9 @@ struct PageHistoryEntry: Equatable {
         self.endVerse = endVerse ?? verse
     }
     
-    /// Create a comprehensive history entry from a FragmentedPage
-    static func createFromFragmentedPage(
-        _ page: FragmentedPage,
+    /// Create a comprehensive history entry from an OptimizedPageSlice
+    static func createFromOptimizedPage(
+        _ page: OptimizedPageSlice,
         pageSize: CGSize,
         horizontalPadding: CGFloat,
         verticalPadding: CGFloat,
@@ -131,18 +131,18 @@ struct PageHistoryEntry: Equatable {
             do {
                 return try JSONEncoder().encode(page)
             } catch {
-                print("⚠️ Failed to serialize FragmentedPage: \(error)")
+                print("⚠️ Failed to serialize OptimizedPageSlice: \(error)")
                 return nil
             }
         }()
         
         // Extract verse keys for validation
-        let verseKeys = page.fragments.map { fragment in
-            "\(fragment.reference.book) \(fragment.reference.chapter):\(fragment.reference.verse)"
+        let verseKeys = page.verseKeys.map { verseKey in
+            "\(verseKey.book) \(verseKey.chapter):\(verseKey.verse)"
         }
         
-        // Check if page has split verses
-        let hasSplitVerses = page.fragments.contains { !$0.isStartOfVerse || !$0.isEndOfVerse }
+        // OptimizedPageSlice doesn't track split verses directly, so set to false
+        let hasSplitVerses = false
         
         return PageHistoryEntry(
             book: page.startVerse.book,
@@ -150,7 +150,7 @@ struct PageHistoryEntry: Equatable {
             verse: page.startVerse.verse,
             characterOffset: characterOffset,
             fragmentOffset: fragmentOffset,
-            renderedContent: page.contentString, // Use contentString instead of String(page.content)
+            renderedContent: String(page.content.characters), // Convert AttributedString to String
             navTitle: page.navTitle,
             pageSize: pageSize,
             layoutHash: layoutHash,

@@ -45,22 +45,24 @@ def convert_to_coreml(model, tokenizer, output_path):
     # Set model to evaluation mode
     model.eval()
     
-    # Create a sample input for tracing
+    # Create a sample input for tracing - USE FULL SEQUENCE LENGTH
     sample_text = "[START_COMMENTARY] In the beginning God created the heaven and the earth."
-    inputs = tokenizer(sample_text, return_tensors="pt", max_length=512, truncation=True, padding=True)
-    
+    MAX_SEQ_LEN = 1024  # Match the export_report.json seq_len=1024
+    inputs = tokenizer(sample_text, return_tensors="pt", max_length=MAX_SEQ_LEN, truncation=True, padding=True)
+
     print(f"📝 Sample input shape: {inputs['input_ids'].shape}")
-    
-    # Define the input specification
+    print(f"🔧 Exporting with sequence length: {MAX_SEQ_LEN}")
+
+    # Define the input specification - USE FULL SEQUENCE LENGTH
     input_spec = [
         ct.TensorType(
             name="input_ids",
-            shape=(1, 512),  # Batch size 1, max sequence length 512
+            shape=(1, MAX_SEQ_LEN),  # Batch size 1, max sequence length 1024
             dtype=np.int32
         ),
         ct.TensorType(
             name="attention_mask",
-            shape=(1, 512),  # Batch size 1, max sequence length 512
+            shape=(1, MAX_SEQ_LEN),  # Batch size 1, max sequence length 1024
             dtype=np.int32
         )
     ]
@@ -195,10 +197,10 @@ def main():
     """Main conversion function."""
     print("🚀 Starting Bible Commentary Model Conversion")
     
-    # Define paths
+    # Define paths - POINT TO CORRECT MODEL LOCATION
     current_dir = Path(__file__).parent
-    model_path = current_dir / "BibleAppPOCV2" / "Resources" / "ML" / "bible_commentary_model_export"
-    output_dir = current_dir / "BibleAppPOCV2" / "Resources" / "ML" / "bible_commentary_coreml"
+    model_path = current_dir / "BibleAppPOCV2" / "ML" / "Models"  # Point to actual model location
+    output_dir = current_dir / "BibleAppPOCV2" / "ML" / "Models"  # Save to same directory
     
     # Check if model path exists
     if not model_path.exists():

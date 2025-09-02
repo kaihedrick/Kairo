@@ -29,24 +29,9 @@
 		4F9C0B4F2DFD3758007ED13A /* BibleAppPOCV2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BibleAppPOCV2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		4F743DEA2E34785600B2CF0B /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Services/OnDemandPageGenerator.swift.backup,
-				Test/CodableTest.swift.disabled,
-				Views/OptimizedBookGridView.swift.backup,
-			);
-			target = 4F9C0B372DFD3757007ED13A /* BibleAppPOCV2 */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4F9C0B3A2DFD3757007ED13A /* BibleAppPOCV2 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				4F743DEA2E34785600B2CF0B /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2" target */,
-			);
 			path = BibleAppPOCV2;
 			sourceTree = "<group>";
 		};
@@ -434,20 +419,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/google/_upb",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/safetensors",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/_core/lib",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/random/lib",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/hf_xet",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/functorch/.dylibs",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/torch/lib",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/coremltools",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/tokenizers",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/.dylibs",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/core/lib",
-				);
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hedrick.BibleAppPOCV2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -476,20 +448,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/google/_upb",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/safetensors",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/_core/lib",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/random/lib",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/hf_xet",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/functorch/.dylibs",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/torch/lib",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/coremltools",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/tokenizers",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/.dylibs",
-					"$(PROJECT_DIR)/BibleAppPOCV2/Resources/ML/bible_commentary_model_export/venv/lib/python3.10/site-packages/numpy/core/lib",
-				);
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hedrick.BibleAppPOCV2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
