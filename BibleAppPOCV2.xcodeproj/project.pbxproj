@@ -23,15 +23,59 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		4F8A67662E66A4B60063D8F1 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		4F9C0B382DFD3757007ED13A /* BibleAppPOCV2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BibleAppPOCV2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4F9C0B452DFD3758007ED13A /* BibleAppPOCV2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BibleAppPOCV2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4F9C0B4F2DFD3758007ED13A /* BibleAppPOCV2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BibleAppPOCV2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4FA3871C2E66987200608638 /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ML/Models/bible_commentary_model.mlpackage,
+			);
+			target = 4F9C0B372DFD3757007ED13A /* BibleAppPOCV2 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		4F8A67682E66A4C60063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "Copy Files" phase from "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 4F8A67662E66A4B60063D8F1 /* CopyFiles */;
+			membershipExceptions = (
+				ML/Models/bible_commentary_model.mlpackage,
+			);
+		};
+		4FA3871D2E66987200608638 /* Exceptions for "BibleAppPOCV2" folder in "Copy Bundle Resources" phase from "BibleAppPOCV2" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 4F9C0B362DFD3757007ED13A /* Resources */;
+			membershipExceptions = (
+				ML/Models/bible_commentary_model.mlpackage,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4F9C0B3A2DFD3757007ED13A /* BibleAppPOCV2 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4FA3871C2E66987200608638 /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2" target */,
+				4FA3871D2E66987200608638 /* Exceptions for "BibleAppPOCV2" folder in "Copy Bundle Resources" phase from "BibleAppPOCV2" target */,
+				4F8A67682E66A4C60063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "Copy Files" phase from "BibleAppPOCV2UITests" target */,
+			);
 			path = BibleAppPOCV2;
 			sourceTree = "<group>";
 		};
@@ -155,6 +199,7 @@
 				4F9C0B4B2DFD3758007ED13A /* Sources */,
 				4F9C0B4C2DFD3758007ED13A /* Frameworks */,
 				4F9C0B4D2DFD3758007ED13A /* Resources */,
+				4F8A67662E66A4B60063D8F1 /* CopyFiles */,
 			);
 			buildRules = (
 			);

@@ -3,6 +3,8 @@ import Foundation
 import Combine
 import NotificationCenter
 
+enum InferenceMode { case coreml, fallback }
+
 @MainActor
 final class GenerationRuntime {
     static let shared = GenerationRuntime()
