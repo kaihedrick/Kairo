@@ -1,6 +1,41 @@
 // filepath: BibleAppPOCV2/Services/OnDemandPageGenerator.swift
 import Foundation
 import SwiftUI
+
+/// Generator for creating fragmented pages from verses
+class FragmentedPageGenerator {
+    private let loader: OptimizedBibleDataLoader
+
+    init(loader: OptimizedBibleDataLoader) {
+        self.loader = loader
+    }
+
+    func generateFragmentedPage(book: String, chapter: Int, verse: Int) -> FragmentedPage {
+        // Placeholder implementation
+        return FragmentedPage(book: book, chapter: chapter, verse: verse)
+    }
+
+    func createVerseFragment(book: String, chapter: Int, verse: Int, text: String) -> VerseFragment {
+        let reference = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
+        return VerseFragment(reference: reference, textFragment: text, isStartOfVerse: true, isEndOfVerse: true, fullVerseText: text, sequenceNumber: 0, totalFragments: 1)
+    }
+
+    func generateContent(startingAt key: VerseKey, pageSize: CGSize, fragmentPending: VerseFragment?) async throws -> (page: FragmentedPage, remainder: VerseFragment?, pendingFragment: VerseFragment?) {
+        // Placeholder implementation - would generate actual page content
+        let reference = VerseReference(unsafeBook: key.book, unsafeChapter: key.chapter, unsafeVerse: key.verse)
+        let fragment = createVerseFragment(book: key.book, chapter: key.chapter, verse: key.verse, text: "")
+        let page = FragmentedPage(
+            fragments: [fragment],
+            navTitle: key.description,
+            startVerse: reference,
+            endVerse: reference,
+            content: AttributedString(""),
+            measuredHeight: pageSize.height,
+            availableHeight: pageSize.height
+        )
+        return (page: page, remainder: nil, pendingFragment: nil)
+    }
+}
 import CoreGraphics
 
 // Simple LRU cache for OnDemandPageGenerator
