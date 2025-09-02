@@ -43,7 +43,7 @@ enum PageGenerationError: LocalizedError {
 @MainActor
 final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var currentPage: OptimizedPageSlice?
-    @Published private(set) var currentFragmentedPage: FragmentedPage?
+    @Published private(set) var currentOptimizedPage: OptimizedPageSlice?
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
     @Published private(set) var currentGeneratedPage: GeneratedPage?
@@ -51,16 +51,16 @@ final class OnDemandPageGenerator: ObservableObject {
     private let cache = SliceCache()
     private let loader = OptimizedBibleDataLoader()
     private let historyManager = PageHistoryService()
-    private let fragmentedPageGenerator: FragmentedPageGenerator
+    // Use the existing generation logic without FragmentedPageGenerator
     private var size: CGSize
     private var currentNode: SliceNode?
     private var pending: (key: VerseKey, text: AttributedString)?
-    private var fragmentPending: VerseFragment?
+    private var fragmentPending: String? // Changed from VerseFragment to simple string
     private var isNavigatingFromHistory = false
 
     init(pageSize: CGSize) { 
         self.size = pageSize 
-        self.fragmentedPageGenerator = FragmentedPageGenerator(loader: loader)
+        // Initialize without FragmentedPageGenerator
     }
 
     /// Update the size used for pagination and clear stale state.
@@ -74,7 +74,7 @@ final class OnDemandPageGenerator: ObservableObject {
         currentNode = nil
         currentPage = nil
         currentGeneratedPage = nil
-        currentFragmentedPage = nil
+        currentOptimizedPage = nil
         
         // Clear enhanced page history since page layout has changed
         historyManager.clearHistory()
@@ -299,7 +299,7 @@ final class OnDemandPageGenerator: ObservableObject {
         return """
         📊 PAGE GENERATOR DEBUG:
         Current page: \(currentPage?.startVerse.description ?? "none") - \(currentPage?.endVerse.description ?? "none")
-        Current fragmented page: \(currentFragmentedPage?.debugDescription ?? "none")
+        Current optimized page: \(currentOptimizedPage?.navTitle ?? "none")
         Page size: \(size)
         Cache keys: \(cacheKeys.map { $0.description }.joined(separator: ", "))
         Is generating: \(isGenerating)
@@ -425,7 +425,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
     
     /// Generate a page using the new fragment-based approach
-    func generateFragmentedPage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
+    func generateOptimizedPage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         lastError = nil
         
@@ -436,7 +436,7 @@ final class OnDemandPageGenerator: ObservableObject {
         }
         
         // Check if we already have this page loaded
-        if let current = currentFragmentedPage, current.startVerse.book == key.book && 
+        if let current = currentOptimizedPage, current.startVerse.book == key.book && 
            current.startVerse.chapter == key.chapter && current.startVerse.verse == key.verse {
             print("✅ Fragmented page \(key.description) already loaded, skipping generation")
             return
@@ -445,63 +445,56 @@ final class OnDemandPageGenerator: ObservableObject {
         isGenerating = true
         defer { isGenerating = false }
         
-        do {
-            let result = try await fragmentedPageGenerator.generateContent(
-                startingAt: key,
-                pageSize: size,
-                fragmentPending: fragmentPending
-            )
-            
-            currentFragmentedPage = result.page
-            fragmentPending = result.pendingFragment
-            
-            // Create and store history entry for reliable backward navigation
-            if !isNavigatingFromHistory {
-                historyManager.pushFragmentedPage(result.page, pageSize: size)
-                print("📚 HISTORY TRACKING: Added new page to history (\(historyManager.historyCount) total)")
-            } else {
-                print("📚 HISTORY TRACKING: Skipped adding page (navigating from history)")
-            }
-            
-            print("📖 FRAGMENTED PAGE GENERATED: \(result.page.debugDescription)")
-            
-        } catch {
-            lastError = error.localizedDescription
-            print("❌ Failed to generate fragmented page: \(error.localizedDescription)")
+        // Generate page using existing logic
+        await generatePage(startingAt: (key.book, key.chapter, key.verse))
+        
+        // Convert currentPage to OptimizedPageSlice
+        if let generatedPage = currentGeneratedPage {
+            currentOptimizedPage = generatedPage.toOptimizedPageSlice()
+            fragmentPending = nil // Reset fragment pending
+        }
+        
+        // Create and store history entry for reliable backward navigation
+        if !isNavigatingFromHistory, let optimizedPage = currentOptimizedPage {
+            historyManager.pushOptimizedPage(optimizedPage, pageSize: size)
+            print("📚 HISTORY TRACKING: Added new page to history (\(historyManager.historyCount) total)")
+        } else {
+            print("📚 HISTORY TRACKING: Skipped adding page (navigating from history)")
+        }
+        
+        if let optimizedPage = currentOptimizedPage {
+            print("📖 OPTIMIZED PAGE GENERATED: \(optimizedPage.navTitle)")
         }
     }
     
     /// Navigate to next page with fragment support
-    func generateNextFragmentedPage() async {
+    func generateNextOptimizedPage() async {
         defer { Task { await trimCacheToThreePages() } }
         
-        // If we have a pending fragment, generate page starting with it
-        if let pendingFragment = fragmentPending {
-            await generateFragmentedPage(startingAt: (
-                pendingFragment.reference.book,
-                pendingFragment.reference.chapter,
-                pendingFragment.reference.verse
-            ))
+        // If we have a pending fragment text, clear it and generate next page normally
+        if fragmentPending != nil {
+            fragmentPending = nil // Clear pending fragment
+            // Continue with normal next page generation
             return
         }
         
         // Find the next verse after the current page's end
-        guard let current = currentFragmentedPage,
+        guard let current = currentOptimizedPage,
               let nextVerse = await findNextVerse(after: VerseKey(
                 book: current.endVerse.book,
                 chapter: current.endVerse.chapter,
                 verse: current.endVerse.verse
               )) else { return }
         
-        await generateFragmentedPage(startingAt: (nextVerse.book, nextVerse.chapter, nextVerse.verse))
+        await generateOptimizedPage(startingAt: (nextVerse.book, nextVerse.chapter, nextVerse.verse))
     }
     
     /// Navigate to previous page with enhanced history - NO UNRELIABLE FALLBACK
-    func generatePreviousFragmentedPage() async {
+    func generatePreviousOptimizedPage() async {
         defer { Task { await trimCacheToThreePages() } }
         
         // Store the current fragmented page for potential reconnection
-        let oldFragmentedPage = currentFragmentedPage
+        let oldOptimizedPage = currentOptimizedPage
         
         // Use enhanced history manager for reliable backward navigation
         if historyManager.canGoBackward, let historyEntry = historyManager.goBackward() {
@@ -517,8 +510,8 @@ final class OnDemandPageGenerator: ObservableObject {
                 
                 // TODO: If we had a doubly linked list for fragmented pages, we would reconnect here
                 // For now, we just ensure the page change is visible
-                if let restoredPage = currentFragmentedPage,
-                   let oldPage = oldFragmentedPage {
+                if let restoredPage = currentOptimizedPage,
+                   let oldPage = oldOptimizedPage {
                     print("📖 FRAGMENTED PAGE: Navigated from \(oldPage.startVerse.book) \(oldPage.startVerse.chapter):\(oldPage.startVerse.verse) to \(restoredPage.startVerse.book) \(restoredPage.startVerse.chapter):\(restoredPage.startVerse.verse)")
                 }
                 
@@ -541,7 +534,7 @@ final class OnDemandPageGenerator: ObservableObject {
     }
     
     /// Navigate to next page using enhanced history if available
-    func generateNextFragmentedPageWithHistory() async {
+    func generateNextOptimizedPageWithHistory() async {
         defer { Task { await trimCacheToThreePages() } }
         
         // First, try to use enhanced history manager for forward navigation
@@ -565,19 +558,19 @@ final class OnDemandPageGenerator: ObservableObject {
         
         // Fallback to regular forward navigation with history tracking
         print("📚 FORWARD NAVIGATION: Using regular forward navigation with history tracking")
-        await generateNextFragmentedPage()
+        await generateNextOptimizedPage()
     }
     
     /// Navigate to the next page of verses using the fragment-based approach
     func goToNextPage() async {
         print("📚 PAGE NAVIGATION: Going to next page")
-        await generateNextFragmentedPageWithHistory()
+        await generateNextOptimizedPageWithHistory()
     }
     
     /// Navigate back to the previous full page of verses using history snapshots
     func goToPreviousPage() async {
         print("📚 PAGE NAVIGATION: Going to previous page")
-        await generatePreviousFragmentedPage()
+        await generatePreviousOptimizedPage()
     }
     
     /// Check if we can navigate to the next page
@@ -606,11 +599,11 @@ final class OnDemandPageGenerator: ObservableObject {
         
         print("🔄 HISTORY RESTORE: Attempting exact restoration of \(entry.debugDescription)")
         
-        // PRIORITY 1: Try to restore from serialized FragmentedPage if available
+        // PRIORITY 1: Try to restore from serialized OptimizedPageSlice if available
         if let serializedData = entry.serializedFragmentedPage {
             do {
-                let restoredPage = try JSONDecoder().decode(FragmentedPage.self, from: serializedData)
-                currentFragmentedPage = restoredPage
+                let restoredPage = try JSONDecoder().decode(OptimizedPageSlice.self, from: serializedData)
+                currentOptimizedPage = restoredPage
                 print("✅ HISTORY RESTORE: Successfully restored from serialized page")
                 return true
             } catch {
@@ -654,41 +647,44 @@ final class OnDemandPageGenerator: ObservableObject {
             }
         }
         
-        // PRIORITY 3: Create a pseudo-FragmentedPage using the stored information
-        let startVerseRef = VerseReference(
-            unsafeBook: entry.book,
-            unsafeChapter: entry.chapter,
-            unsafeVerse: entry.verse
+        // PRIORITY 3: Create a pseudo-OptimizedPageSlice using the stored information
+        let startVerse = VerseKey(
+            book: entry.book,
+            chapter: entry.chapter,
+            verse: entry.verse
         )
         
-        let endVerseRef = VerseReference(
-            unsafeBook: entry.endBook,
-            unsafeChapter: entry.endChapter,
-            unsafeVerse: entry.endVerse
+        let endVerse = VerseKey(
+            book: entry.endBook,
+            chapter: entry.endChapter,
+            verse: entry.endVerse
         )
         
-        // For exact restoration, we need to create fragment(s) that match the original content
-        let mainFragment = VerseFragment(
-            reference: startVerseRef,
-            textFragment: entry.renderedContent,
-            isStartOfVerse: entry.characterOffset == nil,
-            isEndOfVerse: !entry.hasSplitVerses,
-            fullVerseText: entry.renderedContent,
-            sequenceNumber: entry.fragmentOffset ?? 0,
-            totalFragments: entry.hasSplitVerses ? 2 : 1 // Conservative estimate
+        // Create verse keys array for the range
+        var verseKeys: [VerseKey] = []
+        if startVerse.book == endVerse.book && startVerse.chapter == endVerse.chapter {
+            for verse in startVerse.verse...endVerse.verse {
+                verseKeys.append(VerseKey(book: startVerse.book, chapter: startVerse.chapter, verse: verse))
+            }
+        } else {
+            // For cross-chapter ranges, just include start and end
+            verseKeys = [startVerse, endVerse]
+        }
+        
+        let navigationContext = PageNavigationContext(
+            isFirstVerseOfBook: startVerse.chapter == 1 && startVerse.verse == 1,
+            isLastVerseOfBook: false // We don't have this information stored
         )
         
-        let restoredPage = FragmentedPage(
-            fragments: [mainFragment],
-            navTitle: entry.navTitle,
-            startVerse: startVerseRef,
-            endVerse: endVerseRef,
+        let restoredPage = OptimizedPageSlice(
             content: AttributedString(entry.renderedContent),
-            measuredHeight: size.height * 0.8, // Estimate based on page size
-            availableHeight: size.height - (LayoutMetrics.verticalPagePadding * 2)
+            verseKeys: verseKeys,
+            startVerse: startVerse,
+            endVerse: endVerse,
+            navigationContext: navigationContext
         )
         
-        currentFragmentedPage = restoredPage
+        currentOptimizedPage = restoredPage
         print("✅ HISTORY RESTORE: Successfully recreated pseudo-page from metadata")
         return true
     }

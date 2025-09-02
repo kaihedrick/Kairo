@@ -4,12 +4,14 @@ import Foundation
 enum BundleLoader {
     /// Common subdirectory layouts inside the app bundle
     /// We also check ios_integration_assets because Xcode often nests JSONs there.
+    /// Updated to include the actual tokenizer file locations from the export process.
     private static let subdirs: [String] = [
         "Resources/ML/ios_integration_assets",
         "ML/ios_integration_assets",
         "ios_integration_assets",
         "Resources/ML",
         "ML",
+        "ML/Models", // Direct path to tokenizer files from export
         "" // root
     ]
 

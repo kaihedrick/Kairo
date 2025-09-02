@@ -36,8 +36,8 @@ final class PageHistoryService: ObservableObject {
     }
     
     /// Push a fragmented page to history
-    func pushFragmentedPage(_ fragmentedPage: FragmentedPage, pageSize: CGSize) {
-        let historyEntry = createHistoryEntry(for: fragmentedPage, pageSize: pageSize)
+    func pushOptimizedPage(_ optimizedPage: OptimizedPageSlice, pageSize: CGSize) {
+        let historyEntry = createHistoryEntry(for: optimizedPage, pageSize: pageSize)
         enhancedHistoryManager.pushPage(historyEntry)
     }
     
@@ -103,14 +103,14 @@ final class PageHistoryService: ObservableObject {
     }
     
     /// Create a history entry for the current fragmented page
-    private func createHistoryEntry(for fragmentedPage: FragmentedPage, pageSize: CGSize) -> PageHistoryEntry {
-        return PageHistoryEntry.createFromFragmentedPage(
-            fragmentedPage,
+    private func createHistoryEntry(for optimizedPage: OptimizedPageSlice, pageSize: CGSize) -> PageHistoryEntry {
+        return PageHistoryEntry.createFromOptimizedPage(
+            optimizedPage,
             pageSize: pageSize,
             horizontalPadding: LayoutMetrics.horizontalPagePadding,
             verticalPadding: LayoutMetrics.verticalPagePadding,
-            characterOffset: nil, // TODO: Add character offset tracking if needed
-            fragmentOffset: nil   // TODO: Add fragment offset tracking if needed
+            characterOffset: 0, // TODO: Add character offset tracking if needed
+            fragmentOffset: 0   // TODO: Add fragment offset tracking if needed
         )
     }
 }
