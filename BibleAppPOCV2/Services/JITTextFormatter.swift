@@ -12,7 +12,7 @@ class JITTextFormatter {
     private static let measurementCache = LRUCache<String, CGSize>(capacity: 100)
     
     // Debug flag to disable all caching for accurate measurements
-    private static let disableCaching = true
+    private static let disableCaching = false
 
     /// Format a single verse into an attributed string with optional headers.
     static func formatVerse(
@@ -87,9 +87,9 @@ class JITTextFormatter {
     
     /// Perform actual measurement without caching
     private static func performFreshMeasurement(_ text: AttributedString, maxSize: CGSize) -> CGSize {
-        // Only log for very short text or every 10th measurement
-        if text.characters.count < 50 || Int.random(in: 1...10) == 1 {
-            print("🔍 FRESH measurement for text: \(text.characters.prefix(50))... maxSize: \(maxSize)")
+        // Only log for very short text or every 100th measurement (reduced for performance)
+        if text.characters.count < 20 || Int.random(in: 1...100) == 1 {
+            print("🔍 FRESH measurement for text: \(text.characters.prefix(30))... maxSize: \(maxSize)")
         }
         
         // Convert to NSAttributedString for measurement
@@ -111,7 +111,7 @@ class JITTextFormatter {
             width: ceil(suggestedSize.width) + conservativePadding, 
             height: ceil(suggestedSize.height) + conservativePadding
         )
-        if text.characters.count < 50 || Int.random(in: 1...10) == 1 {
+        if text.characters.count < 20 || Int.random(in: 1...100) == 1 {
             print("🔍 FRESH result: \(size)")
         }
         return size

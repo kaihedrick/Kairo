@@ -24,8 +24,31 @@ class VerseSummaryViewModel: ObservableObject {
     
     @MainActor
     private func attachModelReadyObserver() {
-        // Simplified - we'll check model availability directly
+        print("👂 VerseSummaryViewModel: Setting up GenerationRuntime notification observer")
+        // Listen for GenerationRuntime mode changes
+        NotificationCenter.default.addObserver(
+            forName: GenerationRuntime.runtimeModeChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            if let userInfo = notification.userInfo,
+               let newMode = userInfo[GenerationRuntime.runtimeModeKey] as? InferenceMode {
+                self.modelAvailable = (newMode == .coreml)
+                print("🔄 VerseSummaryViewModel: GenerationRuntime mode changed to: \(newMode), modelAvailable: \(self.modelAvailable)")
+
+                // If we have a pending verse and CoreML is now ready, process it
+                if newMode == .coreml, let pendingVerse = self.pendingVerse {
+                    print("🚀 Processing pending verse: \(pendingVerse.prefix(50))...")
+                    self.pendingVerse = nil
+                    self.summarize(verse: pendingVerse)
+                }
+            }
+        }
+
+        // Set initial state
         modelAvailable = (GenerationRuntime.shared.mode == .coreml)
+        print("👂 VerseSummaryViewModel: Initial GenerationRuntime mode: \(GenerationRuntime.shared.mode), modelAvailable: \(modelAvailable)")
     }
 
     @MainActor
@@ -51,6 +74,8 @@ class VerseSummaryViewModel: ObservableObject {
             pendingVerse = verse
             errorMessage = "Core ML model is loading..."
             print("⚠️ Core ML model not ready yet, waiting for initialization...")
+            print("🔍 DEBUG: commentaryGenerator.isReady = \(commentaryGenerator.isReady)")
+            print("🔍 DEBUG: commentaryGenerator.model = \(commentaryGenerator.model != nil ? "loaded" : "nil")")
             return
         }
         
@@ -66,8 +91,16 @@ class VerseSummaryViewModel: ObservableObject {
         Task {
             do {
                 // Wait for generator to be ready (this prevents race conditions)
-                while !commentaryGenerator.isReady {
+                var waitCount = 0
+                while !commentaryGenerator.isReady && waitCount < 50 { // Max 5 seconds
                     try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    waitCount += 1
+                    print("⏳ Waiting for generator... attempt \(waitCount)/50")
+                }
+
+                if !commentaryGenerator.isReady {
+                    print("❌ TIMEOUT: Generator never became ready after 5 seconds")
+                    throw NSError(domain: "VerseSummaryViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Core ML model failed to load within timeout"])
                 }
                 
                 // Try GPT-2 commentary generator first

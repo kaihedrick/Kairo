@@ -7,6 +7,13 @@ struct OptimizedBibleApp: App {
     
     init() {
         print("🚀 BibleAppPOCV2 starting up...")
+
+        // 🔬 Inspect Core ML model shapes for debugging (only in DEBUG mode)
+        #if DEBUG
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            IntegrationTest.inspectModelShapes()
+        }
+        #endif
     }
     
     var body: some Scene {

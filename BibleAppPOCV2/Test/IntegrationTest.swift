@@ -39,4 +39,33 @@ class IntegrationTest {
             print("❌ CoreML generator test failed: \(error)")
         }
     }
+
+    static func inspectModelShapes() {
+        print("🔬 Starting Core ML Model Shape Inspection...")
+
+        Task {
+            let generator = await BibleCommentaryGenerator.shared
+
+            // Wait for the generator to be ready (with timeout)
+            var waitCount = 0
+            while !(await MainActor.run { generator.isReady }) && waitCount < 50 {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                waitCount += 1
+                print("⏳ IntegrationTest: Waiting for generator... attempt \(waitCount)/50")
+            }
+
+            if !(await MainActor.run { generator.isReady }) {
+                print("❌ IntegrationTest: Generator never became ready after 5 seconds")
+                return
+            }
+
+            print("✅ Generator ready, inspecting model shapes...")
+            await MainActor.run {
+                generator.inspectModelShapes()
+            }
+        }
+
+        // Keep the run loop alive for a bit
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 3.0))
+    }
 } 

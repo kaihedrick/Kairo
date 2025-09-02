@@ -26,11 +26,13 @@ final class GenerationRuntime {
             
             // Post notification when mode changes
             if oldMode != newValue {
+                print("📡 GenerationRuntime: Posting notification - mode changed from \(oldMode) to \(newValue)")
                 NotificationCenter.default.post(
                     name: Self.runtimeModeChangedNotification,
                     object: self,
                     userInfo: [Self.runtimeModeKey: newValue]
                 )
+                print("📡 GenerationRuntime: Notification posted successfully")
             }
         }
     }
