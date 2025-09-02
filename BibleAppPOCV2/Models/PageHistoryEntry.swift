@@ -2,6 +2,80 @@
 import Foundation
 import SwiftUI
 
+/// Represents a fragmented page for layout and rendering
+struct FragmentedPage: Codable {
+    let fragments: [VerseFragment]
+    let navTitle: String
+    let startVerse: VerseReference
+    let endVerse: VerseReference
+    let content: String // Store as string for Codable
+    let measuredHeight: CGFloat
+    let availableHeight: CGFloat
+
+    init(fragments: [VerseFragment], navTitle: String, startVerse: VerseReference, endVerse: VerseReference, content: AttributedString, measuredHeight: CGFloat, availableHeight: CGFloat) {
+        self.fragments = fragments
+        self.navTitle = navTitle
+        self.startVerse = startVerse
+        self.endVerse = endVerse
+        self.content = String(content.characters)
+        self.measuredHeight = measuredHeight
+        self.availableHeight = availableHeight
+    }
+
+    // Legacy constructor for backward compatibility
+    init(book: String, chapter: Int, verse: Int, fragments: [String] = [], layoutInfo: [String: Any] = [:]) {
+        self.fragments = []
+        self.navTitle = "\(book) \(chapter):\(verse)"
+        self.startVerse = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
+        self.endVerse = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
+        self.content = fragments.joined(separator: " ")
+        self.measuredHeight = 0
+        self.availableHeight = 0
+    }
+
+    var contentString: String {
+        return content
+    }
+
+    var debugDescription: String {
+        return "FragmentedPage(navTitle: \(navTitle), startVerse: \(startVerse.description), endVerse: \(endVerse.description), fragments: \(fragments.count))"
+    }
+}
+
+
+
+/// Represents a verse fragment for pagination
+struct VerseFragment: Codable {
+    let reference: VerseReference
+    let textFragment: String
+    let isStartOfVerse: Bool
+    let isEndOfVerse: Bool
+    let fullVerseText: String
+    let sequenceNumber: Int
+    let totalFragments: Int
+
+    init(reference: VerseReference, textFragment: String, isStartOfVerse: Bool, isEndOfVerse: Bool, fullVerseText: String, sequenceNumber: Int, totalFragments: Int) {
+        self.reference = reference
+        self.textFragment = textFragment
+        self.isStartOfVerse = isStartOfVerse
+        self.isEndOfVerse = isEndOfVerse
+        self.fullVerseText = fullVerseText
+        self.sequenceNumber = sequenceNumber
+        self.totalFragments = totalFragments
+    }
+
+    // Legacy constructor for backward compatibility
+    init(book: String, chapter: Int, verse: Int, text: String, attributedText: AttributedString, characterOffset: Int = 0) {
+        self.reference = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
+        self.textFragment = text
+        self.isStartOfVerse = characterOffset == 0
+        self.isEndOfVerse = true
+        self.fullVerseText = text
+        self.sequenceNumber = characterOffset
+        self.totalFragments = 1
+    }
+}
+
 /// Enhanced page history entry that stores complete layout information for exact page reproduction
 struct PageHistoryEntry: Equatable {
     /// The book name where this page starts
