@@ -84,14 +84,8 @@ enum CoreMLSelfTest {
             "attention_mask": MLFeatureValue(multiArray: mask)
         ]
 
-        // Add KV caches (required for our model)
-        for i in 0..<nLayer {
-            let kShape = [1, NSNumber(value: nHead), 1, NSNumber(value: headDim)]
-            let vShape = [1, NSNumber(value: nHead), 1, NSNumber(value: headDim)]
-
-            inputs["k_cache_\(i)"] = MLFeatureValue(multiArray: try MLMultiArray(shape: kShape, dataType: .float32))
-            inputs["v_cache_\(i)"] = MLFeatureValue(multiArray: try MLMultiArray(shape: vShape, dataType: .float32))
-        }
+        // No KV caches needed for single-pass model
+        // Our model is classification-style, not autoregressive
 
         let out = try model.prediction(from: try MLDictionaryFeatureProvider(dictionary: inputs))
 
