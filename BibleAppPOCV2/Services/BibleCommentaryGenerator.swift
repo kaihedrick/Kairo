@@ -3,6 +3,78 @@ import Foundation
 import CoreML
 import SwiftUI
 
+extension Dictionary where Key == String {
+    func compactMapKeys<T>(_ transform: (String) -> T?) -> [T: Value] {
+        var result: [T: Value] = [:]
+        for (key, value) in self {
+            if let newKey = transform(key) {
+                result[newKey] = value
+            }
+        }
+        return result
+    }
+}
+
+/// Simple vocabulary decoder using exported tokenizer files
+struct Vocab {
+    let idToToken: [Int: String]
+
+    init(idToToken: [Int: String]) {
+        self.idToToken = idToToken
+    }
+
+    func decode(ids: [Int32]) -> String {
+        print("🔄 Decoding \(ids.count) token IDs: \(ids.prefix(5).map { String($0) }.joined(separator: ","))...")
+        let tokens = ids.compactMap { idToToken[Int($0)] }
+        print("📝 Found \(tokens.count) valid tokens out of \(ids.count) IDs")
+
+        if tokens.count != ids.count {
+            let missingIds = ids.enumerated().compactMap { (index, id) -> Int32? in
+                return idToToken[Int(id)] == nil ? id : nil
+            }
+            print("⚠️ Missing tokens for IDs: \(missingIds)")
+        }
+
+        let result = tokens.joined(separator: "")
+        print("✅ Decoded result length: \(result.count) characters")
+        return result
+    }
+
+    static func load() throws -> Vocab {
+        // Load directly from exported id_to_token.json file
+        print("🔍 Loading id_to_token.json...")
+        guard let url = BundleLoader.url(name: "id_to_token", ext: "json") else {
+            print("❌ Cannot find id_to_token.json in bundle")
+            throw NSError(domain: "Vocab", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cannot find id_to_token.json"])
+        }
+        print("📁 Found id_to_token.json at: \(url.path)")
+
+        let data = try Data(contentsOf: url)
+        print("📊 Loaded \(data.count) bytes of data")
+
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            print("❌ Failed to parse JSON as [String: String]")
+            throw NSError(domain: "Vocab", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON format in id_to_token.json"])
+        }
+        print("🔢 Parsed JSON with \(dict.count) entries")
+
+        let idToToken = dict.compactMapKeys { Int($0) }
+        print("✅ Converted to Int keys: \(idToToken.count) valid token mappings")
+
+        // Verify some key tokens exist
+        let testTokens = [0, 1, 2, 50256] // Common tokens: BOS, EOS, PAD, EOS
+        for tokenId in testTokens {
+            if let token = idToToken[tokenId] {
+                print("🔍 Token \(tokenId): '\(token)'")
+            } else {
+                print("⚠️ Token \(tokenId) not found in vocabulary")
+            }
+        }
+
+        return Vocab(idToToken: idToToken)
+    }
+}
+
 @MainActor
 final class BibleCommentaryGenerator: ObservableObject {
     private static var _shared: BibleCommentaryGenerator!
@@ -20,8 +92,7 @@ final class BibleCommentaryGenerator: ObservableObject {
     @Published private(set) var isReady = false
 
     private(set) var model: MLModel?
-    private var tokenizerSvc: TokenizerService?
-    private var art: TokenizerArtifacts!
+    private var vocab: Vocab?
 
     private var seqLen: Int = 1024
     private var nLayer = 12, nHead = 12, headDim = 64
@@ -32,19 +103,22 @@ final class BibleCommentaryGenerator: ObservableObject {
     private let TEMP: Float = 0.9, TOPK: Int = 100, TOPP: Float = 0.95, REP: Float = 1.15
     private let MAX_NEW = 800, MIN_NEW = 40
 
+    // Special token IDs from tokenizer_config.json
+    private let verseId: Int32 = 50260
+    private let verseRefId: Int32 = 50265
+    private let verseTextId: Int32 = 50264
+    private let verseTagId: Int32 = 50257
+    private let startCommentaryId: Int32 = 50259
+    private let padId: Int32 = 50263
+
     init() { if !Self.didInit { Self.didInit = true; load() } }
 
     private func load() {
         print("🚀 Loading resources…")
         do {
-            art = try TokenizerArtifacts.load()
-            seqLen = art.report.model_io.seq_len
-            nLayer = art.report.model_io.n_layer
-            nHead  = art.report.model_io.n_head
-            headDim = art.report.model_io.head_dim
-            tokenizerSvc = TokenizerService(art: art)
-            print("✅ export_report: seq_len=\(seqLen), kv=L\(nLayer) H\(nHead) D\(headDim)")
-        } catch { print("❌ Tokenizer load error: \(error)") }
+            vocab = try Vocab.load()
+            print("✅ Vocab ready (\(vocab?.idToToken.count ?? 0) tokens)")
+        } catch { print("❌ Vocab error:", error.localizedDescription) }
 
         loadModel()
         dumpModelSignature()
@@ -52,7 +126,7 @@ final class BibleCommentaryGenerator: ObservableObject {
         // loadModelFromBundle() already handled assertDynamicSignature()
         // and will fatalError if model is not valid
 
-        isReady = (model != nil && tokenizerSvc != nil)
+        isReady = (model != nil && vocab != nil)
         print(isReady ? "✅ Generator ready" : "⚠️ Generator not ready")
 
         // Quick smoke test - forces compile with proper shapes
@@ -137,12 +211,29 @@ final class BibleCommentaryGenerator: ObservableObject {
         return Int32(best)
     }
 
+    private func encodePrompt(verseRef: String, verseText: String, seqLen: Int) -> [Int32] {
+        let prompt = """
+        [VERSE_ID] \(verseRef.uppercased().replacingOccurrences(of: " ", with: "_"))
+        [VERSE_REF] \(verseRef)
+        [VERSE_TEXT] \(verseText)
+        [VERSE]
+        [START_COMMENTARY]
+        """
+        var tokens: [Int32] = []
+        if prompt.contains("[VERSE_ID]") { tokens.append(verseId) }
+        if prompt.contains("[VERSE_REF]") { tokens.append(verseRefId) }
+        if prompt.contains("[VERSE_TEXT]") { tokens.append(verseTextId) }
+        if prompt.contains("[VERSE]") { tokens.append(verseTagId) }
+        if prompt.contains("[START_COMMENTARY]") { tokens.append(startCommentaryId) }
+        return tokens.isEmpty ? [padId] : tokens
+    }
+
     @MainActor
     func generateCommentary(for verseRef: String, verseText: String) async -> String {
-        guard let model, let tokenizerSvc else { self.error = "Model/tokenizer not ready"; return "" }
+        guard let model, let vocab else { self.error = "Model/vocab not ready"; return "" }
         self.isGenerating = true; self.error = nil; self.generatedText = ""
 
-        var ids = tokenizerSvc.encodePrompt(verseRef: verseRef, verseText: verseText, maxLen: seqLen)
+        var ids = encodePrompt(verseRef: verseRef, verseText: verseText, seqLen: seqLen)
         if ids.isEmpty {
             await MainActor.run {
                 self.error = "Failed to encode prompt - no tokens generated"
@@ -222,13 +313,13 @@ final class BibleCommentaryGenerator: ObservableObject {
                 ids.append(last); produced += 1
                 if ids.count >= seqLen { done = true }
                 if produced % 8 == 0 || done {
-                    let decoded = tokenizerSvc.decode(ids: ids.map(Int.init))
+                    let decoded = vocab.decode(ids: ids)
                     await MainActor.run { self.generatedText = decoded }
                 }
             } catch { self.error = "Step failed: \(error.localizedDescription)"; break }
         }
 
-        let final = tokenizerSvc.decode(ids: ids.map(Int.init))
+        let final = vocab.decode(ids: ids)
         let sanitized = TextSanitizer.shared.sanitizeText(final)
         await MainActor.run {
             self.generatedText = sanitized
