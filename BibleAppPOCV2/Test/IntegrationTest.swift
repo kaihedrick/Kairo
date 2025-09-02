@@ -21,7 +21,7 @@ class IntegrationTest {
     
     static func testCoreMLGenerator() async {
         print("🧪 Testing CoreML BibleCommentaryGenerator...")
-        
+
         do {
             let generator = await BibleCommentaryGenerator.shared
             // Wait for the generator to be ready (it's already initialized in init)
@@ -29,12 +29,12 @@ class IntegrationTest {
                 try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
             print("✅ BibleCommentaryGenerator ready")
-            
+
             let testVerse = "For God so loved the world, that he gave his only begotten Son."
             let result = await generator.generateCommentary(for: "John 3:16", verseText: testVerse)
-            
+
             print("✅ Generated commentary: \(result.prefix(100))...")
-            
+
         } catch {
             print("❌ CoreML generator test failed: \(error)")
         }

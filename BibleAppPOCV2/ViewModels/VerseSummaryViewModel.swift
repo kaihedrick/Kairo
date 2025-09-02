@@ -24,24 +24,8 @@ class VerseSummaryViewModel: ObservableObject {
     
     @MainActor
     private func attachModelReadyObserver() {
-        NotificationCenter.default.addObserver(forName: .coreMLBibleModelReady, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                self?.modelAvailable = true
-                print("🟢 UI: Core ML modelAvailable = true")
-                
-                // Clear any loading errors when Core ML becomes ready
-                if self?.errorMessage == "Core ML model is loading..." {
-                    self?.errorMessage = ""
-                }
-                
-                // If we have a pending verse, retry now that Core ML is ready
-                if let pendingVerse = self?.pendingVerse {
-                    print("🔄 Auto-retrying pending verse: \(pendingVerse)")
-                    self?.summarize(verse: pendingVerse)
-                    self?.pendingVerse = nil
-                }
-            }
-        }
+        // Simplified - we'll check model availability directly
+        modelAvailable = (GenerationRuntime.shared.mode == .coreml)
     }
 
     @MainActor
@@ -90,12 +74,15 @@ class VerseSummaryViewModel: ObservableObject {
                 // Parse the verse to extract reference and text properly
                 let (verseRef, verseText) = parseVerse(verse)
                 
-                // Use the new parser to get structured commentary and devotional
-                let parsedContent = await commentaryGenerator.generateCommentaryAndDevotional(for: verseRef, verseText: verseText)
-            
+                // Generate commentary using the actual API
+                let rawText = await commentaryGenerator.generateCommentary(for: verseRef, verseText: verseText)
+
+                // Parse the structured output to extract commentary and devotional sections
+                let parsedContent = parseStructuredOutput(rawText)
+
             await MainActor.run {
                 self.isLoading = false
-                
+
                 // Use the parsed sections directly
                 self.commentaryText = parsedContent.commentary
                 self.devotionalText = parsedContent.devotional

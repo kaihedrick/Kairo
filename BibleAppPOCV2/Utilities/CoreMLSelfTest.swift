@@ -20,33 +20,32 @@ enum CoreMLSelfTest {
         print("• .mlmodel:", url("mlmodel")?.path ?? "nil")
 
         do {
-            // Prefer generated class if available
-            if let mdl = try? bible_commentary_model(configuration: cfg) {
-                try describe(model: mdl.model)
-                try quickForward(model: mdl.model)
+            // Use same loading logic as main app - prefer .mlpackage only
+            if let u = url("mlpackage") {
+                let m = try MLModel(contentsOf: u, configuration: cfg)
+                try describe(model: m)
+                try quickForward(model: m)
                 return
             }
 
+            // Fallback to .mlmodelc if .mlpackage not found
             if let u = url("mlmodelc") {
                 let m = try MLModel(contentsOf: u, configuration: cfg)
                 try describe(model: m)
                 try quickForward(model: m)
                 return
             }
-            if let u = url("mlpackage") {
-                let compiled = try MLModel.compileModel(at: u)
-                let m = try MLModel(contentsOf: compiled, configuration: cfg)
-                try describe(model: m)
-                try quickForward(model: m)
-                return
-            }
+
+            // Last resort - try .mlmodel (not recommended)
             if let u = url("mlmodel") {
                 let m = try MLModel(contentsOf: u, configuration: cfg)
                 try describe(model: m)
                 try quickForward(model: m)
                 return
             }
-            print("❌ CoreMLSelfTest — none of the model files were found in bundle")
+
+            print("❌ CoreMLSelfTest — no model files found in bundle")
+            print("   Make sure bible_commentary_model.mlpackage is in Copy Bundle Resources")
         } catch {
             print("❌ CoreMLSelfTest — load/forward error:", error.localizedDescription)
         }
@@ -65,33 +64,45 @@ enum CoreMLSelfTest {
     }
 
     private static func quickForward(model: MLModel) throws {
-        let seqLen = 512
+        let seqLen = 8  // Small test sequence to avoid memory issues
+        let nHead = 12  // From model config
+        let headDim = 64 // From model config
+        let nLayer = 12  // From model config
+
+        // Create basic inputs
         let ids = try MLMultiArray(shape: [1, NSNumber(value: seqLen)], dataType: .int32)
         let mask = try MLMultiArray(shape: [1, NSNumber(value: seqLen)], dataType: .int32)
 
-        let names = model.modelDescription.inputDescriptionsByName.keys
-        let inputs: [String: MLFeatureValue]
-        if names.contains("input_ids") && names.contains("attention_mask") {
-            inputs = [
-                "input_ids": MLFeatureValue(multiArray: ids),
-                "attention_mask": MLFeatureValue(multiArray: mask)
-            ]
-        } else {
-            inputs = [
-                "attention_mask": MLFeatureValue(multiArray: mask),
-                "input_ids": MLFeatureValue(multiArray: ids)
-            ]
+        // Fill with test data
+        for i in 0..<seqLen {
+            ids[i] = NSNumber(value: Int32(i % 100))  // Simple token IDs
+            mask[i] = 1  // All positions are valid
+        }
+
+        var inputs: [String: MLFeatureValue] = [
+            "input_ids": MLFeatureValue(multiArray: ids),
+            "attention_mask": MLFeatureValue(multiArray: mask)
+        ]
+
+        // Add KV caches (required for our model)
+        for i in 0..<nLayer {
+            let kShape = [1, NSNumber(value: nHead), 1, NSNumber(value: headDim)]
+            let vShape = [1, NSNumber(value: nHead), 1, NSNumber(value: headDim)]
+
+            inputs["k_cache_\(i)"] = MLFeatureValue(multiArray: try MLMultiArray(shape: kShape, dataType: .float32))
+            inputs["v_cache_\(i)"] = MLFeatureValue(multiArray: try MLMultiArray(shape: vShape, dataType: .float32))
         }
 
         let out = try model.prediction(from: try MLDictionaryFeatureProvider(dictionary: inputs))
-        let key = out.featureNames.first {
-            if let arr = out.featureValue(for: $0)?.multiArrayValue { return arr.shape.count == 3 }
-            return false
-        } ?? "logits"
-        guard let logits = out.featureValue(for: key)?.multiArrayValue else {
-            print("⚠️ Prediction result has no 3D logits-like output"); return
+
+        // Look for logits output
+        if let logits = out.featureValue(for: "logits")?.multiArrayValue {
+            print("✅ Quick forward ok — logits shape:", logits.shape)
+        } else {
+            print("⚠️ No logits output found in prediction result")
+            let availableOutputs = out.featureNames.sorted()
+            print("   Available outputs:", availableOutputs)
         }
-        print("✅ Quick forward ok — logits shape:", logits.shape)
     }
 }
 
