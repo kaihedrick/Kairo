@@ -30,26 +30,7 @@ BibleAppPOCV2/Resources/ML/simple-verse-model-coreml.mlmodelc
 
 # Exclude large JSON files
 BibleAppPOCV2/KJV.json
-/BibleAppPOCV2/ML
+BibleAppPOCV2.xcodeproj/project.pbxproj
+TestResults.xcresult/
 /BibleAppPOCV2/ML
 train_gpt2_seq2seq_fixed.py
-/BibleAppPOCV2/ML/Models
-/BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage
-BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Data/com.apple.CoreML/model.mlmodel
-BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Data/com.apple.CoreML/weights/weight.bin
-BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Manifest.json
-BibleAppPOCV2/ML/Models/tokenizer_config.json
-BibleAppPOCV2/ML/Models/tokenizer.json
-BibleAppPOCV2/ML/Models/special_tokens_map.json
-BibleAppPOCV2/ML/Models/parity_fixture.json
-BibleAppPOCV2/ML/Models/merges.txt
-BibleAppPOCV2/ML/Models/Manifest.json
-BibleAppPOCV2/ML/Models/id_to_token.json
-BibleAppPOCV2/ML/Models/export_report.json
-BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Manifest.json
-BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Data/com.apple.CoreML/weights/weight.bin
-BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Data/com.apple.CoreML/model.mlmodel
-BibleAppPOCV2/ML/Models/added_tokens.json
-BibleAppPOCV2.xcodeproj/project.pbxproj
-BibleAppPOCV2/ML/
-TestResults.xcresult/
