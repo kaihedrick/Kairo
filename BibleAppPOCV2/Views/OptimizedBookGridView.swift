@@ -13,7 +13,6 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 struct OptimizedBookGridView: View {
     @StateObject private var viewModel = OptimizedBibleViewModel()
-    @StateObject private var performanceMonitor = PerformanceMonitor()
     @State private var searchText = ""
     @State private var isSearchActive = false
     @FocusState private var isSearchFocused: Bool

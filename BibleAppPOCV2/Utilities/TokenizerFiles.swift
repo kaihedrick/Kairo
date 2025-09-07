@@ -7,10 +7,16 @@ public enum TokenizerAssets {
     private static func url(_ name: String) throws -> URL {
         // Use BundleLoader which searches multiple subdirectories including "ML/Models"
         // Handle files with different extensions by trying common ones
+        print("🔍 DEBUG: TokenizerAssets.url() looking for: \(name)")
         let extensions = ["json", "txt", ""]
         for ext in extensions {
+            let fullName = ext.isEmpty ? name : "\(name).\(ext)"
+            print("🔍 DEBUG: Trying to find: \(fullName)")
             if let url = BundleLoader.url(name: name, ext: ext) {
+                print("✅ Found \(fullName) at: \(url.path)")
                 return url
+            } else {
+                print("❌ Not found: \(fullName)")
             }
         }
         throw AssetError.notFound(name)
@@ -52,13 +58,31 @@ public struct TokenizerArtifacts {
         let vocab = try TokenizerAssets.loadJSON("vocab.json", as: [String:Int].self)
 
         // merges.txt (skip header line if present)
+        print("🔍 DEBUG: Loading merges.txt...")
         let mergesTxt = try TokenizerAssets.loadText("merges.txt")
+        print("🔍 DEBUG: merges.txt length: \(mergesTxt.count) characters")
+        print("🔍 DEBUG: First 200 characters of merges.txt: '\(String(mergesTxt.prefix(200)))'")
+
         var merges: [(String,String)] = []
-        for line in mergesTxt.split(separator: "\n") {
-            if line.hasPrefix("#") { continue }
+        let lines = mergesTxt.split(separator: "\n")
+        print("🔍 DEBUG: merges.txt has \(lines.count) lines")
+
+        for (index, line) in lines.enumerated() {
+            if index < 5 { // Debug first few lines
+                print("🔍 DEBUG: Line \(index): '\(line)'")
+            }
+            if line.hasPrefix("#") {
+                if index < 5 { print("🔍 DEBUG: Skipping comment line \(index)") }
+                continue
+            }
             let parts = line.split(separator: " ")
-            if parts.count == 2 { merges.append((String(parts[0]), String(parts[1]))) }
+            if parts.count == 2 {
+                merges.append((String(parts[0]), String(parts[1])))
+            } else if index < 10 { // Debug first few non-comment lines
+                print("🔍 DEBUG: Unexpected line format at \(index): '\(line)' - parts: \(parts)")
+            }
         }
+        print("🔍 DEBUG: Successfully parsed \(merges.count) merges")
 
         // added_tokens.json → content->id
         var added: [String:Int] = [:]

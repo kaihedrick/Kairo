@@ -5,13 +5,14 @@ struct VerseSummaryPopupView: View {
     let summary: VerseSummary
     let onClose: () -> Void
     @StateObject private var viewModel: VerseSummaryViewModel
-    
+
     init(summary: VerseSummary, onClose: @escaping () -> Void) {
         self.summary = summary
         self.onClose = onClose
         // Use shared instance to preserve modelAvailable state
         self._viewModel = StateObject(wrappedValue: VerseSummaryViewModel.shared)
     }
+
 
     var body: some View {
         VStack(spacing: 12) {
@@ -156,8 +157,9 @@ struct VerseSummaryPopupView: View {
         .frame(maxHeight: .infinity, alignment: .bottom)
         .transition(.move(edge: .bottom))
         .accessibilityElement(children: .contain)
-        .onAppear {
-            viewModel.summarize(verse: summary.summaryText)
+        .task {
+            // Start summarization immediately when popup appears
+            await viewModel.summarize(verse: summary.summaryText)
         }
     }
 }

@@ -15,17 +15,21 @@ class VerseSummaryViewModel: ObservableObject {
     
     private var bibleCommentaryGenerator: BibleCommentaryGenerator?
     private var pendingVerse: String?
+    private var initializationStartTime: Date?
+    private var initializationGracePeriod: TimeInterval = 1.0 // 1 second grace period
 
     init() {
+        initializationStartTime = Date()
         attachModelReadyObserver()
-        modelAvailable = (GenerationRuntime.shared.mode == .coreml)
+        // Get initial readiness state directly from BibleCommentaryGenerator
+        modelAvailable = BibleCommentaryGenerator.shared.isReady
         Task { await initializeGenerators() }
     }
     
     @MainActor
     private func attachModelReadyObserver() {
-        print("👂 VerseSummaryViewModel: Setting up GenerationRuntime notification observer")
-        // Listen for GenerationRuntime mode changes
+        print("👂 VerseSummaryViewModel: Setting up BibleCommentaryGenerator notification observer")
+        // Listen for BibleCommentaryGenerator readiness changes
         NotificationCenter.default.addObserver(
             forName: GenerationRuntime.runtimeModeChangedNotification,
             object: nil,
@@ -35,20 +39,28 @@ class VerseSummaryViewModel: ObservableObject {
             if let userInfo = notification.userInfo,
                let newMode = userInfo[GenerationRuntime.runtimeModeKey] as? InferenceMode {
                 self.modelAvailable = (newMode == .coreml)
-                print("🔄 VerseSummaryViewModel: GenerationRuntime mode changed to: \(newMode), modelAvailable: \(self.modelAvailable)")
+                print("🔄 VerseSummaryViewModel: Readiness changed to: \(newMode), modelAvailable: \(self.modelAvailable)")
 
-                // If we have a pending verse and CoreML is now ready, process it
-                if newMode == .coreml, let pendingVerse = self.pendingVerse {
-                    print("🚀 Processing pending verse: \(pendingVerse.prefix(50))...")
-                    self.pendingVerse = nil
-                    self.summarize(verse: pendingVerse)
+                // Clear any loading errors when CoreML becomes ready
+                if newMode == .coreml {
+                    if self.errorMessage == "Core ML model is loading..." {
+                        self.errorMessage = ""
+                        print("✅ Cleared loading error - CoreML is now ready")
+                    }
+
+                    // Auto-retry pending verse when CoreML becomes ready
+                    if let pendingVerse = self.pendingVerse {
+                        print("🚀 Auto-retrying pending verse: \(pendingVerse.prefix(50))...")
+                        self.pendingVerse = nil
+                        self.summarize(verse: pendingVerse)
+                    }
                 }
             }
         }
 
-        // Set initial state
-        modelAvailable = (GenerationRuntime.shared.mode == .coreml)
-        print("👂 VerseSummaryViewModel: Initial GenerationRuntime mode: \(GenerationRuntime.shared.mode), modelAvailable: \(modelAvailable)")
+        // Set initial state from BibleCommentaryGenerator
+        modelAvailable = BibleCommentaryGenerator.shared.isReady
+        print("👂 VerseSummaryViewModel: Initial readiness: \(modelAvailable)")
     }
 
     @MainActor
@@ -58,21 +70,51 @@ class VerseSummaryViewModel: ObservableObject {
         print("✅ BibleCommentaryGenerator initialized successfully")
     }
 
+    // Helper method to check if we're still within initialization grace period
+    private func isWithinGracePeriod() -> Bool {
+        guard let startTime = initializationStartTime else { return false }
+        return Date().timeIntervalSince(startTime) < initializationGracePeriod
+    }
+
+    // Helper method to set error message with grace period consideration
+    private func setErrorMessage(_ message: String) {
+        if isWithinGracePeriod() {
+            print("⏳ Deferring error during grace period: \(message)")
+            // Don't show the error immediately, but set it after grace period
+            // unless CoreML becomes ready first
+            Task { @MainActor in
+                let remainingTime = initializationGracePeriod - Date().timeIntervalSince(initializationStartTime!)
+                if remainingTime > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+                }
+                // Only set error if CoreML is still not ready and no other error is shown
+                if errorMessage.isEmpty && !BibleCommentaryGenerator.shared.isReady {
+                    errorMessage = message
+                }
+            }
+        } else {
+            errorMessage = message
+        }
+    }
+
     // Accepts a verse string, runs through GPT-2 commentary generator pipeline, and updates commentary and devotional
     func summarize(verse: String) {
+        // Immediately set loading state to show loading indicator
+        isLoading = true
+        setErrorMessage("")
         guard let commentaryGenerator = bibleCommentaryGenerator else {
             // Store pending verse to retry when Core ML becomes ready
             pendingVerse = verse
-            errorMessage = "Core ML model is loading..."
+            setErrorMessage("Core ML model is loading...")
             print("⚠️ Generator not ready yet, waiting for Core ML to load...")
             return
         }
-        
+
         // Check if the Core ML model is ready before proceeding
         guard commentaryGenerator.isReady else {
             // Store pending verse to retry when Core ML becomes ready
             pendingVerse = verse
-            errorMessage = "Core ML model is loading..."
+            setErrorMessage("Core ML model is loading...")
             print("⚠️ Core ML model not ready yet, waiting for initialization...")
             print("🔍 DEBUG: commentaryGenerator.isReady = \(commentaryGenerator.isReady)")
             print("🔍 DEBUG: commentaryGenerator.model = \(commentaryGenerator.model != nil ? "loaded" : "nil")")
@@ -82,7 +124,7 @@ class VerseSummaryViewModel: ObservableObject {
         print("🚀 calling generateCommentary with modelAvailable=\(modelAvailable), textLen=\(verse.count)")
         print("🚀 run(): modelAvailable=\(modelAvailable), vm id:", ObjectIdentifier(self))
         isLoading = true
-        errorMessage = ""
+        setErrorMessage("")
         commentaryText = ""
         devotionalText = ""
         modelVersion = "GPT-2 Bible Commentary Model"
@@ -111,7 +153,12 @@ class VerseSummaryViewModel: ObservableObject {
                 let rawText = await commentaryGenerator.generateCommentary(for: verseRef, verseText: verseText)
 
                 // Parse the structured output to extract commentary and devotional sections
-                let parsedContent = parseStructuredOutput(rawText)
+                let parsedContent = parseStructuredOutput(rawText, originalVerse: verse)
+
+                print("🔍 DEBUG: Raw text from ML model: '\(rawText)'")
+                print("🔍 DEBUG: Parsed commentary: '\(parsedContent.commentary)'")
+                print("🔍 DEBUG: Parsed devotional: '\(parsedContent.devotional)'")
+                print("🔍 DEBUG: Original verse: '\(verse)'")
 
             await MainActor.run {
                 self.isLoading = false
@@ -121,20 +168,27 @@ class VerseSummaryViewModel: ObservableObject {
                 self.devotionalText = parsedContent.devotional
                 
                 if parsedContent.commentary.isEmpty && parsedContent.devotional.isEmpty {
+                    print("🔍 DEBUG: Both commentary and devotional are empty")
                     // Only try fallback summarizer if we're in fallback mode
-                    if GenerationRuntime.shared.mode == .fallback {
+                    if !BibleCommentaryGenerator.shared.isReady {
                         self.tryFallbackSummarizer(verse: verse)
                     } else {
-                        self.errorMessage = "No content generated from Core ML model"
+                        self.setErrorMessage("No content generated from Core ML model")
                     }
+                } else if parsedContent.commentary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                         parsedContent.devotional.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    print("🔍 DEBUG: Commentary and devotional contain only whitespace")
+                    self.setErrorMessage("Generated content is empty or only whitespace")
                 } else {
+                    print("🔍 DEBUG: Content generation successful!")
                     self.errorMessage = ""
                 }
             }
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = "Generation failed: \(error.localizedDescription)"
+                // Use setErrorMessage to respect grace period
+                self.setErrorMessage("Generation failed: \(error.localizedDescription)")
             }
         }
         }
@@ -142,9 +196,9 @@ class VerseSummaryViewModel: ObservableObject {
     
     // Fallback to improved summarizer if GPT-2 fails
     private func tryFallbackSummarizer(verse: String) {
-        // Only use fallback summarizer when in fallback mode
-        guard GenerationRuntime.shared.mode == .fallback else {
-            errorMessage = "Fallback summarizer not available in Core ML mode"
+        // Only use fallback summarizer when CoreML is not ready
+        guard !BibleCommentaryGenerator.shared.isReady else {
+            setErrorMessage("Fallback summarizer not available in Core ML mode")
             return
         }
         
@@ -152,28 +206,46 @@ class VerseSummaryViewModel: ObservableObject {
         // Fallback to simple static response for now
         commentaryText = "Fallback commentary not currently available. Please ensure Core ML model is loaded."
         devotionalText = "Fallback devotional not currently available. Please ensure Core ML model is loaded."
-        errorMessage = "Fallback summarizer not implemented"
+        setErrorMessage("Fallback summarizer not implemented")
         return
         
 
     }
     
     // Parse structured output to extract commentary and devotional sections
-    private func parseStructuredOutput(_ text: String) -> (commentary: String, devotional: String) {
+    private func parseStructuredOutput(_ text: String, originalVerse: String) -> (commentary: String, devotional: String) {
         func slice(_ s: String, _ a: String, _ b: String) -> String {
             guard let r1 = s.range(of: a), let r2 = s.range(of: b), r1.upperBound <= r2.lowerBound else { return "" }
             return String(s[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+
+        // First try to parse structured output with markers
         let commentary = slice(text, "[START_COMMENTARY]", "[END_COMMENTARY]")
         let devotional = slice(text, "[START_DEVOTIONAL]", "[END_DEVOTIONAL]")
-        return (commentary, devotional)
+
+        // If structured markers are found, return them
+        if !commentary.isEmpty || !devotional.isEmpty {
+            return (commentary, devotional)
+        }
+
+        // If no structured markers found, treat the entire generated text as commentary
+        // Remove the original verse text from the beginning to get just the generated content
+        if text.hasPrefix(originalVerse) && text.count > originalVerse.count {
+            // Extract everything after the original verse
+            let startIndex = text.index(text.startIndex, offsetBy: originalVerse.count)
+            let generatedContent = String(text[startIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return (generatedContent, "")
+        }
+
+        // Fallback: use the entire text as commentary
+        return (text.trimmingCharacters(in: .whitespacesAndNewlines), "")
     }
     
     // Clear the current summary
     func clearSummary() {
         commentaryText = ""
         devotionalText = ""
-        errorMessage = ""
+        setErrorMessage("")
     }
     
     /// Parse a verse string to extract the reference and text
@@ -243,7 +315,7 @@ class VerseSummaryViewModel: ObservableObject {
             return "GPT-2 Bible Commentary Model Ready"
         } else if bibleCommentaryGenerator != nil {
             return "GPT-2 Bible Commentary Model Loading..."
-        } else if GenerationRuntime.shared.mode == .fallback {
+        } else if !BibleCommentaryGenerator.shared.isReady {
             return "Fallback Mode (Improved Bible AI Model Not Implemented)"
         } else {
             return "No models available"
@@ -254,15 +326,13 @@ class VerseSummaryViewModel: ObservableObject {
     func isSummarizerReady() -> Bool {
         if let commentaryGenerator = bibleCommentaryGenerator {
             return commentaryGenerator.isReady
-        } else if GenerationRuntime.shared.mode == .fallback {
-            return false  // improvedSummarizer is not implemented
         }
-        return false
+        return false  // Only BibleCommentaryGenerator is implemented
     }
     
     // Get detailed status information for debugging
     func getDetailedStatus() -> String {
-        var status = "GenerationRuntime Mode: \(GenerationRuntime.shared.mode)\n"
+        var status = "BibleCommentaryGenerator Ready: \(BibleCommentaryGenerator.shared.isReady)\n"
         status += "Model Available: \(modelAvailable)\n"
         
         if let commentaryGenerator = bibleCommentaryGenerator {
@@ -278,7 +348,7 @@ class VerseSummaryViewModel: ObservableObject {
     
     // Retry initialization
     func retryInitialization() {
-        errorMessage = ""
+        setErrorMessage("")
         Task { await initializeGenerators() }
     }
 }

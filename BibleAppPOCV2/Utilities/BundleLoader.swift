@@ -11,6 +11,7 @@ enum BundleLoader {
         "ios_integration_assets",
         "Resources/ML",
         "ML",
+        "ML/Models/ios_integration_assets", // Exact path where tokenizer files are located
         "ML/Models", // Direct path to tokenizer files from export
         "" // root
     ]
