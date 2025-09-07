@@ -2,7 +2,11 @@
 import CoreML
 
 public extension MLMultiArray {
+<<<<<<< HEAD
     // assuming shape [1, vocab] - for backward compatibility
+=======
+    // assuming shape [1, vocab]
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     func lastVocabRow() -> [Float] {
         let n = count
         var out = [Float](repeating: 0, count: n)
@@ -11,6 +15,7 @@ public extension MLMultiArray {
         }
         return out
     }
+<<<<<<< HEAD
 
     // NEW: Extract logits row for position i from shape [1, seq_len, vocab_size]
     // Self-describing version that derives vocab size from actual tensor shape[2]
@@ -77,4 +82,6 @@ public extension MLMultiArray {
         let seqLen = shape[1].intValue
         return logitsRow(at: seqLen - 1, vocabSize: vocabSize)
     }
+=======
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
 }

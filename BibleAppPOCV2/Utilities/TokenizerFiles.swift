@@ -7,6 +7,7 @@ public enum TokenizerAssets {
     private static func url(_ name: String) throws -> URL {
         // Use BundleLoader which searches multiple subdirectories including "ML/Models"
         // Handle files with different extensions by trying common ones
+<<<<<<< HEAD
         print("🔍 DEBUG: TokenizerAssets.url() looking for: \(name)")
         let extensions = ["json", "txt", ""]
         for ext in extensions {
@@ -17,6 +18,12 @@ public enum TokenizerAssets {
                 return url
             } else {
                 print("❌ Not found: \(fullName)")
+=======
+        let extensions = ["json", "txt", ""]
+        for ext in extensions {
+            if let url = BundleLoader.url(name: name, ext: ext) {
+                return url
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
             }
         }
         throw AssetError.notFound(name)
@@ -58,6 +65,7 @@ public struct TokenizerArtifacts {
         let vocab = try TokenizerAssets.loadJSON("vocab.json", as: [String:Int].self)
 
         // merges.txt (skip header line if present)
+<<<<<<< HEAD
         print("🔍 DEBUG: Loading merges.txt...")
         let mergesTxt = try TokenizerAssets.loadText("merges.txt")
         print("🔍 DEBUG: merges.txt length: \(mergesTxt.count) characters")
@@ -83,6 +91,15 @@ public struct TokenizerArtifacts {
             }
         }
         print("🔍 DEBUG: Successfully parsed \(merges.count) merges")
+=======
+        let mergesTxt = try TokenizerAssets.loadText("merges.txt")
+        var merges: [(String,String)] = []
+        for line in mergesTxt.split(separator: "\n") {
+            if line.hasPrefix("#") { continue }
+            let parts = line.split(separator: " ")
+            if parts.count == 2 { merges.append((String(parts[0]), String(parts[1]))) }
+        }
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
 
         // added_tokens.json → content->id
         var added: [String:Int] = [:]

@@ -3,12 +3,19 @@ import Foundation
 import CoreML
 import SwiftUI
 
+<<<<<<< HEAD
+=======
+@MainActor
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
 final class BibleCommentaryGenerator: ObservableObject {
     static let shared = BibleCommentaryGenerator()
     private static var didInit = false
 
+<<<<<<< HEAD
     // Workaround for Swift compiler actor isolation crash
     // Using simple properties without actor isolation
+=======
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     @Published var isGenerating = false
     @Published var generatedText = ""
     @Published var error: String?
@@ -25,6 +32,7 @@ final class BibleCommentaryGenerator: ObservableObject {
     private let TEMP: Float = 0.9, TOPK: Int = 100, TOPP: Float = 0.95, REP: Float = 1.15
     private let MAX_NEW = 800, MIN_NEW = 40
 
+<<<<<<< HEAD
     // EOS token ID from tokenizer_config.json (<|endoftext|>)
     private let EOS_TOKEN_ID: Int32 = 50256
 
@@ -80,12 +88,26 @@ final class BibleCommentaryGenerator: ObservableObject {
             print("🎯 [END_COMMENTARY] ID: \(endCommentaryId.map(String.init) ?? "not found")")
             print("🎯 [END_DEVOTIONAL] ID: \(endDevotionalId.map(String.init) ?? "not found")")
 
+=======
+    init() {
+        if !Self.didInit {
+            Self.didInit = true
+            load()
+        }
+    }
+
+    private func load() {
+        print("🚀 Loading resources…")
+        do {
+            art = try TokenizerArtifacts.load()
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
             seqLen = art.report.model_io.seq_len
             nLayer = art.report.model_io.n_layer
             nHead  = art.report.model_io.n_head
             headDim = art.report.model_io.head_dim
             tokenizer = GPT2BPETokenizer(vocab: art.tokenToId, merges: art.merges, idToToken: art.idToToken)
             print("✅ export_report: seq_len=\(seqLen), kv=L\(nLayer) H\(nHead) D\(headDim)")
+<<<<<<< HEAD
             print("✅ Tokenizer loaded with \(art.tokenToId.count) tokens, \(art.merges.count) merges")
         } catch {
             print("❌ Tokenizer load error: \(error)")
@@ -94,6 +116,10 @@ final class BibleCommentaryGenerator: ObservableObject {
                 print("❌ NSError domain: \(nsError.domain), code: \(nsError.code)")
                 print("❌ NSError userInfo: \(nsError.userInfo)")
             }
+=======
+        } catch {
+            print("❌ Tokenizer load error: \(error)")
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
         }
 
         let cfg = MLModelConfiguration()
@@ -105,6 +131,7 @@ final class BibleCommentaryGenerator: ObservableObject {
 
         // Debug: Check all possible model file locations
         print("🔍 DEBUG: Searching for bible_commentary_model...")
+<<<<<<< HEAD
 
         // First, try the subdirectory (where the source .mlpackage lives)
         let mlpackageURL = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlpackage", subdirectory: "ML/Models/ios_integration_assets")
@@ -124,6 +151,18 @@ final class BibleCommentaryGenerator: ObservableObject {
 
         // Try subdirectory first, then root bundle as fallback
         if let url = mlpackageURL ?? mlmodelcURL ?? rootMlmodelcURL ?? rootMlmodelURL {
+=======
+        let mlpackageURL = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlpackage")
+        let mlmodelcURL = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlmodelc")
+        let mlmodelURL = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlmodel")
+
+        print("🔍 DEBUG: mlpackage URL: \(mlpackageURL?.path ?? "nil")")
+        print("🔍 DEBUG: mlmodelc URL: \(mlmodelcURL?.path ?? "nil")")
+        print("🔍 DEBUG: mlmodel URL: \(mlmodelURL?.path ?? "nil")")
+
+        // Only try the bundle .mlpackage or .mlmodelc
+        if let url = mlpackageURL ?? mlmodelcURL {
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
             print("🔍 DEBUG: Attempting to load model from: \(url.path)")
             do {
                 model = try MLModel(contentsOf: url, configuration: cfg)
@@ -149,6 +188,7 @@ final class BibleCommentaryGenerator: ObservableObject {
             }
         }
 
+<<<<<<< HEAD
         let wasReady = self.isReady
         let newReadyState = (model != nil && tokenizer != nil)
         self.isReady = newReadyState
@@ -162,6 +202,14 @@ final class BibleCommentaryGenerator: ObservableObject {
                 object: self,
                 userInfo: [GenerationRuntime.runtimeModeKey: newReadyState ? InferenceMode.coreml : InferenceMode.fallback]
             )
+=======
+        isReady = (model != nil && tokenizer != nil)
+        print(isReady ? "✅ Generator ready" : "⚠️ Generator not ready")
+
+        // Notify GenerationRuntime that CoreML is ready
+        if isReady {
+            GenerationRuntime.shared.switchToCoreML()
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
         }
     }
 
@@ -220,6 +268,7 @@ final class BibleCommentaryGenerator: ObservableObject {
         return Int32(best)
     }
 
+<<<<<<< HEAD
     // 🎯 SINGLE-PASS: CoreML Forward Pass with [1, N] input -> [1, N, modelVocabSize] logits
     // This model performs a single forward pass and predicts logits for every position
     // We use the logits from the last position to sample the next token
@@ -452,6 +501,63 @@ final class BibleCommentaryGenerator: ObservableObject {
             }
             return ""
         }
+=======
+    // 🎯 SINGLE-PASS: Classification-style generation (no autoregression)
+    // This model predicts the "next token" for the entire input sequence at once
+    // It's designed for scoring/classification, not full autoregressive text generation
+    @MainActor
+    func generateCommentary(for verseRef: String, verseText: String) async -> String {
+        guard let model, let tokenizer else {
+            self.error = "Model/tokenizer not ready"
+            return ""
+        }
+        self.isGenerating = true
+        self.error = nil
+        self.generatedText = ""
+
+        // Encode full prompt (verse reference + verse text)
+        let prompt = "\(verseRef) \(verseText)"
+        let ids = tokenizer.encode(prompt)
+        if ids.isEmpty {
+            self.isGenerating = false
+            return ""
+        }
+
+        // Create input_ids array [1, seq_len]
+        let arr = try? makeInt32Array([1, ids.count])
+        if let base = arr?.dataPointer.bindMemory(to: Int32.self, capacity: ids.count) {
+            for i in 0..<ids.count { base[i] = Int32(ids[i]) }
+        }
+
+        // Create attention_mask array [1, seq_len] (all 1s)
+        let mask = try? makeInt32Array([1, ids.count], fill: 1)
+
+        let feat: [String: MLFeatureValue] = [
+            "input_ids": .init(multiArray: arr!),
+            "attention_mask": .init(multiArray: mask!)
+        ]
+
+        // SINGLE Core ML prediction call (no autoregression)
+        guard let out = try? await model.prediction(from: MLDictionaryFeatureProvider(dictionary: feat)),
+              let logits = out.featureValue(for: outputName)?.multiArrayValue else {
+            self.error = "Prediction failed"
+            self.isGenerating = false
+            return ""
+        }
+
+        // Get logits for the predicted "next token" (classification-style)
+        let row = logitsRow(logits)
+        let recentTokens = ids.suffix(64).map(Int32.init)
+        let nextId = sample(row, recent: recentTokens[...])
+
+        // Decode original input + predicted next token
+        let finalIds = ids + [Int(nextId)]
+        let final = tokenizer.decode(finalIds)
+        self.generatedText = TextSanitizer.shared.sanitizeText(final)
+
+        self.isGenerating = false
+        return self.generatedText
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     }
 
     // Inspect model input/output shapes for debugging

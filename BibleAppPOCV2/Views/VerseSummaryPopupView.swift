@@ -5,7 +5,11 @@ struct VerseSummaryPopupView: View {
     let summary: VerseSummary
     let onClose: () -> Void
     @StateObject private var viewModel: VerseSummaryViewModel
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     init(summary: VerseSummary, onClose: @escaping () -> Void) {
         self.summary = summary
         self.onClose = onClose
@@ -13,7 +17,10 @@ struct VerseSummaryPopupView: View {
         self._viewModel = StateObject(wrappedValue: VerseSummaryViewModel.shared)
     }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     var body: some View {
         VStack(spacing: 12) {
             // Grab Handle
@@ -157,9 +164,14 @@ struct VerseSummaryPopupView: View {
         .frame(maxHeight: .infinity, alignment: .bottom)
         .transition(.move(edge: .bottom))
         .accessibilityElement(children: .contain)
+<<<<<<< HEAD
         .task {
             // Start summarization immediately when popup appears
             await viewModel.summarize(verse: summary.summaryText)
+=======
+        .onAppear {
+            viewModel.summarize(verse: summary.summaryText)
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
         }
     }
 }

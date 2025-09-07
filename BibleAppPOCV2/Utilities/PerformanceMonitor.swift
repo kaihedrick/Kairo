@@ -6,6 +6,7 @@ import os.log
 
 class PerformanceMonitor: ObservableObject {
     private let logger = Logger(subsystem: "BibleAppPOCV2", category: "Performance")
+<<<<<<< HEAD
 
     @Published var memoryUsage: Double = 0
     @Published var frameRate: Double = 0
@@ -14,21 +15,43 @@ class PerformanceMonitor: ObservableObject {
     private var frameCount: Int = 0
     private var lastFrameTime: CFTimeInterval = 0
 
+=======
+    
+    @Published var memoryUsage: Double = 0
+    @Published var frameRate: Double = 0
+    
+    private var startTime: CFTimeInterval = 0
+    private var frameCount: Int = 0
+    private var lastFrameTime: CFTimeInterval = 0
+    
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     init() {
         startTime = CACurrentMediaTime()
         startMonitoring()
     }
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     private func startMonitoring() {
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             self.updateMemoryUsage()
         }
     }
+<<<<<<< HEAD
 
     private func updateMemoryUsage() {
         var info = mach_task_basic_info()  // Use 'var' instead of 'let'
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
 
+=======
+    
+    private func updateMemoryUsage() {
+        var info = mach_task_basic_info()  // Use 'var' instead of 'let'
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
+        
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
         let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
                 task_info(mach_task_self_,
@@ -37,7 +60,11 @@ class PerformanceMonitor: ObservableObject {
                          &count)
             }
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
         if kerr == KERN_SUCCESS {
             let memoryUsageMB = Double(info.resident_size) / 1024 / 1024
             DispatchQueue.main.async {
@@ -45,11 +72,19 @@ class PerformanceMonitor: ObservableObject {
             }
         }
     }
+<<<<<<< HEAD
 
     func recordFrame() {
         frameCount += 1
         let currentTime = CACurrentMediaTime()
 
+=======
+    
+    func recordFrame() {
+        frameCount += 1
+        let currentTime = CACurrentMediaTime()
+        
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
         if currentTime - lastFrameTime >= 1.0 {
             let fps = Double(frameCount) / (currentTime - lastFrameTime)
             DispatchQueue.main.async {
@@ -59,12 +94,17 @@ class PerformanceMonitor: ObservableObject {
             lastFrameTime = currentTime
         }
     }
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     func logPerformanceMetrics() {
         logger.info("Performance Metrics - Memory: \(self.memoryUsage, privacy: .public)MB, FPS: \(self.frameRate, privacy: .public)")
     }
 }
 
+<<<<<<< HEAD
 // MARK: - Performance Timer for Data Loading Tests
 
 class PerformanceTestTimer: ObservableObject {
@@ -348,6 +388,8 @@ class PerformanceTestTimer: ObservableObject {
     }
 }
 
+=======
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
 // MARK: - C Interface for mach_task_basic_info
 struct mach_task_basic_info {
     var virtual_size: mach_vm_size_t = 0
@@ -357,4 +399,8 @@ struct mach_task_basic_info {
     var system_time: time_value_t = time_value_t()
     var policy: policy_t = 0
     var suspend_count: integer_t = 0
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44

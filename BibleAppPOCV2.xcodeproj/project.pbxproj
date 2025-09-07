@@ -41,9 +41,49 @@
 		4F9C0B4F2DFD3758007ED13A /* BibleAppPOCV2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BibleAppPOCV2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4F8A69A32E679B4D0063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ML/Models/added_tokens.json,
+				ML/Models/export_report.json,
+				ML/Models/id_to_token.json,
+				ML/Models/merges.txt,
+				ML/Models/parity_fixture.json,
+				ML/Models/special_tokens_map.json,
+				ML/Models/tokenizer_config.json,
+				ML/Models/tokenizer.json,
+				ML/Models/vocab.json,
+			);
+			target = 4F9C0B4E2DFD3758007ED13A /* BibleAppPOCV2UITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		4F8A69A42E679B4D0063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "Copy Bundle Resources" phase from "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 4F9C0B4D2DFD3758007ED13A /* Resources */;
+			membershipExceptions = (
+				ML/Models/bible_commentary_model.mlpackage,
+			);
+		};
+		4F8A69AB2E679B540063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "Copy Files" phase from "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 4F8A67662E66A4B60063D8F1 /* CopyFiles */;
+			membershipExceptions = (
+				ML/Models/bible_commentary_model.mlpackage,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4F9C0B3A2DFD3757007ED13A /* BibleAppPOCV2 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4F8A69A32E679B4D0063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2UITests" target */,
+				4F8A69A42E679B4D0063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "Copy Bundle Resources" phase from "BibleAppPOCV2UITests" target */,
+				4F8A69AB2E679B540063D8F1 /* Exceptions for "BibleAppPOCV2" folder in "Copy Files" phase from "BibleAppPOCV2UITests" target */,
+			);
 			path = BibleAppPOCV2;
 			sourceTree = "<group>";
 		};

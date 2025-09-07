@@ -31,10 +31,9 @@ BibleAppPOCV2/Resources/ML/simple-verse-model-coreml.mlmodelc
 # Exclude large JSON files
 BibleAppPOCV2/KJV.json
 /BibleAppPOCV2/ML
+/BibleAppPOCV2/ML
 train_gpt2_seq2seq_fixed.py
-/BibleAppPOCV2/ML
 /BibleAppPOCV2/ML/Models
-/BibleAppPOCV2/ML
 /BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage
 BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Data/com.apple.CoreML/model.mlmodel
 BibleAppPOCV2/ML/Models/bible_commentary_model.mlpackage/Data/com.apple.CoreML/weights/weight.bin

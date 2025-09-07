@@ -1,8 +1,22 @@
+// filepath: BibleAppPOCV2/OptimizedBibleApp.swift
 import SwiftUI
 
 @main
 struct OptimizedBibleApp: App {
     @State private var showPerformanceView = false
+
+    // Core ML BibleCommentaryGenerator will be initialized when needed
+
+    init() {
+        print("🚀 BibleAppPOCV2 starting up...")
+
+        // 🔬 Inspect Core ML model shapes for debugging (only in DEBUG mode)
+        #if DEBUG
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            IntegrationTest.inspectModelShapes()
+        }
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -45,7 +59,8 @@ struct OptimizedBibleApp: App {
         print("🚨 Memory warning received - cleaning up resources")
 
         Task { @MainActor in
-            await OptimizedBibleDataLoader().handleMemoryWarning()
+            let dataLoader = OptimizedBibleDataLoader()
+            await dataLoader.handleMemoryWarning()
         }
 
         // Force garbage collection
