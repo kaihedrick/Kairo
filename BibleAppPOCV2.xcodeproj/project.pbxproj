@@ -41,9 +41,48 @@
 		4F9C0B4F2DFD3758007ED13A /* BibleAppPOCV2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BibleAppPOCV2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4FCC762E2E6FE358005C97FA /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ML/Models/ios_integration_assets/added_tokens.json,
+				ML/Models/ios_integration_assets/export_report.json,
+				ML/Models/ios_integration_assets/id_to_token.json,
+				ML/Models/ios_integration_assets/merges.txt,
+				ML/Models/ios_integration_assets/parity_fixture.json,
+				ML/Models/ios_integration_assets/special_tokens_map.json,
+				ML/Models/ios_integration_assets/tokenizer_config.json,
+				ML/Models/ios_integration_assets/vocab.json,
+			);
+			target = 4F9C0B4E2DFD3758007ED13A /* BibleAppPOCV2UITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		4FCC762F2E6FE358005C97FA /* Exceptions for "BibleAppPOCV2" folder in "Copy Bundle Resources" phase from "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 4F9C0B4D2DFD3758007ED13A /* Resources */;
+			membershipExceptions = (
+				ML/Models/ios_integration_assets/bible_commentary_model.mlpackage,
+			);
+		};
+		4FCC76312E6FE35D005C97FA /* Exceptions for "BibleAppPOCV2" folder in "Copy Files" phase from "BibleAppPOCV2UITests" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 4F8A67662E66A4B60063D8F1 /* CopyFiles */;
+			membershipExceptions = (
+				ML/Models/ios_integration_assets/bible_commentary_model.mlpackage,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4F9C0B3A2DFD3757007ED13A /* BibleAppPOCV2 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4FCC762E2E6FE358005C97FA /* Exceptions for "BibleAppPOCV2" folder in "BibleAppPOCV2UITests" target */,
+				4FCC762F2E6FE358005C97FA /* Exceptions for "BibleAppPOCV2" folder in "Copy Bundle Resources" phase from "BibleAppPOCV2UITests" target */,
+				4FCC76312E6FE35D005C97FA /* Exceptions for "BibleAppPOCV2" folder in "Copy Files" phase from "BibleAppPOCV2UITests" target */,
+			);
 			path = BibleAppPOCV2;
 			sourceTree = "<group>";
 		};

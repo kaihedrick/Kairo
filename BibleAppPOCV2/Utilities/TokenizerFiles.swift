@@ -1,53 +1,94 @@
-// TokenizerFiles.swift
+// filepath: BibleAppPOCV2/Utilities/TokenizerFiles.swift
 import Foundation
 
-enum AssetError: Error { case notFound(String), badData(String) }
+enum AssetError: Error {
+    case notFound(String)
+    case badData(String)
+}
 
 public enum TokenizerAssets {
+    /// Locate a tokenizer asset by name, trying .json / .txt / no extension.
     private static func url(_ name: String) throws -> URL {
-        // Use BundleLoader which searches multiple subdirectories including "ML/Models"
-        // Handle files with different extensions by trying common ones
-<<<<<<< HEAD
         print("🔍 DEBUG: TokenizerAssets.url() looking for: \(name)")
+
         let extensions = ["json", "txt", ""]
         for ext in extensions {
             let fullName = ext.isEmpty ? name : "\(name).\(ext)"
             print("🔍 DEBUG: Trying to find: \(fullName)")
-            if let url = BundleLoader.url(name: name, ext: ext) {
-                print("✅ Found \(fullName) at: \(url.path)")
-                return url
+
+            // First try root bundle (where files are actually located)
+            if let u = Bundle.main.url(forResource: name, withExtension: ext) {
+                print("✅ Found \(fullName) in root bundle: \(u.path)")
+                return u
+            }
+
+            // Then try ios_integration_assets specifically
+            if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "ios_integration_assets") {
+                print("✅ Found \(fullName) in ios_integration_assets: \(u.path)")
+                return u
+            }
+
+            // Then try ML/Models/ios_integration_assets
+            if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "ML/Models/ios_integration_assets") {
+                print("✅ Found \(fullName) in ML/Models/ios_integration_assets: \(u.path)")
+                return u
+            }
+
+            // Finally fall back to BundleLoader
+            if let u = BundleLoader.url(name: name, ext: ext) {
+                print("✅ Found \(fullName) via BundleLoader: \(u.path)")
+                return u
             } else {
                 print("❌ Not found: \(fullName)")
-=======
-        let extensions = ["json", "txt", ""]
-        for ext in extensions {
-            if let url = BundleLoader.url(name: name, ext: ext) {
-                return url
->>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
             }
         }
         throw AssetError.notFound(name)
     }
 
     public static func loadJSON<T: Decodable>(_ name: String, as type: T.Type) throws -> T {
-        let data = try Data(contentsOf: try url(name))
-        return try JSONDecoder().decode(T.self, from: data)
+        let fileURL = try url(name)
+        print("🔍 DEBUG: Loading \(name) from: \(fileURL.path)")
+        let data = try Data(contentsOf: fileURL)
+        print("🔍 DEBUG: \(name) data size: \(data.count) bytes")
+        let string = String(data: data, encoding: .utf8)?.prefix(200) ?? "unable to decode"
+        print("🔍 DEBUG: \(name) content preview: \(string)...")
+
+        do {
+            let result = try JSONDecoder().decode(T.self, from: data)
+            print("🔍 DEBUG: Successfully decoded \(name) as \(type)")
+            return result
+        } catch let error as DecodingError {
+            print("❌ JSON decoding error for \(name): \(error)")
+            throw error
+        }
     }
 
     public static func loadText(_ name: String) throws -> String {
         let data = try Data(contentsOf: try url(name))
-        guard let s = String(data: data, encoding: .utf8) else { throw AssetError.badData(name) }
+        guard let s = String(data: data, encoding: .utf8) else {
+            throw AssetError.badData(name)
+        }
         return s
     }
 }
 
-// Model structs
+// MARK: - Model Structs
+
 public struct ExportReport: Decodable {
-    public struct IO: Decodable { let seq_len: Int; let n_layer: Int; let n_head: Int; let head_dim: Int; let use_cache: Bool }
+    public struct IO: Decodable {
+        let seq_len: Int
+        let n_layer: Int
+        let n_head: Int
+        let head_dim: Int
+        let use_cache: Bool
+    }
     public let model_io: IO
 }
 
-public struct AddedTokenEntry: Decodable { let id: Int; let content: String }
+public struct AddedTokenEntry: Decodable {
+    let id: Int
+    let content: String
+}
 
 public struct TokenizerArtifacts {
     public let idToToken: [Int: String]
@@ -57,56 +98,78 @@ public struct TokenizerArtifacts {
     public let report: ExportReport
 
     public static func load() throws -> TokenizerArtifacts {
+        print("🔍 DEBUG: Starting TokenizerArtifacts.load()...")
+
         // id_to_token.json
         let id2tok = try TokenizerAssets.loadJSON("id_to_token.json", as: [String:String].self)
-        var idToToken: [Int:String] = [:]; id2tok.forEach { if let k = Int($0.key) { idToToken[k] = $0.value } }
+        var idToToken: [Int:String] = [:]
+        id2tok.forEach { if let k = Int($0.key) { idToToken[k] = $0.value } }
 
-        // vocab.json (token -> id)
+        // vocab.json
         let vocab = try TokenizerAssets.loadJSON("vocab.json", as: [String:Int].self)
 
-        // merges.txt (skip header line if present)
-<<<<<<< HEAD
+        // merges.txt
         print("🔍 DEBUG: Loading merges.txt...")
         let mergesTxt = try TokenizerAssets.loadText("merges.txt")
         print("🔍 DEBUG: merges.txt length: \(mergesTxt.count) characters")
-        print("🔍 DEBUG: First 200 characters of merges.txt: '\(String(mergesTxt.prefix(200)))'")
 
         var merges: [(String,String)] = []
-        let lines = mergesTxt.split(separator: "\n")
-        print("🔍 DEBUG: merges.txt has \(lines.count) lines")
 
-        for (index, line) in lines.enumerated() {
-            if index < 5 { // Debug first few lines
-                print("🔍 DEBUG: Line \(index): '\(line)'")
+        // Handle both Unix (\n) and Windows (\r\n) line endings
+        let lines = mergesTxt.components(separatedBy: .newlines)
+            .filter { !$0.isEmpty } // Remove empty lines
+        print("🔍 DEBUG: merges.txt has \(lines.count) lines after filtering")
+
+        // If we only have 1 line, it might be due to line ending issues
+        if lines.count == 1 {
+            print("⚠️ merges.txt appears to be a single line, trying alternative parsing...")
+            let altLines = mergesTxt.split(separator: "\r\n")
+            if altLines.count > 1 {
+                print("✅ Found \(altLines.count) lines with \\r\\n parsing")
+                for (index, line) in altLines.enumerated() {
+                    if line.hasPrefix("#") {
+                        if index < 5 { print("🔍 DEBUG: Skipping comment line \(index)") }
+                        continue
+                    }
+                    let parts = line.split(separator: " ")
+                    if parts.count == 2 {
+                        merges.append((String(parts[0]), String(parts[1])))
+                    }
+                }
             }
-            if line.hasPrefix("#") {
-                if index < 5 { print("🔍 DEBUG: Skipping comment line \(index)") }
-                continue
-            }
-            let parts = line.split(separator: " ")
-            if parts.count == 2 {
-                merges.append((String(parts[0]), String(parts[1])))
-            } else if index < 10 { // Debug first few non-comment lines
-                print("🔍 DEBUG: Unexpected line format at \(index): '\(line)' - parts: \(parts)")
+        } else {
+            // Normal parsing
+            for (index, line) in lines.enumerated() {
+                if line.hasPrefix("#") {
+                    if index < 5 { print("🔍 DEBUG: Skipping comment line \(index)") }
+                    continue
+                }
+                let parts = line.split(separator: " ")
+                if parts.count == 2 {
+                    merges.append((String(parts[0]), String(parts[1])))
+                } else if index < 10 {
+                    print("⚠️ Unexpected line format at \(index): '\(line)'")
+                }
             }
         }
         print("🔍 DEBUG: Successfully parsed \(merges.count) merges")
-=======
-        let mergesTxt = try TokenizerAssets.loadText("merges.txt")
-        var merges: [(String,String)] = []
-        for line in mergesTxt.split(separator: "\n") {
-            if line.hasPrefix("#") { continue }
-            let parts = line.split(separator: " ")
-            if parts.count == 2 { merges.append((String(parts[0]), String(parts[1]))) }
-        }
->>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
 
-        // added_tokens.json → content->id
+        // added_tokens.json - try different formats
         var added: [String:Int] = [:]
-        if let arr = try? TokenizerAssets.loadJSON("added_tokens.json", as: [AddedTokenEntry].self) {
+        if let dict = try? TokenizerAssets.loadJSON("added_tokens.json", as: [String:Int].self) {
+            // Direct format: {"[TOKEN]": 12345}
+            added = dict
+            print("🔍 DEBUG: Successfully parsed added_tokens.json as [String:Int] with \(dict.count) entries")
+        } else if let arr = try? TokenizerAssets.loadJSON("added_tokens.json", as: [AddedTokenEntry].self) {
+            // Array format: [{"content": "[TOKEN]", "id": 12345}]
             for e in arr { added[e.content] = e.id }
+            print("🔍 DEBUG: Successfully parsed added_tokens.json as [AddedTokenEntry] with \(arr.count) entries")
         } else if let dict = try? TokenizerAssets.loadJSON("added_tokens.json", as: [String:AddedTokenEntry].self) {
+            // Dictionary format: {"[TOKEN]": {"content": "[TOKEN]", "id": 12345}}
             for (_, e) in dict { added[e.content] = e.id }
+            print("🔍 DEBUG: Successfully parsed added_tokens.json as [String:AddedTokenEntry] with \(dict.count) entries")
+        } else {
+            print("❌ Failed to parse added_tokens.json in any expected format")
         }
 
         // export_report.json

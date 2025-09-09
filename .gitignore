@@ -32,5 +32,5 @@ BibleAppPOCV2/Resources/ML/simple-verse-model-coreml.mlmodelc
 BibleAppPOCV2/KJV.json
 BibleAppPOCV2.xcodeproj/project.pbxproj
 TestResults.xcresult/
-/BibleAppPOCV2/ML
 train_gpt2_seq2seq_fixed.py
+/BibleAppPOCV2/ML

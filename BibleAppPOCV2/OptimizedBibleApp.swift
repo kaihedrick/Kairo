@@ -1,6 +1,25 @@
 // filepath: BibleAppPOCV2/OptimizedBibleApp.swift
 import SwiftUI
 
+// MARK: - Performance Testing Stub
+class PerformanceTestTimer: ObservableObject {
+    func testChapterLoadingPerformance(book: String, chapters: [Int]) async {
+        // Stub implementation - performance testing disabled
+    }
+
+    func testOnScreenReaderPerformance(book: String, chapter: Int) async {
+        // Stub implementation - performance testing disabled
+    }
+
+    func generatePerformanceReport() -> String {
+        return "Performance testing is currently disabled."
+    }
+
+    func clearMeasurements() {
+        // Stub implementation
+    }
+}
+
 @main
 struct OptimizedBibleApp: App {
     @State private var showPerformanceView = false
@@ -208,8 +227,7 @@ struct PerformanceTestView: View {
         Task {
             await performanceTimer.testChapterLoadingPerformance(
                 book: selectedBook,
-                chapters: chapters,
-                dataLoader: OptimizedBibleDataLoader()
+                chapters: chapters
             )
 
             testResults = performanceTimer.generatePerformanceReport()
@@ -229,8 +247,7 @@ struct PerformanceTestView: View {
         Task {
             await performanceTimer.testOnScreenReaderPerformance(
                 book: selectedBook,
-                chapter: chapter,
-                dataLoader: OptimizedBibleDataLoader()
+                chapter: chapter
             )
 
             testResults = performanceTimer.generatePerformanceReport()

@@ -5,22 +5,14 @@ struct VerseSummaryPopupView: View {
     let summary: VerseSummary
     let onClose: () -> Void
     @StateObject private var viewModel: VerseSummaryViewModel
-<<<<<<< HEAD
 
-=======
-    
->>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     init(summary: VerseSummary, onClose: @escaping () -> Void) {
         self.summary = summary
         self.onClose = onClose
-        // Use shared instance to preserve modelAvailable state
+        // Shared instance preserves readiness state across popups
         self._viewModel = StateObject(wrappedValue: VerseSummaryViewModel.shared)
     }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
     var body: some View {
         VStack(spacing: 12) {
             // Grab Handle
@@ -40,78 +32,16 @@ struct VerseSummaryPopupView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.isLoading {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Generating AI commentary...")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
+                        loadingView(text: "Generating AI commentary...")
                     } else if !viewModel.modelAvailable {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Loading Core ML model...")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
+                        loadingView(text: "Loading Core ML model...")
                     } else if !viewModel.errorMessage.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Error", systemImage: "exclamationmark.triangle")
-                                .font(.headline)
-                                .foregroundStyle(.red)
-                            
-                            Text(viewModel.errorMessage)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                            
-                            Button("Retry") {
-                                viewModel.retryInitialization()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .padding()
-                        .background(.red.opacity(0.1))
-                        .cornerRadius(8)
+                        errorView(message: viewModel.errorMessage)
                     } else {
-                        // Commentary Section
-                        if !viewModel.commentaryText.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Commentary", systemImage: "text.book.closed")
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                
-                                Text(viewModel.commentaryText)
-                                    .font(.body)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding()
-                            .background(.blue.opacity(0.05))
-                            .cornerRadius(8)
-                        }
-                        
-                        // Devotional Section
-                        if !viewModel.devotionalText.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Devotional", systemImage: "heart")
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                
-                                Text(viewModel.devotionalText)
-                                    .font(.body)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding()
-                            .background(.green.opacity(0.05))
-                            .cornerRadius(8)
-                        }
-                        
-                        // No content message
-                        if viewModel.commentaryText.isEmpty && viewModel.devotionalText.isEmpty {
+                        commentarySection
+                        devotionalSection
+                        if viewModel.commentaryText.isEmpty &&
+                           viewModel.devotionalText.isEmpty {
                             Text("No commentary available")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
@@ -132,7 +62,7 @@ struct VerseSummaryPopupView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                
+
                 Text(viewModel.modelVersion)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -140,7 +70,7 @@ struct VerseSummaryPopupView: View {
                     .padding(.vertical, 2)
                     .background(.blue.opacity(0.1))
                     .cornerRadius(4)
-                
+
                 Text(viewModel.getSummarizerStatus())
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -164,14 +94,71 @@ struct VerseSummaryPopupView: View {
         .frame(maxHeight: .infinity, alignment: .bottom)
         .transition(.move(edge: .bottom))
         .accessibilityElement(children: .contain)
-<<<<<<< HEAD
         .task {
-            // Start summarization immediately when popup appears
             await viewModel.summarize(verse: summary.summaryText)
-=======
-        .onAppear {
-            viewModel.summarize(verse: summary.summaryText)
->>>>>>> a8b6634e7d680102bb44bcc5a3f496034a5a7d44
+        }
+    }
+
+    // MARK: - Subviews
+
+    @ViewBuilder private func loadingView(text: String) -> some View {
+        HStack {
+            ProgressView().scaleEffect(0.8)
+            Text(text).font(.body).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding()
+    }
+
+    @ViewBuilder private func errorView(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Error", systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundStyle(.red)
+
+            Text(message)
+                .font(.body)
+                .foregroundStyle(.secondary)
+
+            Button("Retry") { viewModel.retryInitialization() }
+                .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.red.opacity(0.1))
+        .cornerRadius(8)
+    }
+
+    @ViewBuilder private var commentarySection: some View {
+        if !viewModel.commentaryText.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Commentary", systemImage: "text.book.closed")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text(viewModel.commentaryText)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding()
+            .background(.blue.opacity(0.05))
+            .cornerRadius(8)
+        }
+    }
+
+    @ViewBuilder private var devotionalSection: some View {
+        if !viewModel.devotionalText.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Devotional", systemImage: "heart")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text(viewModel.devotionalText)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding()
+            .background(.green.opacity(0.05))
+            .cornerRadius(8)
         }
     }
 }
