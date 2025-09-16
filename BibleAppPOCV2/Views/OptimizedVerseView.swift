@@ -5,12 +5,12 @@ struct OptimizedVerseView: View {
     let bookName: String
     let chapterNumber: Int
     
-    @State private var chapterContent: OptimizedBible.ChapterContent?
+    @State private var chapterContent: DatabaseChapter?
     @State private var isLoading = true
     @State private var loadError: Error?
     @State private var pageIndex: Int = 0
     
-    private let loader = OptimizedBibleDataLoader()
+    private let loader = DatabaseBibleDataLoader.shared
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
     private let tileSize: CGFloat = 50
     
@@ -52,11 +52,11 @@ struct OptimizedVerseView: View {
                 TabView(selection: $pageIndex) {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(content.verses, id: \.verse) { verse in
+                            ForEach(content.verses, id: \.verseNumber) { verse in
                                 NavigationLink {
                                     destinationView(verse: verse)
                                 } label: {
-                                    Text("\(verse.verse)")
+                                    Text("\(verse.verseNumber)")
                                         .font(.headline)
                                         .foregroundColor(.primary)
                                         .frame(width: tileSize, height: tileSize)
@@ -78,7 +78,7 @@ struct OptimizedVerseView: View {
     }
     
     @ViewBuilder
-    private func destinationView(verse: OptimizedBible.Verse) -> some View {
+    private func destinationView(verse: DatabaseVerse) -> some View {
         GeometryReader { geometry in
             if geometry.size.height > 50 {
                 BibleReaderView(
@@ -86,7 +86,7 @@ struct OptimizedVerseView: View {
                         width: geometry.size.width,
                         height: geometry.size.height
                     ),
-                    initialVerse: (bookName, chapterNumber, verse.verse)
+                    initialVerse: (bookName, chapterNumber, verse.verseNumber)
                 )
             } else {
                 Color.clear
@@ -100,17 +100,12 @@ struct OptimizedVerseView: View {
         loadError = nil
         
         do {
-            chapterContent = await loader.loadChapterContent(
-                book: bookName, 
-                chapter: chapterNumber
-            )
-            
-            if chapterContent == nil {
-                throw NSError(
-                    domain: "BibleReaderApp", 
-                    code: 404, 
-                    userInfo: [NSLocalizedDescriptionKey: "Chapter content not found"]
-                )
+            let result = try await loader.loadChapter(book: bookName, chapter: chapterNumber)
+            switch result {
+            case .success(let chapter):
+                chapterContent = chapter
+            case .failure(let error):
+                throw error
             }
             
             isLoading = false

@@ -19,7 +19,7 @@ struct OptimizedBookGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     // PERFORMANCE: Cache testament classifications
-    @State private var cachedGroups: [String: [BookMetadata]] = [:]
+    @State private var cachedGroups: [String: [DatabaseBookMetadata]] = [:]
     @State private var lastMetadataHash: Int = 0
     
     // STABLE LAYOUT: Fixed grid configuration
@@ -465,7 +465,7 @@ struct OptimizedBookGridView: View {
         return bookAbbreviations[bookName] ?? bookName
     }
     
-    private var filteredBookGroups: [String: [BookMetadata]] {
+    private var filteredBookGroups: [String: [DatabaseBookMetadata]] {
         guard let metadata = viewModel.metadata else { return [:] }
         
         // Check if metadata has changed
@@ -484,9 +484,9 @@ struct OptimizedBookGridView: View {
         }
         
         // PERFORMANCE: Single-pass classification for efficiency
-        var oldTestament = [BookMetadata]()
-        var newTestament = [BookMetadata]()
-        var unclassified = [BookMetadata]()
+        var oldTestament = [DatabaseBookMetadata]()
+        var newTestament = [DatabaseBookMetadata]()
+        var unclassified = [DatabaseBookMetadata]()
         
         for book in metadata.books {
             if oldTestamentSet.contains(book.name) {

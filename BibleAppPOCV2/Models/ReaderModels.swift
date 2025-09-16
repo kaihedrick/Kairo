@@ -6,7 +6,7 @@ import Foundation
 import SwiftUI
 
 /// Identifies a single verse in the Bible.
-struct VerseKey: Hashable, Codable {
+public struct VerseKey: Hashable, Codable {
     let book: String
     let chapter: Int
     let verse: Int
@@ -107,6 +107,46 @@ extension GeneratedPage {
             startVerse: startVerse,
             endVerse: endVerse,
             navigationContext: navigationContext
+        )
+    }
+
+    func toDatabasePageContent() -> DatabasePageContent {
+        let content = segments.reduce(into: AttributedString()) { result, seg in
+            result += seg.attributed
+        }
+        let verseKeys = segments.map { $0.verseKey }
+        let startVerse = verseKeys.first ?? startKey
+        let endVerse = verseKeys.last ?? startKey
+
+        // Create database verses from verse keys (simplified - would need actual verse text)
+        let databaseVerses: [DatabaseVerse] = verseKeys.map { verseKey in
+            DatabaseVerse(
+                book: verseKey.book,
+                chapter: verseKey.chapter,
+                verseNumber: verseKey.verse,
+                text: "" // This would need to be populated with actual verse text
+            )
+        }
+
+        // Convert PageNavigationContext to DatabaseNavigationContext
+        // Since PageNavigationContext doesn't have detailed navigation info, use defaults
+        let dbNavigationContext = DatabaseNavigationContext(
+            chapterNumber: startVerse.chapter,
+            verseNumber: startVerse.verse,
+            totalChapters: 50, // Would need actual book metadata
+            totalVerses: 31    // Would need actual chapter metadata
+        )
+
+        return DatabasePageContent(
+            content: content,
+            verses: databaseVerses,
+            verseKeys: verseKeys,
+            startVerse: startVerse,
+            endVerse: endVerse,
+            navigationContext: dbNavigationContext,
+            startReference: startVerse.description,
+            endReference: endVerse.description,
+            references: verseKeys.map { $0.description }
         )
     }
 }

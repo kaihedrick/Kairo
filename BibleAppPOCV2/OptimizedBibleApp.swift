@@ -78,8 +78,8 @@ struct OptimizedBibleApp: App {
         print("🚨 Memory warning received - cleaning up resources")
 
         Task { @MainActor in
-            let dataLoader = OptimizedBibleDataLoader()
-            await dataLoader.handleMemoryWarning()
+            let dataLoader = DatabaseBibleDataLoader.shared
+            await dataLoader.clearCache()
         }
 
         // Force garbage collection

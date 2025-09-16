@@ -12,6 +12,7 @@ import SwiftUI
 import CoreGraphics
 
 /// Handles the generation of page content from Bible data
+@MainActor
 final class PageContentGenerator {
     static let shared = PageContentGenerator()
     
@@ -22,10 +23,11 @@ final class PageContentGenerator {
         from key: VerseKey,
         pageSize: CGSize,
         tail: AttributedString? = nil,
-        using loader: OptimizedBibleDataLoader = OptimizedBibleDataLoader()
+        using loader: DatabaseBibleDataLoader
     ) async -> Result<(page: GeneratedPage, remainder: (key: VerseKey, text: AttributedString)?), PageGenerationError> {
         
-        guard let chapter = await loader.loadChapterContent(book: key.book, chapter: key.chapter) else {
+        let result = await loader.loadChapter(book: key.book, chapter: key.chapter)
+        guard case .success(let chapter) = result else {
             return .failure(.missingChapter(key))
         }
         
@@ -35,7 +37,7 @@ final class PageContentGenerator {
         
         print("📖 DYNAMIC HEIGHT: Starting page at \(key.description) with size \(pageSize)")
         
-        let startVerseIndex = chapter.verses.firstIndex { $0.verse == key.verse } ?? 0
+        let startVerseIndex = chapter.verses.firstIndex { $0.verseNumber == key.verse } ?? 0
         
         // PRECISION-FIRST PAGINATION: Use exact SwiftUI Text rendering measurements
         // WHY: Eliminates the overflow feedback loop and ensures headers show exactly visible verses
@@ -67,15 +69,15 @@ final class PageContentGenerator {
         // Accumulate verses with CONSERVATIVE height checking to prevent any overflow
         for i in startVerseIndex..<chapter.verses.count {
             let verse = chapter.verses[i]
-            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verseNumber)
             
             let formatted = JITTextFormatter.formatVerse(
                 book: key.book,
                 chapter: key.chapter,
-                verse: verse.verse,
+                verse: verse.verseNumber,
                 text: verse.text,
-                showChapterHeader: verse.verse == 1 && segments.isEmpty,
-                showBookTitle: key.chapter == 1 && verse.verse == 1 && segments.isEmpty
+                showChapterHeader: verse.verseNumber == 1 && segments.isEmpty,
+                showBookTitle: key.chapter == 1 && verse.verseNumber == 1 && segments.isEmpty
             )
             
             // Measure this verse's actual height
@@ -87,9 +89,9 @@ final class PageContentGenerator {
                 segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
                 accumulatedHeight += verseHeight
                 lastCompleteVerseIndex = i
-                print("📏 Added verse \(verse.verse): height=\(verseHeight), total=\(accumulatedHeight)/\(heightLimit)")
+                print("📏 Added verse \(verse.verseNumber): height=\(verseHeight), total=\(accumulatedHeight)/\(heightLimit)")
             } else {
-                print("🛑 CONSERVATIVE STOP: Verse \(verse.verse) would exceed 95% limit")
+                print("🛑 CONSERVATIVE STOP: Verse \(verse.verseNumber) would exceed 95% limit")
                 print("    Height needed: \(verseHeight), Available: \(heightLimit - accumulatedHeight)")
                 break
             }
@@ -98,20 +100,20 @@ final class PageContentGenerator {
         // Emergency fallback - ensure we have at least one verse
         if segments.isEmpty {
             let verse = chapter.verses[startVerseIndex]
-            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verse)
+            let verseKey = VerseKey(book: key.book, chapter: key.chapter, verse: verse.verseNumber)
             
             let formatted = JITTextFormatter.formatVerse(
                 book: key.book,
                 chapter: key.chapter,
-                verse: verse.verse,
+                verse: verse.verseNumber,
                 text: verse.text,
-                showChapterHeader: verse.verse == 1,
-                showBookTitle: key.chapter == 1 && verse.verse == 1
+                showChapterHeader: verse.verseNumber == 1,
+                showBookTitle: key.chapter == 1 && verse.verseNumber == 1
             )
             
             segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
             lastCompleteVerseIndex = startVerseIndex
-            print("🚨 Emergency fallback: added verse \(verse.verse) (page must have at least one verse)")
+            print("🚨 Emergency fallback: added verse \(verse.verseNumber) (page must have at least one verse)")
         }
         
         // Handle remainder - continue from the next verse that didn't fit
@@ -119,7 +121,7 @@ final class PageContentGenerator {
             let nextVerseIndex = lastCompleteVerseIndex + 1
             if nextVerseIndex < chapter.verses.count {
                 let nextVerse = chapter.verses[nextVerseIndex]
-                return (key: VerseKey(book: key.book, chapter: key.chapter, verse: nextVerse.verse), text: AttributedString())
+                return (key: VerseKey(book: key.book, chapter: key.chapter, verse: nextVerse.verseNumber), text: AttributedString())
             } else {
                 return nil // No more verses in this chapter
             }
@@ -130,11 +132,11 @@ final class PageContentGenerator {
         
         let page = GeneratedPage(
             segments: segments,
-            startKey: VerseKey(book: key.book, chapter: key.chapter, verse: startVerse.verse),
+            startKey: VerseKey(book: key.book, chapter: key.chapter, verse: startVerse.verseNumber),
             navigationContext: .init(isFirstVerseOfBook: false, isLastVerseOfBook: false)
         )
         
-        print("📄 PRECISION RESULT: verses \(startVerse.verse)-\(endVerse.verse) (\(segments.count) verses)")
+        print("📄 PRECISION RESULT: verses \(startVerse.verseNumber)-\(endVerse.verseNumber) (\(segments.count) verses)")
         print("📄 Conservative height used: \(accumulatedHeight) of \(availableHeight * 0.95) limit")
         print("📄 Actual available space: \(availableHeight) (with \(conservativeMargin)pt safety margin)")
         print("📄 Has remainder: \(remainder != nil)")

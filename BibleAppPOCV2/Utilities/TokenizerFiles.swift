@@ -1,68 +1,121 @@
 // filepath: BibleAppPOCV2/Utilities/TokenizerFiles.swift
 import Foundation
 
+// MARK: - Asset Loading Errors
+
 enum AssetError: Error {
     case notFound(String)
     case badData(String)
 }
 
+// MARK: - Tokenizer Asset Management
+
 public enum TokenizerAssets {
-    /// Locate a tokenizer asset by name, trying .json / .txt / no extension.
+
+    // MARK: - Asset Location
+
+    /// Locate a tokenizer asset by name, trying multiple formats and locations
+    ///
+    /// - Parameter name: The base name of the asset (without extension)
+    /// - Returns: URL of the found asset
+    /// - Throws: AssetError if asset cannot be found
     private static func url(_ name: String) throws -> URL {
+        #if DEBUG
         print("🔍 DEBUG: TokenizerAssets.url() looking for: \(name)")
+        #endif
 
         let extensions = ["json", "txt", ""]
         for ext in extensions {
             let fullName = ext.isEmpty ? name : "\(name).\(ext)"
+
+            #if DEBUG
             print("🔍 DEBUG: Trying to find: \(fullName)")
+            #endif
 
             // First try root bundle (where files are actually located)
             if let u = Bundle.main.url(forResource: name, withExtension: ext) {
+                #if DEBUG
                 print("✅ Found \(fullName) in root bundle: \(u.path)")
+                #endif
                 return u
             }
 
             // Then try ios_integration_assets specifically
             if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "ios_integration_assets") {
+                #if DEBUG
                 print("✅ Found \(fullName) in ios_integration_assets: \(u.path)")
+                #endif
                 return u
             }
 
             // Then try ML/Models/ios_integration_assets
             if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "ML/Models/ios_integration_assets") {
+                #if DEBUG
                 print("✅ Found \(fullName) in ML/Models/ios_integration_assets: \(u.path)")
+                #endif
                 return u
             }
 
             // Finally fall back to BundleLoader
             if let u = BundleLoader.url(name: name, ext: ext) {
+                #if DEBUG
                 print("✅ Found \(fullName) via BundleLoader: \(u.path)")
+                #endif
                 return u
             } else {
+                #if DEBUG
                 print("❌ Not found: \(fullName)")
+                #endif
             }
         }
         throw AssetError.notFound(name)
     }
 
+    // MARK: - Asset Loading
+
+    /// Load and decode JSON asset from bundle
+    ///
+    /// - Parameters:
+    ///   - name: The name of the JSON file (without extension)
+    ///   - type: The type to decode the JSON as
+    /// - Returns: Decoded object of the specified type
+    /// - Throws: AssetError or JSON decoding errors
     public static func loadJSON<T: Decodable>(_ name: String, as type: T.Type) throws -> T {
         let fileURL = try url(name)
+
+        #if DEBUG
         print("🔍 DEBUG: Loading \(name) from: \(fileURL.path)")
+        #endif
+
         let data = try Data(contentsOf: fileURL)
+
+        #if DEBUG
         print("🔍 DEBUG: \(name) data size: \(data.count) bytes")
         let string = String(data: data, encoding: .utf8)?.prefix(200) ?? "unable to decode"
         print("🔍 DEBUG: \(name) content preview: \(string)...")
+        #endif
 
         do {
             let result = try JSONDecoder().decode(T.self, from: data)
+
+            #if DEBUG
             print("🔍 DEBUG: Successfully decoded \(name) as \(type)")
+            #endif
+
             return result
         } catch let error as DecodingError {
+            #if DEBUG
             print("❌ JSON decoding error for \(name): \(error)")
+            #endif
             throw error
         }
     }
 
+    /// Load text asset from bundle
+    ///
+    /// - Parameter name: The name of the text file (without extension)
+    /// - Returns: Contents of the text file as a string
+    /// - Throws: AssetError if file cannot be read or decoded
     public static func loadText(_ name: String) throws -> String {
         let data = try Data(contentsOf: try url(name))
         guard let s = String(data: data, encoding: .utf8) else {
@@ -97,21 +150,31 @@ public struct TokenizerArtifacts {
     public let addedTokens: [String: Int] // content -> id
     public let report: ExportReport
 
+    /// Load all tokenizer artifacts from the bundle
+    ///
+    /// - Returns: Complete tokenizer artifacts including vocab, merges, and special tokens
+    /// - Throws: AssetError or JSON decoding errors if any assets are missing or invalid
     public static func load() throws -> TokenizerArtifacts {
+        #if DEBUG
         print("🔍 DEBUG: Starting TokenizerArtifacts.load()...")
+        #endif
 
-        // id_to_token.json
+        // MARK: Load id_to_token.json
         let id2tok = try TokenizerAssets.loadJSON("id_to_token.json", as: [String:String].self)
         var idToToken: [Int:String] = [:]
         id2tok.forEach { if let k = Int($0.key) { idToToken[k] = $0.value } }
 
-        // vocab.json
+        // MARK: Load vocab.json
         let vocab = try TokenizerAssets.loadJSON("vocab.json", as: [String:Int].self)
 
-        // merges.txt
+        // MARK: Load merges.txt
+        #if DEBUG
         print("🔍 DEBUG: Loading merges.txt...")
+        #endif
         let mergesTxt = try TokenizerAssets.loadText("merges.txt")
+        #if DEBUG
         print("🔍 DEBUG: merges.txt length: \(mergesTxt.count) characters")
+        #endif
 
         var merges: [(String,String)] = []
 

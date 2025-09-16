@@ -108,10 +108,10 @@ class VerseSummaryViewModel: ObservableObject {
             return
         }
         
-        print("🚀 Running generateCommentary for verse (len=\(verse.count))")
+        print("🚀 Running generateCommentaryFromDatabaseOnly for verse: \(verse)")
         commentaryText = ""
         devotionalText = ""
-        modelVersion = "GPT-2 Bible Commentary Model"
+        modelVersion = "Enhanced Bible Database (Database Only - No AI)"
 
         Task {
             do {
@@ -127,20 +127,29 @@ class VerseSummaryViewModel: ObservableObject {
                                   userInfo: [NSLocalizedDescriptionKey: "Core ML model failed to load within timeout"])
                 }
                 
-                let (verseRef, verseText) = parseVerse(verse)
-                let rawText = await commentaryGenerator.generateCommentary(for: verseRef, verseText: verseText)
-                let parsedContent = parseStructuredOutput(rawText, originalVerse: verse)
+                // Use database-only generation (no parsing needed)
+                if let rawText = await commentaryGenerator.generateCommentaryFromDatabaseOnly(for: verse) {
+                    let parsedContent = parseStructuredOutput(rawText, originalVerse: verse)
 
-                await MainActor.run {
-                    self.isLoading = false
-                    self.commentaryText = parsedContent.commentary
-                    self.devotionalText = parsedContent.devotional
-                    
-                    if parsedContent.commentary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                        parsedContent.devotional.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        self.setErrorMessage("No content generated from Core ML model")
-                    } else {
-                        self.errorMessage = ""
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.commentaryText = parsedContent.commentary
+                        self.devotionalText = parsedContent.devotional
+
+                        if parsedContent.commentary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                            parsedContent.devotional.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.setErrorMessage("No commentary content available for this verse")
+                        } else {
+                            self.errorMessage = ""
+                        }
+                    }
+                } else {
+                    // No content found in database
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.commentaryText = "No commentary available"
+                        self.devotionalText = "No devotional content available for this verse."
+                        self.setErrorMessage("Verse content not found in database")
                     }
                 }
             } catch {
@@ -188,29 +197,16 @@ class VerseSummaryViewModel: ObservableObject {
         setErrorMessage("")
     }
 
-    private func parseVerse(_ verse: String) -> (verseRef: String, verseText: String) {
-        let versePattern = #"^([A-Za-z]+)\s+(\d+):(\d+)\s+(.+)$"#
-        if let regex = try? NSRegularExpression(pattern: versePattern),
-           let match = regex.firstMatch(in: verse, range: NSRange(verse.startIndex..., in: verse)) {
-            let book = String(verse[Range(match.range(at: 1), in: verse)!])
-            let chapter = String(verse[Range(match.range(at: 2), in: verse)!])
-            let verseNum = String(verse[Range(match.range(at: 3), in: verse)!])
-            let text = String(verse[Range(match.range(at: 4), in: verse)!])
-            return ("\(book) \(chapter):\(verseNum)", text)
-        }
-
-        return ("Unknown", verse)
-    }
 
     func getSummarizerStatus() -> String {
         if let gen = bibleCommentaryGenerator, gen.isReady {
-            return "GPT-2 Bible Commentary Model Ready"
+            return "Enhanced Bible Database Ready (Database Only - No AI)"
         } else if bibleCommentaryGenerator != nil {
-            return "GPT-2 Bible Commentary Model Loading..."
+            return "Enhanced Bible Database Loading..."
         } else if !BibleCommentaryGenerator.shared.isReady {
-            return "Fallback Mode (Improved Bible AI Model Not Implemented)"
+            return "Database Not Available"
         }
-        return "No models available"
+        return "No database systems available"
     }
 
     func isSummarizerReady() -> Bool {
@@ -218,14 +214,14 @@ class VerseSummaryViewModel: ObservableObject {
     }
 
     func getDetailedStatus() -> String {
-        var status = "BibleCommentaryGenerator Ready: \(BibleCommentaryGenerator.shared.isReady)\n"
-        status += "Model Available: \(modelAvailable)\n"
+        var status = "Enhanced Bible Database Ready: \(BibleCommentaryGenerator.shared.isReady)\n"
+        status += "AI/ML Generation: Disabled\n"
         if let gen = bibleCommentaryGenerator {
             status += "BibleCommentaryGenerator: \(gen.isReady ? "Ready" : "Loading")\n"
         } else {
             status += "BibleCommentaryGenerator: Not Initialized\n"
         }
-        status += "ImprovedBibleSummarizer: Not Implemented\n"
+        status += "Generation Strategy: Database-only (No AI/ML)\n"
         return status
     }
 

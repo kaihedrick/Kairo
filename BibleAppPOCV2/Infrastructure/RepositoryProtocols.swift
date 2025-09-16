@@ -11,8 +11,8 @@ import Foundation
 // MARK: - Repository Protocols
 
 protocol BibleRepositoryProtocol: Actor {
-    func loadMetadata() async throws -> BibleMetadata
-    func loadChapter(book: String, chapter: Int) async throws -> Chapter
+    func loadMetadata() async throws -> DatabaseBibleMetadata
+    func loadChapter(book: String, chapter: Int) async throws -> DatabaseChapter
 }
 
 // MARK: - Cache Service Protocol

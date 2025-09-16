@@ -4,9 +4,9 @@ import SwiftUI
 
 /// Generator for creating fragmented pages from verses
 class FragmentedPageGenerator {
-    private let loader: OptimizedBibleDataLoader
+    private let loader: DatabaseBibleDataLoader
 
-    init(loader: OptimizedBibleDataLoader) {
+    init(loader: DatabaseBibleDataLoader) {
         self.loader = loader
     }
 
@@ -16,19 +16,19 @@ class FragmentedPageGenerator {
     }
 
     func createVerseFragment(book: String, chapter: Int, verse: Int, text: String) -> VerseFragment {
-        let reference = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
-        return VerseFragment(reference: reference, textFragment: text, isStartOfVerse: true, isEndOfVerse: true, fullVerseText: text, sequenceNumber: 0, totalFragments: 1)
+        let reference = VerseKey(book: book, chapter: chapter, verse: verse)
+        return VerseFragment(reference: reference.description, textFragment: text, isStartOfVerse: true, isEndOfVerse: true, fullVerseText: text, sequenceNumber: 0, totalFragments: 1)
     }
 
     func generateContent(startingAt key: VerseKey, pageSize: CGSize, fragmentPending: VerseFragment?) async throws -> (page: FragmentedPage, remainder: VerseFragment?, pendingFragment: VerseFragment?) {
         // Placeholder implementation - would generate actual page content
-        let reference = VerseReference(unsafeBook: key.book, unsafeChapter: key.chapter, unsafeVerse: key.verse)
+        let reference = VerseKey(book: key.book, chapter: key.chapter, verse: key.verse)
         let fragment = createVerseFragment(book: key.book, chapter: key.chapter, verse: key.verse, text: "")
         let page = FragmentedPage(
             fragments: [fragment],
             navTitle: key.description,
-            startVerse: reference,
-            endVerse: reference,
+            startVerse: reference.description,
+            endVerse: reference.description,
             content: AttributedString(""),
             measuredHeight: pageSize.height,
             availableHeight: pageSize.height
@@ -38,23 +38,37 @@ class FragmentedPageGenerator {
 }
 import CoreGraphics
 
-// Simple LRU cache for OnDemandPageGenerator
+// Helper function to parse reference string to VerseKey
+private func parseReference(_ reference: String) -> VerseKey? {
+    let components = reference.split(separator: " ")
+    guard components.count >= 2 else { return nil }
+
+    let book = String(components[0])
+    let chapterVerse = String(components[1]).split(separator: ":")
+    guard chapterVerse.count == 2,
+          let chapter = Int(chapterVerse[0]),
+          let verse = Int(chapterVerse[1]) else { return nil }
+
+    return VerseKey(book: book, chapter: chapter, verse: verse)
+}
+
+// Simple cache for OnDemandPageGenerator
 private actor SliceCache {
-    private let lru = LRUCache<VerseKey, OptimizedPageSlice>(capacity: 15)
-    var keys: [VerseKey] { lru.keys }
-    func get(_ k: VerseKey) -> OptimizedPageSlice? { lru.get(k) }
-    func set(_ key: VerseKey, _ slice: OptimizedPageSlice) { lru.set(key, slice) }
-    func remove(_ k: VerseKey) { lru.remove(k) }
-    func clear() { lru.clear() }
+    private var cache = [VerseKey: DatabasePageContent]()
+    var keys: [VerseKey] { Array(cache.keys) }
+    func get(_ k: VerseKey) -> DatabasePageContent? { cache[k] }
+    func set(_ key: VerseKey, _ slice: DatabasePageContent) { cache[key] = slice }
+    func remove(_ k: VerseKey) { cache.removeValue(forKey: k) }
+    func clear() { cache.removeAll() }
 }
 
 // Simple node for OnDemandPageGenerator
 private final class SliceNode {
     let key: VerseKey
-    let slice: OptimizedPageSlice
+    let slice: DatabasePageContent
     weak var prev: SliceNode?
     weak var next: SliceNode?
-    init(key: VerseKey, slice: OptimizedPageSlice) {
+    init(key: VerseKey, slice: DatabasePageContent) {
         self.key = key
         self.slice = slice
     }
@@ -77,14 +91,14 @@ enum PageGenerationError: LocalizedError {
 
 @MainActor
 final class OnDemandPageGenerator: ObservableObject {
-    @Published private(set) var currentPage: OptimizedPageSlice?
-    @Published private(set) var currentOptimizedPage: OptimizedPageSlice?
+    @Published private(set) var currentPage: DatabasePageContent?
+    @Published private(set) var currentOptimizedPage: DatabasePageContent?
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
     @Published private(set) var currentGeneratedPage: GeneratedPage?
 
     private let cache = SliceCache()
-    private let loader = OptimizedBibleDataLoader()
+    private let loader = DatabaseBibleDataLoader.shared
     private let historyManager = PageHistoryService()
     // Use the existing generation logic without FragmentedPageGenerator
     private var size: CGSize
@@ -146,41 +160,81 @@ final class OnDemandPageGenerator: ObservableObject {
         }
 
         if let node = currentNode, node.key == key {
+            #if DEBUG
+            print("✅ LINKED LIST: Page already current: \(node.key.description)")
+            #endif
             currentNode = node
             currentPage = node.slice
+            pending = nil
+            #if DEBUG
             print("📖 LINKED LIST: Reused current node for \(key.description)")
+            #endif
             return
         } else if let node = currentNode?.next, node.key == key {
+            #if DEBUG
+            print("✅ LINKED LIST: Found next page in linked list: \(node.key.description)")
+            #endif
             currentNode = node
             currentPage = node.slice
+            pending = nil
+            #if DEBUG
             print("📖 LINKED LIST: Moved to next node for \(key.description)")
+            #endif
             return
         } else if let node = currentNode?.prev, node.key == key {
+            #if DEBUG
+            print("✅ LINKED LIST: Found previous page in linked list: \(node.key.description)")
+            #endif
             currentNode = node
             currentPage = node.slice
+            pending = nil
+            #if DEBUG
             print("📖 LINKED LIST: Moved to prev node for \(key.description)")
+            print("🔙 After moving to prev - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            #endif
             return
         }
 
         if pending == nil, let cached = await cache.get(key) {
+            #if DEBUG
+            print("📚 CACHE: Found cached page for \(key.description)")
+            #endif
             let newNode = SliceNode(key: key, slice: cached)
-            
+
             // Properly link the new node into the doubly linked list
             if isNavigatingFromHistory {
+                #if DEBUG
+                print("📖 LINKED LIST: Setting up cache node during history navigation")
+                #endif
                 // When navigating from history, we need to be careful not to break the chain
                 // Store the old current node to reconnect later
                 if let oldNode = currentNode {
                     newNode.prev = oldNode
                     oldNode.next = newNode
+                    #if DEBUG
+                    print("📖 LINKED LIST: Connected cache node to old current node: \(oldNode.key.description) <-> \(key.description)")
+                    #endif
+                } else {
+                    #if DEBUG
+                    print("📖 LINKED LIST: No old current node during history navigation")
+                    #endif
                 }
-                print("📖 LINKED LIST: Created new node from cache during history navigation")
             } else {
+                #if DEBUG
+                print("📖 LINKED LIST: Setting up cache node during normal navigation")
+                #endif
                 // Normal forward navigation
                 if let oldNode = currentNode {
                     newNode.prev = oldNode
                     oldNode.next = newNode
+                    #if DEBUG
+                    print("📖 LINKED LIST: Connected cache node to current node: \(oldNode.key.description) -> \(key.description)")
+                    #endif
+                } else {
+                    #if DEBUG
+                    print("📖 LINKED LIST: No current node, this will be the first node")
+                    #endif
                 }
-                print("📖 LINKED LIST: Created new node from cache during normal navigation")
             }
             
             currentNode = newNode
@@ -188,8 +242,11 @@ final class OnDemandPageGenerator: ObservableObject {
             trimLinkedList()
             currentPage = cached
             
+            #if DEBUG
             // Debug log the linked list state
             print("📖 LINKED LIST: Loaded \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            print("🔗 LINKED LIST STATE: \(debugLinkedList())")
+            #endif
             return
         }
 
@@ -204,7 +261,7 @@ final class OnDemandPageGenerator: ObservableObject {
         
         switch result {
         case .success(let generatedResult):
-            let slice = generatedResult.page.toOptimizedPageSlice()
+            let slice = generatedResult.page.toDatabasePageContent()
             currentPage = slice
             currentGeneratedPage = generatedResult.page
             pending = generatedResult.remainder
@@ -233,11 +290,18 @@ final class OnDemandPageGenerator: ObservableObject {
             
             // Add to history for backward navigation
             if !isNavigatingFromHistory {
-                historyManager.pushPage(slice: slice, pageSize: size)
+                // TODO: Convert DatabasePageContent to OptimizedPageSlice for history tracking
+                // historyManager.pushPage(slice: slice, pageSize: size)
+                #if DEBUG
+                print("📚 HISTORY TRACKING: Skipping history push for DatabasePageContent")
+                #endif
             }
             
+            #if DEBUG
             // Debug log the linked list state
             print("📖 LINKED LIST: Generated \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            print("🔗 LINKED LIST STATE: \(debugLinkedList())")
+            #endif
         case .failure(let error):
             currentPage = nil
             lastError = error.localizedDescription
@@ -246,38 +310,110 @@ final class OnDemandPageGenerator: ObservableObject {
 
     func generateNextPage() async {
         defer { Task { await trimCacheToThreePages() } }
-        
+
+        #if DEBUG
+        print("➡️ FORWARD NAVIGATION: Starting forward navigation")
+        print("➡️ Current node: \(currentNode?.key.description ?? "nil")")
+        print("➡️ Current node next: \(currentNode?.next?.key.description ?? "nil")")
+        #endif
+
         // Check if we have a cached next page in the linked list
         if let node = currentNode?.next {
+            #if DEBUG
+            print("✅ LINKED LIST: Found cached next page: \(node.key.description)")
+            // Ensure the next node's prev pointer is correctly set
+            if node.prev !== currentNode {
+                print("🔗 LINKED LIST: Fixing broken prev pointer")
+                node.prev = currentNode
+            }
+            #endif
             currentNode = node
             currentPage = node.slice
             pending = nil
+            #if DEBUG
+            print("➡️ After navigation - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            #endif
             return
         }
-        
+
+        #if DEBUG
+        print("⚠️ LINKED LIST: No cached next page found, generating it now")
+        #endif
+
+        // Generate the next page since it doesn't exist in cache
+        if let currentKey = currentNode?.key,
+           let nextKey = await findNextVerse(after: currentKey) {
+            #if DEBUG
+            print("🔍 LINKED LIST: Generating next page for: \(nextKey.description)")
+            #endif
+
+            // Generate the next page by calling generatePage
+            await generatePage(startingAt: (nextKey.book, nextKey.chapter, nextKey.verse))
+            return
+        }
+
         // Priority 1: Handle pending remainder from current page
         if let remain = pending {
             await generatePage(startingAt: (remain.key.book, remain.key.chapter, remain.key.verse))
             return
         }
-        
+
         // Priority 2: Find the next verse after the current page's end
-        guard let last = currentNode?.slice.endVerse,
+        guard let endReference = currentNode?.slice.endReference,
+              let last = parseReference(endReference),
               let next = await findNextVerse(after: last) else { return }
         await generatePage(startingAt: (next.book, next.chapter, next.verse))
     }
 
     func generatePreviousPage() async {
         defer { Task { await trimCacheToThreePages() } }
-        
+
+        #if DEBUG
+        print("🔙 BACKWARD NAVIGATION: Starting backward navigation")
+        print("🔙 Current node: \(currentNode?.key.description ?? "nil")")
+        print("🔙 Current node prev: \(currentNode?.prev?.key.description ?? "nil")")
+        print("🔙 Current node next: \(currentNode?.next?.key.description ?? "nil")")
+        #endif
+
         // Check if we have a cached previous page in the linked list
         if let node = currentNode?.prev {
+            #if DEBUG
+            print("✅ LINKED LIST: Found cached previous page: \(node.key.description)")
+            // Ensure the previous node's next pointer is correctly set
+            if node.next !== currentNode {
+                print("🔗 LINKED LIST: Fixing broken next pointer")
+                node.next = currentNode
+            }
+            #endif
             currentNode = node
             currentPage = node.slice
             pending = nil
+            #if DEBUG
             print("📖 LINKED LIST: Used cached previous page for \(node.key.description)")
+            print("🔙 After navigation - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            #endif
             return
         }
+
+        #if DEBUG
+        print("⚠️ LINKED LIST: No cached previous page found, generating it now")
+        #endif
+
+        // Generate the previous page since it doesn't exist in cache
+        if let currentKey = currentNode?.key,
+           let previousKey = await findPreviousVerseKey(for: currentKey) {
+            #if DEBUG
+            print("🔍 LINKED LIST: Generating previous page for: \(previousKey.description)")
+            #endif
+
+            // Generate the previous page by calling generatePage
+            await generatePage(startingAt: (previousKey.book, previousKey.chapter, previousKey.verse))
+            return
+        }
+
+        #if DEBUG
+        print("⚠️ LINKED LIST: No cached previous page found, falling back to history")
+        #endif
         
         // Store the current node to reconnect after history navigation
         let oldNode = currentNode
@@ -346,14 +482,16 @@ final class OnDemandPageGenerator: ObservableObject {
         """
     }
     
-    private func commitCurrentPage(_ slice: OptimizedPageSlice, key: VerseKey) async {
+    private func commitCurrentPage(_ slice: DatabasePageContent, key: VerseKey) async {
         await cache.set(key, slice)
         await trimCacheToThreePages()
+        #if DEBUG
         let keys = await cache.keys
         if let cur = currentNode {
             print("cache keys:\t", keys)
             print("linked list: prev \(cur.prev != nil) – next \(cur.next != nil)")
         }
+        #endif
     }
 
     /// Append a verse key only after the text is committed to the page.
@@ -383,22 +521,109 @@ final class OnDemandPageGenerator: ObservableObject {
 
     private func trimLinkedList() {
         guard let cur = currentNode else { return }
-        if let p2 = cur.prev?.prev { p2.next = nil; p2.prev = nil }
-        if let n2 = cur.next?.next { n2.prev = nil; n2.next = nil }
+
+        #if DEBUG
+        print("🔗 TRIM: Trimming linked list around current: \(cur.key.description)")
+        print("🔗 TRIM: Before - Prev: \(cur.prev?.key.description ?? "nil"), Next: \(cur.next?.key.description ?? "nil")")
+        print("🔗 TRIM: Before - Prev.Prev: \(cur.prev?.prev?.key.description ?? "nil"), Next.Next: \(cur.next?.next?.key.description ?? "nil")")
+        #endif
+
+        if let p2 = cur.prev?.prev {
+            #if DEBUG
+            print("🔗 TRIM: Disconnecting prev.prev: \(p2.key.description)")
+            #endif
+            p2.next = nil
+            p2.prev = nil
+        }
+        if let n2 = cur.next?.next {
+            #if DEBUG
+            print("🔗 TRIM: Disconnecting next.next: \(n2.key.description)")
+            #endif
+            n2.prev = nil
+            n2.next = nil
+        }
+
+        #if DEBUG
+        print("🔗 TRIM: After - Prev: \(cur.prev?.key.description ?? "nil"), Next: \(cur.next?.key.description ?? "nil")")
+        #endif
+    }
+
+    private func debugLinkedList() -> String {
+        var result = "["
+        var node = currentNode
+        while let n = node?.prev {
+            result = "\(n.key.description) <- " + result
+            node = n
+        }
+
+        if let cur = currentNode {
+            result += "[\(cur.key.description)]"
+        }
+
+        node = currentNode
+        while let n = node?.next {
+            result += " -> \(n.key.description)"
+            node = n
+        }
+
+        result += "]"
+        return result
+    }
+
+    private func findPreviousVerseKey(for verse: VerseKey) async -> VerseKey? {
+        let result = await loader.loadChapter(book: verse.book, chapter: verse.chapter)
+        guard case .success(let chapter) = result else { return nil }
+
+        // Find the current verse in the chapter's verse array
+        if let currentIndex = chapter.verses.firstIndex(where: { $0.verseNumber == verse.verse }) {
+            // Check if there's a previous verse in the same chapter
+            let previousIndex = currentIndex - 1
+            if previousIndex >= 0 {
+                let previousVerse = chapter.verses[previousIndex]
+                return VerseKey(book: verse.book, chapter: verse.chapter, verse: previousVerse.verseNumber)
+            }
+
+            // No previous verse in current chapter, try previous chapter
+            if verse.chapter > 1 {
+                let previousChapter = verse.chapter - 1
+                // Load the previous chapter to get its last verse
+                let prevChapterResult = await loader.loadChapter(book: verse.book, chapter: previousChapter)
+                if case .success(let prevChapter) = prevChapterResult, let lastVerse = prevChapter.verses.last {
+                    return VerseKey(book: verse.book, chapter: previousChapter, verse: lastVerse.verseNumber)
+                }
+            }
+
+            // Try last chapter of previous book
+            guard let meta = await loader.metadata,
+                  let bookIndex = meta.books.firstIndex(where: { $0.name == verse.book }) else {
+                return nil
+            }
+
+            if bookIndex > 0 {
+                let previousBook = meta.books[bookIndex - 1]
+                let lastChapterResult = await loader.loadChapter(book: previousBook.name, chapter: previousBook.chapterCount)
+                if case .success(let lastChapter) = lastChapterResult, let lastVerse = lastChapter.verses.last {
+                    return VerseKey(book: previousBook.name, chapter: previousBook.chapterCount, verse: lastVerse.verseNumber)
+                }
+            }
+        }
+
+        return nil
     }
 
     private func findNextVerse(after verse: VerseKey) async -> VerseKey? {
-        guard let chapter = await loader.loadChapterContent(book: verse.book, chapter: verse.chapter) else { return nil }
+        let result = await loader.loadChapter(book: verse.book, chapter: verse.chapter)
+        guard case .success(let chapter) = result else { return nil }
         
         // Find the current verse in the chapter's verse array
-        if let currentIndex = chapter.verses.firstIndex(where: { $0.verse == verse.verse }) {
+        if let currentIndex = chapter.verses.firstIndex(where: { $0.verseNumber == verse.verse }) {
             // Check if there's a next verse in the same chapter
             let nextIndex = currentIndex + 1
             if nextIndex < chapter.verses.count {
                 let nextVerse = chapter.verses[nextIndex]
-                let result = VerseKey(book: verse.book, chapter: verse.chapter, verse: nextVerse.verse)
-                print("🔍 findNextVerse: \(verse.description) → \(result.description) (same chapter)")
-                return result
+                let nextVerseKey = VerseKey(book: verse.book, chapter: verse.chapter, verse: nextVerse.verseNumber)
+                print("🔍 findNextVerse: \(verse.description) → \(nextVerseKey.description) (same chapter)")
+                return nextVerseKey
             }
         }
         
@@ -416,20 +641,21 @@ final class OnDemandPageGenerator: ObservableObject {
         // Try first chapter of next book
         guard bookIndex + 1 < meta.books.count else { return nil }
         let nextBook = meta.books[bookIndex + 1].name
-        let result = VerseKey(book: nextBook, chapter: 1, verse: 1)
-        print("🔍 findNextVerse: \(verse.description) → \(result.description) (next book)")
-        return result
+        let nextBookKey = VerseKey(book: nextBook, chapter: 1, verse: 1)
+        print("🔍 findNextVerse: \(verse.description) → \(nextBookKey.description) (next book)")
+        return nextBookKey
     }
 
     private func findPreviousVerse(before verse: VerseKey) async -> VerseKey? {
-        guard let chapter = await loader.loadChapterContent(book: verse.book, chapter: verse.chapter) else { return nil }
+        let result = await loader.loadChapter(book: verse.book, chapter: verse.chapter)
+        guard case .success(let chapter) = result else { return nil }
         
         // Find the current verse in the chapter's verse array
-        if let currentIndex = chapter.verses.firstIndex(where: { $0.verse == verse.verse }) {
+        if let currentIndex = chapter.verses.firstIndex(where: { $0.verseNumber == verse.verse }) {
             // Check if there's a previous verse in the same chapter
             if currentIndex > 0 {
                 let prevVerse = chapter.verses[currentIndex - 1]
-                return VerseKey(book: verse.book, chapter: verse.chapter, verse: prevVerse.verse)
+                return VerseKey(book: verse.book, chapter: verse.chapter, verse: prevVerse.verseNumber)
             }
         }
         
@@ -440,10 +666,11 @@ final class OnDemandPageGenerator: ObservableObject {
         // Try previous chapter in same book
         if verse.chapter > 1 {
             let prevChapter = verse.chapter - 1
-            guard let prevChapterContent = await loader.loadChapterContent(book: verse.book, chapter: prevChapter) else { return nil }
+            let prevResult = await loader.loadChapter(book: verse.book, chapter: prevChapter)
+            guard case .success(let prevChapterContent) = prevResult else { return nil }
             // Get the last verse of the previous chapter
             if let lastVerse = prevChapterContent.verses.last {
-                return VerseKey(book: verse.book, chapter: prevChapter, verse: lastVerse.verse)
+                return VerseKey(book: verse.book, chapter: prevChapter, verse: lastVerse.verseNumber)
             }
         }
         
@@ -451,9 +678,10 @@ final class OnDemandPageGenerator: ObservableObject {
         guard bookIndex > 0 else { return nil }
         let prevBook = meta.books[bookIndex - 1]
         let lastChapter = prevBook.chapterCount
-        guard let lastChapterContent = await loader.loadChapterContent(book: prevBook.name, chapter: lastChapter) else { return nil }
+        let lastResult = await loader.loadChapter(book: prevBook.name, chapter: lastChapter)
+        guard case .success(let lastChapterContent) = lastResult else { return nil }
         if let lastVerse = lastChapterContent.verses.last {
-            return VerseKey(book: prevBook.name, chapter: lastChapter, verse: lastVerse.verse)
+            return VerseKey(book: prevBook.name, chapter: lastChapter, verse: lastVerse.verseNumber)
         }
         
         return nil
@@ -483,16 +711,17 @@ final class OnDemandPageGenerator: ObservableObject {
         // Generate page using existing logic
         await generatePage(startingAt: (key.book, key.chapter, key.verse))
         
-        // Convert currentPage to OptimizedPageSlice
+        // Convert currentPage to DatabasePageContent
         if let generatedPage = currentGeneratedPage {
-            currentOptimizedPage = generatedPage.toOptimizedPageSlice()
+            currentOptimizedPage = generatedPage.toDatabasePageContent()
             fragmentPending = nil // Reset fragment pending
         }
         
         // Create and store history entry for reliable backward navigation
         if !isNavigatingFromHistory, let optimizedPage = currentOptimizedPage {
-            historyManager.pushOptimizedPage(optimizedPage, pageSize: size)
-            print("📚 HISTORY TRACKING: Added new page to history (\(historyManager.historyCount) total)")
+            // TODO: Convert DatabasePageContent to OptimizedPageSlice for history tracking
+            // historyManager.pushOptimizedPage(optimizedPage, pageSize: size)
+            print("📚 HISTORY TRACKING: Skipping history push for DatabasePageContent (\(historyManager.historyCount) total)")
         } else {
             print("📚 HISTORY TRACKING: Skipped adding page (navigating from history)")
         }
@@ -634,10 +863,10 @@ final class OnDemandPageGenerator: ObservableObject {
         
         print("🔄 HISTORY RESTORE: Attempting exact restoration of \(entry.debugDescription)")
         
-        // PRIORITY 1: Try to restore from serialized OptimizedPageSlice if available
+        // PRIORITY 1: Try to restore from serialized DatabasePageContent if available
         if let serializedData = entry.serializedFragmentedPage {
             do {
-                let restoredPage = try JSONDecoder().decode(OptimizedPageSlice.self, from: serializedData)
+                let restoredPage = try JSONDecoder().decode(DatabasePageContent.self, from: serializedData)
                 currentOptimizedPage = restoredPage
                 print("✅ HISTORY RESTORE: Successfully restored from serialized page")
                 return true
@@ -654,7 +883,8 @@ final class OnDemandPageGenerator: ObservableObject {
         let entryKey = VerseKey(book: entry.book, chapter: entry.chapter, verse: entry.verse)
         
         // Check if we can load the chapter to create a proper page
-        if await loader.loadChapterContent(book: entry.book, chapter: entry.chapter) != nil {
+        let entryResult = await loader.loadChapter(book: entry.book, chapter: entry.chapter)
+        if case .success = entryResult {
             // Try to generate the page starting from this verse
             let result = await PageContentGenerator.generate(
                 from: entryKey,
@@ -664,7 +894,7 @@ final class OnDemandPageGenerator: ObservableObject {
             
             switch result {
             case .success(let generatedResult):
-                let slice = generatedResult.page.toOptimizedPageSlice()
+                let slice = generatedResult.page.toDatabasePageContent()
                 currentPage = slice
                 currentGeneratedPage = generatedResult.page
                 pending = generatedResult.remainder
@@ -682,7 +912,7 @@ final class OnDemandPageGenerator: ObservableObject {
             }
         }
         
-        // PRIORITY 3: Create a pseudo-OptimizedPageSlice using the stored information
+        // PRIORITY 3: Create a pseudo-DatabasePageContent using the stored information
         let startVerse = VerseKey(
             book: entry.book,
             chapter: entry.chapter,
@@ -706,17 +936,33 @@ final class OnDemandPageGenerator: ObservableObject {
             verseKeys = [startVerse, endVerse]
         }
         
-        let navigationContext = PageNavigationContext(
-            isFirstVerseOfBook: startVerse.chapter == 1 && startVerse.verse == 1,
-            isLastVerseOfBook: false // We don't have this information stored
+        let navigationContext = DatabaseNavigationContext(
+            chapterNumber: startVerse.chapter,
+            verseNumber: startVerse.verse,
+            totalChapters: 50, // Would need actual book metadata
+            totalVerses: 31   // Would need actual chapter metadata
         )
         
-        let restoredPage = OptimizedPageSlice(
+        // Create database verses from verse keys (simplified)
+        let databaseVerses: [DatabaseVerse] = verseKeys.map { verseKey in
+            DatabaseVerse(
+                book: verseKey.book,
+                chapter: verseKey.chapter,
+                verseNumber: verseKey.verse,
+                text: "" // Would need actual verse text
+            )
+        }
+
+        let restoredPage = DatabasePageContent(
             content: AttributedString(entry.renderedContent),
+            verses: databaseVerses,
             verseKeys: verseKeys,
             startVerse: startVerse,
             endVerse: endVerse,
-            navigationContext: navigationContext
+            navigationContext: navigationContext,
+            startReference: startVerse.description,
+            endReference: endVerse.description,
+            references: verseKeys.map { $0.description }
         )
         
         currentOptimizedPage = restoredPage

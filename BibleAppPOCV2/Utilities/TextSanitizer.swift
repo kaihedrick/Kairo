@@ -1,27 +1,55 @@
-// TextSanitizer.swift
+// filepath: BibleAppPOCV2/Utilities/TextSanitizer.swift
 import Foundation
+
+// MARK: - Text Sanitizer
 
 /// Comprehensive text sanitization utility for fixing character encoding corruption
 /// This utility handles the critical UTF-8 corruption issues that can break text display
 @MainActor
 final class TextSanitizer: ObservableObject {
+
+    // MARK: - Shared Instance
+
     static let shared = TextSanitizer()
+
+    // MARK: - Initialization
 
     private init() {}
 
     // MARK: - Public Sanitization Methods
 
     /// Sanitize text by removing all known corruption patterns
+    ///
+    /// - Parameter text: The text to sanitize
+    /// - Returns: Sanitized text with corruption patterns removed
     func sanitizeText(_ text: String) -> String {
         var sanitized = text
 
+        #if DEBUG
+        print("🧹 Starting text sanitization for text length: \(text.count)")
+        #endif
+
         // Remove all corruption patterns
         for pattern in ExtendedCorruptionPattern.allPatterns {
+            let beforeCount = sanitized.count
             sanitized = sanitized.replacingOccurrences(of: pattern.pattern, with: pattern.replacement)
+            let afterCount = sanitized.count
+
+            #if DEBUG
+            if beforeCount != afterCount {
+                print("  Fixed pattern '\(pattern.pattern)': removed \(beforeCount - afterCount) characters")
+            }
+            #endif
         }
 
         // Clean up formatting
         sanitized = cleanUpFormatting(sanitized)
+
+        #if DEBUG
+        if text != sanitized {
+            print("✅ Sanitization complete: \(text.count) → \(sanitized.count) characters")
+        }
+        #endif
 
         return sanitized
     }
@@ -128,13 +156,22 @@ final class TextSanitizer: ObservableObject {
     // MARK: - Debug and Analysis
 
     /// Analyze text for corruption and provide detailed debugging information
+    ///
+    /// - Parameters:
+    ///   - text: The text to analyze
+    ///   - label: Optional label for the analysis output
+    /// - Returns: Comprehensive analysis report
     func analyzeText(_ text: String, label: String = "Text Analysis") -> TextAnalysisReport {
+        #if DEBUG
         print("🔍 \(label):")
         print("   Length: \(text.count)")
         print("   UTF-8 bytes: \(text.utf8.map { String(format: "%02X", $0) }.joined(separator: " "))")
         print("   UTF-16 bytes: \(text.utf16.map { String(format: "%04X", $0) }.joined(separator: " "))")
+        #endif
 
         let validation = validateText(text)
+
+        #if DEBUG
         print("   Corruption Status: \(validation.isCorrupted ? "CORRUPTED" : "Clean")")
 
         if validation.isCorrupted {
@@ -144,6 +181,7 @@ final class TextSanitizer: ObservableObject {
                 print("      - '\(pattern.pattern.pattern)': \(pattern.occurrences) occurrences (\(pattern.severity))")
             }
         }
+        #endif
 
         return TextAnalysisReport(
             text: text,

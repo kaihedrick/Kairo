@@ -6,13 +6,13 @@ import SwiftUI
 struct FragmentedPage: Codable {
     let fragments: [VerseFragment]
     let navTitle: String
-    let startVerse: VerseReference
-    let endVerse: VerseReference
+    let startVerse: String
+    let endVerse: String
     let content: String // Store as string for Codable
     let measuredHeight: CGFloat
     let availableHeight: CGFloat
 
-    init(fragments: [VerseFragment], navTitle: String, startVerse: VerseReference, endVerse: VerseReference, content: AttributedString, measuredHeight: CGFloat, availableHeight: CGFloat) {
+    init(fragments: [VerseFragment], navTitle: String, startVerse: String, endVerse: String, content: AttributedString, measuredHeight: CGFloat, availableHeight: CGFloat) {
         self.fragments = fragments
         self.navTitle = navTitle
         self.startVerse = startVerse
@@ -26,8 +26,8 @@ struct FragmentedPage: Codable {
     init(book: String, chapter: Int, verse: Int, fragments: [String] = [], layoutInfo: [String: Any] = [:]) {
         self.fragments = []
         self.navTitle = "\(book) \(chapter):\(verse)"
-        self.startVerse = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
-        self.endVerse = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
+        self.startVerse = "\(book) \(chapter):\(verse)"
+        self.endVerse = "\(book) \(chapter):\(verse)"
         self.content = fragments.joined(separator: " ")
         self.measuredHeight = 0
         self.availableHeight = 0
@@ -38,7 +38,7 @@ struct FragmentedPage: Codable {
     }
 
     var debugDescription: String {
-        return "FragmentedPage(navTitle: \(navTitle), startVerse: \(startVerse.description), endVerse: \(endVerse.description), fragments: \(fragments.count))"
+        return "FragmentedPage(navTitle: \(navTitle), startVerse: \(startVerse), endVerse: \(endVerse), fragments: \(fragments.count))"
     }
 }
 
@@ -46,7 +46,7 @@ struct FragmentedPage: Codable {
 
 /// Represents a verse fragment for pagination
 struct VerseFragment: Codable {
-    let reference: VerseReference
+    let reference: String
     let textFragment: String
     let isStartOfVerse: Bool
     let isEndOfVerse: Bool
@@ -54,7 +54,7 @@ struct VerseFragment: Codable {
     let sequenceNumber: Int
     let totalFragments: Int
 
-    init(reference: VerseReference, textFragment: String, isStartOfVerse: Bool, isEndOfVerse: Bool, fullVerseText: String, sequenceNumber: Int, totalFragments: Int) {
+    init(reference: String, textFragment: String, isStartOfVerse: Bool, isEndOfVerse: Bool, fullVerseText: String, sequenceNumber: Int, totalFragments: Int) {
         self.reference = reference
         self.textFragment = textFragment
         self.isStartOfVerse = isStartOfVerse
@@ -66,7 +66,7 @@ struct VerseFragment: Codable {
 
     // Legacy constructor for backward compatibility
     init(book: String, chapter: Int, verse: Int, text: String, attributedText: AttributedString, characterOffset: Int = 0) {
-        self.reference = VerseReference(unsafeBook: book, unsafeChapter: chapter, unsafeVerse: verse)
+        self.reference = "\(book) \(chapter):\(verse)"
         self.textFragment = text
         self.isStartOfVerse = characterOffset == 0
         self.isEndOfVerse = true

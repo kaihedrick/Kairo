@@ -9,7 +9,7 @@ import CoreText
 
 /// Formats verses for on-demand pagination and caches measurements.
 class JITTextFormatter {
-    private static let measurementCache = LRUCache<String, CGSize>(capacity: 100)
+    private static let measurementCache = NSCache<NSString, NSValue>()
     
     // Debug flag to disable all caching for accurate measurements
     private static let disableCaching = false
@@ -75,13 +75,14 @@ class JITTextFormatter {
         let contentStr = String(text.characters)
         let contentHash = contentStr.hash
         let cacheKey = "\(contentHash):\(maxSize.width):\(maxSize.height)"
-        if let cached = measurementCache.get(cacheKey) { 
+        if let cachedValue = measurementCache.object(forKey: cacheKey as NSString),
+           let cachedSize = cachedValue as? NSValue {
             print("📋 Using cached measurement for \(text.characters.prefix(20))...")
-            return cached 
+            return cachedSize.cgSizeValue
         }
-        
+
         let size = performFreshMeasurement(text, maxSize: maxSize)
-        measurementCache.set(cacheKey, size)
+        measurementCache.setObject(NSValue(cgSize: size), forKey: cacheKey as NSString)
         return size
     }
     
@@ -124,7 +125,7 @@ class JITTextFormatter {
 
     /// Clear cached measurement results.
     static func clearCache() {
-        measurementCache.clear()
+        measurementCache.removeAllObjects()
     }
     
     /// Measure text as it would actually render in a Text view with padding
@@ -205,5 +206,21 @@ class JITTextFormatter {
         }
 
         return (AttributedString(fitting), AttributedString(remainder))
+    }
+
+    /// Format a book title for display
+    static func formatBookTitle(book: String) -> AttributedString {
+        var attributed = AttributedString("\(book)\n\n")
+        attributed.font = Typography.bookTitle
+        attributed.foregroundColor = .primary
+        return attributed
+    }
+
+    /// Format a chapter header for display
+    static func formatChapterHeader(book: String, chapter: Int) -> AttributedString {
+        var attributed = AttributedString("Chapter \(chapter)\n\n")
+        attributed.font = Typography.chapter
+        attributed.foregroundColor = .primary
+        return attributed
     }
 }
