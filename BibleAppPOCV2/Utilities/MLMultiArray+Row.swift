@@ -1,4 +1,8 @@
 // filepath: BibleAppPOCV2/Utilities/MLMultiArray+Row.swift
+
+// 🚫 AI/ML functionality is completely disabled
+#if AI_FEATURES
+
 import CoreML
 
 // MARK: - MLMultiArray Extensions for Logits Processing
@@ -90,3 +94,5 @@ public extension MLMultiArray {
         return logitsRow(at: seqLen - 1)
     }
 }
+
+#endif // AI_FEATURES

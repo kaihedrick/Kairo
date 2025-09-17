@@ -6,6 +6,13 @@ private let EOS_TOKEN_ID: Int32 = 50256
 
 // MARK: - Main BibleCommentaryGenerator Class
 public final class BibleCommentaryGenerator {
+    // MARK: - Engine Types
+    public enum Engine {
+        case dbOnly  // 🔒 Always use this
+        // case ml     // Removed - AI disabled
+    }
+
+    private let engine: Engine = .dbOnly  // 🔒 Hard lock to DB-only
     // Properties needed by the bridge
     public var model: MLModel?
     public var endDevotionalId: Int32?
@@ -59,36 +66,8 @@ public final class BibleCommentaryGenerator {
 
         print("🧪 Testing specials emission with temp=1.0, no penalties...")
 
-        let promptIds = try prepareSinglePassPrompt_PythonExact(ref: ref, verseText: verseText).map(Int32.init)
-
-        let core = BibleCommentaryGeneratorCore(
-            model: model,
-            tokenizer: tokenizer,
-            endDevotional: endDevotionalId,
-            padId: self.padId
-        )
-
-        // Test config: temp=1.0, no penalties, minimal restrictions
-        let cfg = GenCfg(temp: 1.0, topP: 1.0, topK: 0, repPenalty: 1.0, noRepeat: 0)
-        var stop: Set<Int32> = [Int32(EOS_TOKEN_ID)]
-        if let e = self.endDevotionalId { stop.insert(Int32(e)) }
-        if let p = self.padId { stop.insert(Int32(p)) }
-
-        let gen = try core.generate(promptIds: promptIds, maxNew: 200, cfg: cfg, stop: stop, useGreedy: false)
-        let raw = tokenizer.decode(gen.map(Int.init))
-
-        // Check for marker emission
-        let hasEndCommentary = raw.contains("[END_COMMENTARY]")
-        let hasStartDevotional = raw.contains("[START_DEVOTIONAL]")
-        let hasEndDevotional = raw.contains("[END_DEVOTIONAL]")
-
-        print("🎯 Specials emission test result:")
-        print("  • END_COMMENTARY: \(hasEndCommentary)")
-        print("  • START_DEVOTIONAL: \(hasStartDevotional)")
-        print("  • END_DEVOTIONAL: \(hasEndDevotional)")
-        print("  • Any markers present: \(hasEndCommentary || hasStartDevotional || hasEndDevotional)")
-
-        return raw
+        // AI functionality is disabled - skip ML testing
+        return "AI functionality disabled - using database-only generation"
     }
 
     /// ✅ Tokenizer round-trip test (check if Swift matches Python)
@@ -138,153 +117,121 @@ public final class BibleCommentaryGenerator {
 
     /// ✅ Test parity with Python (create test input that matches Python script)
     public func testPythonParity(verseRef: String, verseText: String) async throws -> String {
-        print("🔬 Testing Python Parity:")
-        print("  Input: '\(verseRef)' | '\(verseText.prefix(50))...'")
+        // 🚫 AI/ML functionality is disabled - return DB result only
+        if FeatureGate.aiAvailable {
+            print("🔬 Testing Python Parity:")
+            print("  Input: '\(verseRef)' | '\(verseText.prefix(50))...'")
 
-        // Create the exact same input format as Python script
-        let norm = normalizeVerseId(verseRef)
-        let pythonInputText = "[VERSE_ID]\(norm)[VERSE_REF]\(verseRef)[VERSE_TEXT]\(verseText)[VERSE][START_COMMENTARY]"
+            // Create the exact same input format as Python script
+            let norm = normalizeVerseId(verseRef)
+            let pythonInputText = "[VERSE_ID]\(norm)[VERSE_REF]\(verseRef)[VERSE_TEXT]\(verseText)[VERSE][START_COMMENTARY]"
 
-        print("  Python-format input: '\(pythonInputText)'")
+            print("  Python-format input: '\(pythonInputText)'")
 
-        // Test encoding
-        if let tokenizer = self.tokenizer {
-            let pythonIds = tokenizer.encode(pythonInputText)
-            print("  Encoded to \(pythonIds.count) tokens: \(pythonIds.prefix(10))...")
-            print("  Decoded back: '\(tokenizer.decode(pythonIds))'")
+            // Test encoding
+            if let tokenizer = self.tokenizer {
+                let pythonIds = tokenizer.encode(pythonInputText)
+                print("  Encoded to \(pythonIds.count) tokens: \(pythonIds.prefix(10))...")
+                print("  Decoded back: '\(tokenizer.decode(pythonIds))'")
+            }
+        } else {
+            Log.info("🤖 AI disabled — skipping Python parity test")
         }
 
-        // Now generate with our implementation
+        // Always generate with our DB-only implementation
         return await generateCommentary(for: verseRef, verseText: verseText)
     }
 
     /// ✅ Performance measurement - measure generation time
     public func measureGenerationTime(verseRef: String, verseText: String) async throws -> (commentary: String, devotional: String, timeMs: Double) {
-        guard let model = self.model, let tokenizer = self.tokenizer else {
-            throw NSError(domain: "BibleCommentaryGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model or tokenizer not initialized"])
-        }
-        guard let endDevotionalId = self.endDevotionalId else {
-            throw NSError(domain: "BibleCommentaryGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "END_DEVOTIONAL token not found"])
-        }
+        // 🚫 AI/ML functionality is disabled - measure DB lookup time only
 
-        let promptIds = try prepareSinglePassPrompt_PythonExact(ref: verseRef, verseText: verseText).map(Int32.init)
+        // Measure DB lookup time
+        let startTime = Date()
+        let result = await generateCommentaryFromDatabaseOnly(for: verseRef)
+        let endTime = Date()
+        let timeMs = endTime.timeIntervalSince(startTime) * 1000
 
-        let core = BibleCommentaryGeneratorCore(
-            model: model,
-            tokenizer: tokenizer,
-            endDevotional: endDevotionalId,
-            padId: self.padId
-        )
-
-        let cfg = GenCfg(temp: 0.9, topP: 0.92, topK: 50, repPenalty: 1.18, noRepeat: 3)
-        var stop: Set<Int32> = [Int32(EOS_TOKEN_ID)]
-        if let e = self.endDevotionalId { stop.insert(Int32(e)) }
-        if let p = self.padId { stop.insert(Int32(p)) }
-
-        let (gen, timeMs) = try core.measureGenerationTime(promptIds: promptIds, maxNew: 1024, cfg: cfg, stop: stop, useGreedy: false)
-
-        let raw = tokenizer.decode(gen.map(Int.init))
-        let (commentary, devotional, _, _) = postProcessGeneratedText(raw)
-
-        #if DEBUG
-        print(String(format: "📊 Performance: %.2f ms total (%.2f ms/token)", timeMs, timeMs / Double(gen.count)))
-        #endif
-
-        return (commentary, devotional, timeMs)
+        // For DB-only, we don't have separate commentary/devotional sections
+        // Return the full result as commentary and empty devotional
+        return (commentary: result ?? "No commentary found", devotional: "", timeMs: timeMs)
     }
 
     /// ✅ Performance comparison - greedy vs sampling
     public func compareSamplingMethods(verseRef: String, verseText: String) async throws -> (greedy: (commentary: String, devotional: String, timeMs: Double), sampling: (commentary: String, devotional: String, timeMs: Double)) {
-        guard let model = self.model, let tokenizer = self.tokenizer else {
-            throw NSError(domain: "BibleCommentaryGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model or tokenizer not initialized"])
-        }
-        guard let endDevotionalId = self.endDevotionalId else {
-            throw NSError(domain: "BibleCommentaryGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "END_DEVOTIONAL token not found"])
-        }
+        // 🚫 AI/ML functionality is disabled - return DB result for both
 
-        let promptIds = try prepareSinglePassPrompt_PythonExact(ref: verseRef, verseText: verseText).map(Int32.init)
+        // For DB-only, both "greedy" and "sampling" return the same DB result
+        let startTime = Date()
+        let result = await generateCommentaryFromDatabaseOnly(for: verseRef)
+        let endTime = Date()
+        let timeMs = endTime.timeIntervalSince(startTime) * 1000
 
-        // Test greedy sampling
-        let coreGreedy = BibleCommentaryGeneratorCore(
-            model: model,
-            tokenizer: tokenizer,
-            endDevotional: endDevotionalId,
-            padId: self.padId
-        )
-
-        let cfg = GenCfg(temp: 0.9, topP: 0.92, topK: 50, repPenalty: 1.18, noRepeat: 3)
-        var stop: Set<Int32> = [Int32(EOS_TOKEN_ID)]
-        if let e = self.endDevotionalId { stop.insert(Int32(e)) }
-        if let p = self.padId { stop.insert(Int32(p)) }
-
-        let (genGreedy, timeGreedy) = try coreGreedy.measureGenerationTime(promptIds: promptIds, maxNew: 1024, cfg: cfg, stop: stop, useGreedy: true)
-        let rawGreedy = tokenizer.decode(genGreedy.map(Int.init))
-        let (commentaryGreedy, devotionalGreedy, _, _) = postProcessGeneratedText(rawGreedy)
-
-        // Test probabilistic sampling
-        let coreSampling = BibleCommentaryGeneratorCore(
-            model: model,
-            tokenizer: tokenizer,
-            endDevotional: endDevotionalId,
-            padId: self.padId
-        )
-
-        let (genSampling, timeSampling) = try coreSampling.measureGenerationTime(promptIds: promptIds, maxNew: 1024, cfg: cfg, stop: stop, useGreedy: false)
-        let rawSampling = tokenizer.decode(genSampling.map(Int.init))
-        let (commentarySampling, devotionalSampling, _, _) = postProcessGeneratedText(rawSampling)
-
-        #if DEBUG
-        print(String(format: "⚡ Performance Comparison:"))
-        print(String(format: "  Greedy: %.2f ms (%.2f ms/token)", timeGreedy, timeGreedy / Double(genGreedy.count)))
-        print(String(format: "  Sampling: %.2f ms (%.2f ms/token)", timeSampling, timeSampling / Double(genSampling.count)))
-        print(String(format: "  Speedup: %.1fx", timeSampling / timeGreedy))
-        #endif
-
-        return (
-            greedy: (commentaryGreedy, devotionalGreedy, timeGreedy),
-            sampling: (commentarySampling, devotionalSampling, timeSampling)
-        )
+        let dbResult = (commentary: result ?? "No commentary found", devotional: "", timeMs: timeMs)
+        return (greedy: dbResult, sampling: dbResult)
     }
 
     public init() {
-        // Initialize the tokenizer from assets
-        do {
-            let artifacts = try TokenizerArtifacts.load()
-            self.tokenizer = GPT2BPETokenizer(
-                vocab: artifacts.tokenToId,
-                merges: artifacts.merges,
-                idToToken: artifacts.idToToken
-            )
+        // 🚫 AI/ML initialization is completely disabled
+        if FeatureGate.aiAvailable {
+            print("🤖 AI features enabled - initializing tokenizer and model...")
 
-            // Set special token IDs from added tokens
-            self.endDevotionalId = artifacts.addedTokens["[END_DEVOTIONAL]"].map { Int32($0) }
-            self.padId = artifacts.addedTokens["[PAD]"].map { Int32($0) }
-            self.verseIdId = artifacts.addedTokens["[VERSE_ID]"].map { Int32($0) }
-            self.verseRefId = artifacts.addedTokens["[VERSE_REF]"].map { Int32($0) }
-            self.verseTextId = artifacts.addedTokens["[VERSE_TEXT]"].map { Int32($0) }
-            self.verseId = artifacts.addedTokens["[VERSE]"].map { Int32($0) }
-            self.startCommentaryId = artifacts.addedTokens["[START_COMMENTARY]"].map { Int32($0) }
+            // Initialize the tokenizer from assets
+            do {
+                let artifacts = try TokenizerArtifacts.load()
+                self.tokenizer = GPT2BPETokenizer(
+                    vocab: artifacts.tokenToId,
+                    merges: artifacts.merges,
+                    idToToken: artifacts.idToToken
+                )
 
-            print("✅ Tokenizer initialized successfully")
-            print("  - Vocab size: \(artifacts.tokenToId.count)")
-            print("  - Added tokens: \(artifacts.addedTokens.count)")
-            print("  - Special tokens loaded:")
-            print("    • VERSE_ID: \(self.verseIdId ?? -1)")
-            print("    • VERSE_REF: \(self.verseRefId ?? -1)")
-            print("    • VERSE_TEXT: \(self.verseTextId ?? -1)")
-            print("    • VERSE: \(self.verseId ?? -1)")
-            print("    • START_COMMENTARY: \(self.startCommentaryId ?? -1)")
-            print("    • END_DEVOTIONAL: \(self.endDevotionalId ?? -1)")
-            print("    • PAD: \(self.padId ?? -1)")
+                // Set special token IDs from added tokens
+                self.endDevotionalId = artifacts.addedTokens["[END_DEVOTIONAL]"].map { Int32($0) }
+                self.padId = artifacts.addedTokens["[PAD]"].map { Int32($0) }
+                self.verseIdId = artifacts.addedTokens["[VERSE_ID]"].map { Int32($0) }
+                self.verseRefId = artifacts.addedTokens["[VERSE_REF]"].map { Int32($0) }
+                self.verseTextId = artifacts.addedTokens["[VERSE_TEXT]"].map { Int32($0) }
+                self.verseId = artifacts.addedTokens["[VERSE]"].map { Int32($0) }
+                self.startCommentaryId = artifacts.addedTokens["[START_COMMENTARY]"].map { Int32($0) }
 
-        } catch {
-            print("❌ Failed to initialize tokenizer: \(error.localizedDescription)")
+                Log.ml("✅ Tokenizer initialized successfully")
+                Log.ml("  - Vocab size: \(artifacts.tokenToId.count)")
+                Log.ml("  - Added tokens: \(artifacts.addedTokens.count)")
+
+            } catch {
+                print("❌ Failed to initialize tokenizer: \(error.localizedDescription)")
+                self.tokenizer = nil
+            }
+
+            // Initialize ML model if available
+            do {
+                let modelURL = Bundle.main.url(forResource: "bible_commentary_model", withExtension: "mlmodelc")
+                if let modelURL = modelURL {
+                    let config = MLModelConfiguration()
+                    self.model = try MLModel(contentsOf: modelURL, configuration: config)
+                    Log.ml("✅ ML Model initialized successfully")
+                } else {
+                    Log.ml("⚠️ ML Model not found in bundle")
+                    self.model = nil
+                }
+            } catch {
+                Log.ml("❌ Failed to initialize ML model: \(error.localizedDescription)")
+                self.model = nil
+            }
+
+        } else {
+            // 🚫 AI is disabled - skip all ML/tokenizer initialization
+            print("🤖 AI disabled — skipping tokenizer/model init")
             self.tokenizer = nil
+            self.model = nil
+            self.endDevotionalId = nil
+            self.padId = nil
+            self.verseIdId = nil
+            self.verseRefId = nil
+            self.verseTextId = nil
+            self.verseId = nil
+            self.startCommentaryId = nil
         }
-
-        // Skip ML model initialization - using database-only generation
-        print("🚫 ML Model initialization skipped - using database-only generation")
-        self.model = nil
 
         // Initialize Enhanced Bible Database
         do {
@@ -420,10 +367,11 @@ public final class BibleCommentaryGenerator {
 
     // Method expected by IntegrationTest
     public func generateCommentary(for verseRef: String, verseText: String) async -> String {
-        do {
-            return try await generateSinglePassBuffered(ref: verseRef, verseText: verseText)
-        } catch {
-            return "Error generating commentary: \(error.localizedDescription)"
+        // 🔒 Always use database-only generation - no AI/ML fallback
+        if let dbResult = await generateCommentaryFromDatabaseOnly(for: verseRef) {
+            return dbResult
+        } else {
+            return "No commentary available for \(verseRef) in database"
         }
     }
 
@@ -531,21 +479,27 @@ public final class BibleCommentaryGenerator {
 
     // Method expected by IntegrationTest
     public func inspectModelShapes() {
-        guard let model = self.model else {
-            print("Model not initialized")
+        // 🚫 Only run if AI features are available
+        guard FeatureGate.aiAvailable else {
+            Log.info("🤖 AI disabled — skipping model shape inspection")
             return
         }
 
-        print("=== Model Shape Inspection ===")
-        let desc = model.modelDescription
-        print("Model: \(desc.metadata[.creatorDefinedKey] ?? "Unknown")")
-        print("Input descriptions:")
-        for (name, inputDesc) in desc.inputDescriptionsByName {
-            print("  \(name): \(inputDesc)")
+        guard let model = self.model else {
+            Log.ml("Model not initialized")
+            return
         }
-        print("Output descriptions:")
+
+        Log.ml("=== Model Shape Inspection ===")
+        let desc = model.modelDescription
+        Log.ml("Model: \(desc.metadata[.creatorDefinedKey] ?? "Unknown")")
+        Log.ml("Input descriptions:")
+        for (name, inputDesc) in desc.inputDescriptionsByName {
+            Log.ml("  \(name): \(inputDesc)")
+        }
+        Log.ml("Output descriptions:")
         for (name, outputDesc) in desc.outputDescriptionsByName {
-            print("  \(name): \(outputDesc)")
+            Log.ml("  \(name): \(outputDesc)")
         }
     }
 
@@ -568,38 +522,7 @@ extension BibleCommentaryGenerator {
     // Use this buffered single-pass bridge for generation.
 
     func generateSinglePassBuffered(ref: String, verseText: String) async throws -> String {
-        guard let model = self.model else {
-            throw NSError(domain: "BibleCommentaryGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "ML Model not loaded"])
-        }
-        guard let endDevotionalId = self.endDevotionalId else {
-            throw NSError(domain: "BibleCommentaryGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "END_DEVOTIONAL token not found"])
-        }
-
-        // Use Python-exact prompt for perfect format matching
-        let promptIds = try prepareSinglePassPrompt_PythonExact(ref: ref, verseText: verseText).map(Int32.init)
-
-        let core = BibleCommentaryGeneratorCore(
-            model: model,
-            tokenizer: self.tokenizer!,
-            endDevotional: endDevotionalId,
-            padId: self.padId
-        )
-
-        // Updated parameters: temp=0.9, top_p=0.92, max_new=1024 (KV-cache incremental decode)
-        let cfg = GenCfg(temp: 0.9, topP: 0.92, topK: 50, repPenalty: 1.18, noRepeat: 3)
-        var stop: Set<Int32> = [Int32(EOS_TOKEN_ID)]
-        if let e = self.endDevotionalId { stop.insert(Int32(e)) }
-        if let p = self.padId { stop.insert(Int32(p)) }
-
-        // One buffered pass with KV-cache (each token conditioned on previous)
-        // Use greedy sampling for faster, deterministic generation (set to true for speed)
-        let gen = try core.generate(promptIds: promptIds, maxNew: 1024, cfg: cfg, stop: stop, useGreedy: false)
-
-        // Decode only the generated tokens (no input prefix to remove)
-        let raw = tokenizer!.decode(gen.map(Int.init))
-
-        // Post-process the generated text
-        let (commentary, devotional, _, _) = postProcessGeneratedText(raw)
-        return commentary + "\n\n" + devotional
+        // 🚫 AI/ML functionality is disabled - use DB-only generation
+        return await generateCommentaryFromDatabaseOnly(for: ref) ?? "No commentary available for \(ref)"
     }
 }

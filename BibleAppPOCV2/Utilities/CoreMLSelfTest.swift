@@ -1,4 +1,8 @@
 // filepath: BibleAppPOCV2/Utilities/CoreMLSelfTest.swift
+
+// 🚫 AI/ML functionality is completely disabled
+#if AI_FEATURES
+
 import Foundation
 import CoreML
 
@@ -99,5 +103,7 @@ enum CoreMLSelfTest {
         }
     }
 }
+
+#endif // AI_FEATURES
 
 

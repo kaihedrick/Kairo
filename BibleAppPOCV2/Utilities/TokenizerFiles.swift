@@ -20,8 +20,11 @@ public enum TokenizerAssets {
     /// - Returns: URL of the found asset
     /// - Throws: AssetError if asset cannot be found
     private static func url(_ name: String) throws -> URL {
+        // 🚫 Only run debug logging if AI features are enabled
         #if DEBUG
-        print("🔍 DEBUG: TokenizerAssets.url() looking for: \(name)")
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: TokenizerAssets.url() looking for: \(name)")
+        }
         #endif
 
         let extensions = ["json", "txt", ""]
@@ -29,13 +32,17 @@ public enum TokenizerAssets {
             let fullName = ext.isEmpty ? name : "\(name).\(ext)"
 
             #if DEBUG
-            print("🔍 DEBUG: Trying to find: \(fullName)")
+            if FeatureGate.aiAvailable {
+                print("🔍 DEBUG: Trying to find: \(fullName)")
+            }
             #endif
 
             // First try root bundle (where files are actually located)
             if let u = Bundle.main.url(forResource: name, withExtension: ext) {
                 #if DEBUG
-                print("✅ Found \(fullName) in root bundle: \(u.path)")
+                if FeatureGate.aiAvailable {
+                    print("✅ Found \(fullName) in root bundle: \(u.path)")
+                }
                 #endif
                 return u
             }
@@ -43,7 +50,9 @@ public enum TokenizerAssets {
             // Then try ios_integration_assets specifically
             if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "ios_integration_assets") {
                 #if DEBUG
-                print("✅ Found \(fullName) in ios_integration_assets: \(u.path)")
+                if FeatureGate.aiAvailable {
+                    print("✅ Found \(fullName) in ios_integration_assets: \(u.path)")
+                }
                 #endif
                 return u
             }
@@ -51,7 +60,9 @@ public enum TokenizerAssets {
             // Then try ML/Models/ios_integration_assets
             if let u = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "ML/Models/ios_integration_assets") {
                 #if DEBUG
-                print("✅ Found \(fullName) in ML/Models/ios_integration_assets: \(u.path)")
+                if FeatureGate.aiAvailable {
+                    print("✅ Found \(fullName) in ML/Models/ios_integration_assets: \(u.path)")
+                }
                 #endif
                 return u
             }
@@ -59,12 +70,16 @@ public enum TokenizerAssets {
             // Finally fall back to BundleLoader
             if let u = BundleLoader.url(name: name, ext: ext) {
                 #if DEBUG
-                print("✅ Found \(fullName) via BundleLoader: \(u.path)")
+                if FeatureGate.aiAvailable {
+                    print("✅ Found \(fullName) via BundleLoader: \(u.path)")
+                }
                 #endif
                 return u
             } else {
                 #if DEBUG
-                print("❌ Not found: \(fullName)")
+                if FeatureGate.aiAvailable {
+                    print("❌ Not found: \(fullName)")
+                }
                 #endif
             }
         }
@@ -84,28 +99,40 @@ public enum TokenizerAssets {
         let fileURL = try url(name)
 
         #if DEBUG
-        print("🔍 DEBUG: Loading \(name) from: \(fileURL.path)")
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: Loading \(name) from: \(fileURL.path)")
+        }
         #endif
 
         let data = try Data(contentsOf: fileURL)
 
         #if DEBUG
-        print("🔍 DEBUG: \(name) data size: \(data.count) bytes")
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: \(name) data size: \(data.count) bytes")
+        }
+        #endif
         let string = String(data: data, encoding: .utf8)?.prefix(200) ?? "unable to decode"
-        print("🔍 DEBUG: \(name) content preview: \(string)...")
+        #if DEBUG
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: \(name) content preview: \(string)...")
+        }
         #endif
 
         do {
             let result = try JSONDecoder().decode(T.self, from: data)
 
             #if DEBUG
-            print("🔍 DEBUG: Successfully decoded \(name) as \(type)")
+            if FeatureGate.aiAvailable {
+                print("🔍 DEBUG: Successfully decoded \(name) as \(type)")
+            }
             #endif
 
             return result
         } catch let error as DecodingError {
             #if DEBUG
-            print("❌ JSON decoding error for \(name): \(error)")
+            if FeatureGate.aiAvailable {
+                print("❌ JSON decoding error for \(name): \(error)")
+            }
             #endif
             throw error
         }
@@ -156,7 +183,9 @@ public struct TokenizerArtifacts {
     /// - Throws: AssetError or JSON decoding errors if any assets are missing or invalid
     public static func load() throws -> TokenizerArtifacts {
         #if DEBUG
-        print("🔍 DEBUG: Starting TokenizerArtifacts.load()...")
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: Starting TokenizerArtifacts.load()...")
+        }
         #endif
 
         // MARK: Load id_to_token.json
@@ -169,11 +198,15 @@ public struct TokenizerArtifacts {
 
         // MARK: Load merges.txt
         #if DEBUG
-        print("🔍 DEBUG: Loading merges.txt...")
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: Loading merges.txt...")
+        }
         #endif
         let mergesTxt = try TokenizerAssets.loadText("merges.txt")
         #if DEBUG
-        print("🔍 DEBUG: merges.txt length: \(mergesTxt.count) characters")
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: merges.txt length: \(mergesTxt.count) characters")
+        }
         #endif
 
         var merges: [(String,String)] = []
@@ -181,17 +214,33 @@ public struct TokenizerArtifacts {
         // Handle both Unix (\n) and Windows (\r\n) line endings
         let lines = mergesTxt.components(separatedBy: .newlines)
             .filter { !$0.isEmpty } // Remove empty lines
-        print("🔍 DEBUG: merges.txt has \(lines.count) lines after filtering")
+        #if DEBUG
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: merges.txt has \(lines.count) lines after filtering")
+        }
+        #endif
 
         // If we only have 1 line, it might be due to line ending issues
         if lines.count == 1 {
-            print("⚠️ merges.txt appears to be a single line, trying alternative parsing...")
+            #if DEBUG
+            if FeatureGate.aiAvailable {
+                print("⚠️ merges.txt appears to be a single line, trying alternative parsing...")
+            }
+            #endif
             let altLines = mergesTxt.split(separator: "\r\n")
             if altLines.count > 1 {
-                print("✅ Found \(altLines.count) lines with \\r\\n parsing")
+                #if DEBUG
+                if FeatureGate.aiAvailable {
+                    print("✅ Found \(altLines.count) lines with \\r\\n parsing")
+                }
+                #endif
                 for (index, line) in altLines.enumerated() {
                     if line.hasPrefix("#") {
-                        if index < 5 { print("🔍 DEBUG: Skipping comment line \(index)") }
+                        #if DEBUG
+                        if FeatureGate.aiAvailable && index < 5 {
+                            print("🔍 DEBUG: Skipping comment line \(index)")
+                        }
+                        #endif
                         continue
                     }
                     let parts = line.split(separator: " ")
@@ -204,35 +253,63 @@ public struct TokenizerArtifacts {
             // Normal parsing
             for (index, line) in lines.enumerated() {
                 if line.hasPrefix("#") {
-                    if index < 5 { print("🔍 DEBUG: Skipping comment line \(index)") }
+                    #if DEBUG
+                    if FeatureGate.aiAvailable && index < 5 {
+                        print("🔍 DEBUG: Skipping comment line \(index)")
+                    }
+                    #endif
                     continue
                 }
                 let parts = line.split(separator: " ")
                 if parts.count == 2 {
                     merges.append((String(parts[0]), String(parts[1])))
                 } else if index < 10 {
-                    print("⚠️ Unexpected line format at \(index): '\(line)'")
+                    #if DEBUG
+                    if FeatureGate.aiAvailable {
+                        print("⚠️ Unexpected line format at \(index): '\(line)'")
+                    }
+                    #endif
                 }
             }
         }
-        print("🔍 DEBUG: Successfully parsed \(merges.count) merges")
+        #if DEBUG
+        if FeatureGate.aiAvailable {
+            print("🔍 DEBUG: Successfully parsed \(merges.count) merges")
+        }
+        #endif
 
         // added_tokens.json - try different formats
         var added: [String:Int] = [:]
         if let dict = try? TokenizerAssets.loadJSON("added_tokens.json", as: [String:Int].self) {
             // Direct format: {"[TOKEN]": 12345}
             added = dict
-            print("🔍 DEBUG: Successfully parsed added_tokens.json as [String:Int] with \(dict.count) entries")
+            #if DEBUG
+            if FeatureGate.aiAvailable {
+                print("🔍 DEBUG: Successfully parsed added_tokens.json as [String:Int] with \(dict.count) entries")
+            }
+            #endif
         } else if let arr = try? TokenizerAssets.loadJSON("added_tokens.json", as: [AddedTokenEntry].self) {
             // Array format: [{"content": "[TOKEN]", "id": 12345}]
             for e in arr { added[e.content] = e.id }
-            print("🔍 DEBUG: Successfully parsed added_tokens.json as [AddedTokenEntry] with \(arr.count) entries")
+            #if DEBUG
+            if FeatureGate.aiAvailable {
+                print("🔍 DEBUG: Successfully parsed added_tokens.json as [AddedTokenEntry] with \(arr.count) entries")
+            }
+            #endif
         } else if let dict = try? TokenizerAssets.loadJSON("added_tokens.json", as: [String:AddedTokenEntry].self) {
             // Dictionary format: {"[TOKEN]": {"content": "[TOKEN]", "id": 12345}}
             for (_, e) in dict { added[e.content] = e.id }
-            print("🔍 DEBUG: Successfully parsed added_tokens.json as [String:AddedTokenEntry] with \(dict.count) entries")
+            #if DEBUG
+            if FeatureGate.aiAvailable {
+                print("🔍 DEBUG: Successfully parsed added_tokens.json as [String:AddedTokenEntry] with \(dict.count) entries")
+            }
+            #endif
         } else {
-            print("❌ Failed to parse added_tokens.json in any expected format")
+            #if DEBUG
+            if FeatureGate.aiAvailable {
+                print("❌ Failed to parse added_tokens.json in any expected format")
+            }
+            #endif
         }
 
         // export_report.json

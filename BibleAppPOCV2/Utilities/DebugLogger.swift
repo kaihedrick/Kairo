@@ -1,4 +1,8 @@
 // filepath: BibleAppPOCV2/Utilities/DebugLogger.swift
+
+// 🚫 AI/ML functionality is completely disabled
+#if AI_FEATURES
+
 import Foundation
 import CoreML
 
@@ -326,5 +330,7 @@ class CoreMLDebugger {
         return issuesFound == 0
     }
 }
+
+#endif // AI_FEATURES
 
 

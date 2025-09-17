@@ -462,6 +462,13 @@ final class OnDemandPageGenerator: ObservableObject {
             currentGeneratedPage = generatedResult.page
             pending = generatedResult.remainder
 
+            // Push to enhanced history for both legacy and optimized pages
+            let horizontalPadding = LayoutMetrics.horizontalPagePadding
+            let verticalPadding = LayoutMetrics.verticalPagePadding
+            historyManager.pushDatabasePage(slice, pageSize: size,
+                                          horizontalPadding: horizontalPadding,
+                                          verticalPadding: verticalPadding)
+
             #if DEBUG
             print("✅ PAGE GENERATED SUCCESSFULLY: \(slice.startVerse.description) to \(slice.endVerse.description)")
             print("📊 FINAL PAGE: \(slice.verseKeys.count) verses")
@@ -521,129 +528,124 @@ final class OnDemandPageGenerator: ObservableObject {
         defer { Task { await trimCacheToThreePages() } }
 
         #if DEBUG
-        print("➡️ FORWARD NAVIGATION: Starting forward navigation")
+        print("➡️ FORWARD NAVIGATION: Starting history-driven forward navigation")
         print("➡️ Current node: \(currentNode?.key.description ?? "nil")")
         print("➡️ Current node next: \(currentNode?.next?.key.description ?? "nil")")
         #endif
 
-        // Check if we have a cached next page in the linked list
-        if let node = currentNode?.next {
+        // 1. Try cached next node in linked list
+        if let nextNode = currentNode?.next {
             #if DEBUG
-            print("✅ LINKED LIST: Found cached next page: \(node.key.description)")
+            print("✅ LINKED LIST: Found cached next page: \(nextNode.key.description)")
+            #endif
+
             // Ensure the next node's prev pointer is correctly set
-            if node.prev !== currentNode {
-                print("🔗 LINKED LIST: Fixing broken prev pointer")
-                node.prev = currentNode
+            if nextNode.prev !== currentNode {
+                nextNode.prev = currentNode
+                currentNode?.next = nextNode
             }
-            #endif
-            currentNode = node
-            currentPage = node.slice
+
+            currentNode = nextNode
+            currentPage = nextNode.slice
+            // Update cursor to reflect current position
+            currentCursor = Cursor(book: nextNode.key.book, chapter: nextNode.key.chapter, pageIndex: 0)
             pending = nil
+
             #if DEBUG
-            print("➡️ After navigation - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            print("📖 LINKED LIST: Used cached next page for \(nextNode.key.description)")
             #endif
             return
         }
 
-        #if DEBUG
-        print("⚠️ LINKED LIST: No cached next page found, generating it now")
-        #endif
+        // 2. Try to build from remainder if available
+        if let remainder = currentNode?.slice.verseKeys.last,
+           let currentSlice = currentNode?.slice {
+            // Use page end as anchor for next page (endVerse + 1)
+            let nextVerse = currentSlice.endVerse.verse + 1
+            let nextKey = VerseKey(book: currentSlice.endVerse.book,
+                                  chapter: currentSlice.endVerse.chapter,
+                                  verse: nextVerse)
 
-        // Generate the next page since it doesn't exist in cache
-        // Use page-based anchor calculation (endVerse + 1) instead of key-based (startVerse + 1)
-        guard let currentSlice = currentNode?.slice else {
-            print("❌ No current slice available for next page calculation")
+            #if DEBUG
+            print("📄 REMAINDER: Building next page from anchor \(nextKey.description)")
+            #endif
+
+            await generatePage(startingAt: (nextKey.book, nextKey.chapter, nextKey.verse))
             return
         }
 
-        let nextVerse = currentSlice.endVerse.verse + 1
-        let nextKey = VerseKey(book: currentSlice.endVerse.book,
-                              chapter: currentSlice.endVerse.chapter,
-                              verse: nextVerse)
-
+        // 3. Cross-chapter handoff if no remainder
         #if DEBUG
-        print("🔍 LINKED LIST: Generating next page for: \(nextKey.description)")
-        print("   Page-based anchor: \(currentSlice.endVerse.description) + 1 = \(nextKey.description)")
+        print("↪️ HANDOFF: Attempting cross-chapter handoff to next chapter")
         #endif
 
-        // Generate the next page by calling generatePage
-        await generatePage(startingAt: (nextKey.book, nextKey.chapter, nextKey.verse))
+        await handoffToNextChapterFirstPage()
+
+        #if DEBUG
+        print("➡️ FORWARD NAVIGATION: Completed")
+        #endif
     }
 
     func generatePreviousPage() async {
         defer { Task { await trimCacheToThreePages() } }
 
         #if DEBUG
-        print("🔙 BACKWARD NAVIGATION: Starting backward navigation")
-        print("🔙 Current node: \(currentNode?.key.description ?? "nil")")
-        print("🔙 Current node prev: \(currentNode?.prev?.key.description ?? "nil")")
-        print("🔙 Current node next: \(currentNode?.next?.key.description ?? "nil")")
+        print("⬅️ BACKWARD NAVIGATION: Starting history-driven backward navigation")
+        print("⬅️ Current node: \(currentNode?.key.description ?? "nil")")
+        print("⬅️ Current node prev: \(currentNode?.prev?.key.description ?? "nil")")
         #endif
 
-        // Check if we have a cached previous page in the linked list
-        if let node = currentNode?.prev {
+        // 1. Try cached previous node in linked list
+        if let prevNode = currentNode?.prev {
             #if DEBUG
-            print("✅ LINKED LIST: Found cached previous page: \(node.key.description)")
+            print("✅ LINKED LIST: Found cached previous page: \(prevNode.key.description)")
+            #endif
+
             // Ensure the previous node's next pointer is correctly set
-            if node.next !== currentNode {
-                print("🔗 LINKED LIST: Fixing broken next pointer")
-                node.next = currentNode
+            if prevNode.next !== currentNode {
+                prevNode.next = currentNode
+                currentNode?.prev = prevNode
             }
-            #endif
-            currentNode = node
-            currentPage = node.slice
+
+            currentNode = prevNode
+            currentPage = prevNode.slice
+            // Update cursor to reflect current position
+            currentCursor = Cursor(book: prevNode.key.book, chapter: prevNode.key.chapter, pageIndex: 0)
             pending = nil
+
             #if DEBUG
-            print("📖 LINKED LIST: Used cached previous page for \(node.key.description)")
-            print("🔙 After navigation - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            print("📖 LINKED LIST: Used cached previous page for \(prevNode.key.description)")
             #endif
             return
         }
 
-        #if DEBUG
-        print("⚠️ LINKED LIST: No cached previous page found, generating it now")
-        #endif
-
-        // Generate the previous page since it doesn't exist in cache
-        if let currentKey = currentNode?.key,
-           let previousKey = await findPreviousVerseKey(for: currentKey) {
-            #if DEBUG
-            print("🔍 LINKED LIST: Generating previous page for: \(previousKey.description)")
-            #endif
-
-            // Generate the previous page by calling generatePage
-            await generatePage(startingAt: (previousKey.book, previousKey.chapter, previousKey.verse))
-            return
-        }
-
-        #if DEBUG
-        print("⚠️ LINKED LIST: No cached previous page found, falling back to history")
-        #endif
-        
-        // Store the current node to reconnect after history navigation
-        let oldNode = currentNode
-        
-        // Use enhanced history for reliable backward navigation
+        // 2. Fall back to enhanced history if no cached node
         if historyManager.canGoBackward, let historyEntry = historyManager.goBackward() {
-            print("📚 LEGACY BACKWARD NAVIGATION: Using enhanced history")
-            
+            #if DEBUG
+            print("📚 HISTORY: Restoring previous page from history")
+            #endif
+
             isNavigatingFromHistory = true
             defer { isNavigatingFromHistory = false }
-            
+
             if await restorePageFromHistory(historyEntry) {
-                // After restoring from history, reconnect the linked list
-                if let oldNode = oldNode, let currentNode = currentNode {
-                    currentNode.next = oldNode
-                    oldNode.prev = currentNode
-                    print("📖 LINKED LIST: Reconnected after history restore - Current: \(currentNode.key.description) -> Next: \(oldNode.key.description)")
-                }
+                #if DEBUG
+                print("✅ HISTORY: Successfully restored page: \(currentNode?.key.description ?? "unknown")")
+                #endif
                 return
             }
         }
-        
-        // NO FALLBACK: Legacy method should not guess page starts
-        print("❌ LEGACY BACKWARD NAVIGATION: No reliable history available")
-        lastError = "Cannot navigate backwards - no page history available"
+
+        // 3. Cross-chapter handoff if no history available
+        #if DEBUG
+        print("↩️ HANDOFF: Attempting cross-chapter handoff to previous chapter")
+        #endif
+
+        await handoffToPreviousChapterLastPage()
+
+        #if DEBUG
+        print("⬅️ BACKWARD NAVIGATION: Completed")
+        #endif
     }
 
     // MARK: - Page-Aware Navigation Methods
@@ -657,7 +659,7 @@ final class OnDemandPageGenerator: ObservableObject {
             return
         }
 
-        let nextCursor = nextPageCursor(from: cursor)
+        let nextCursor = await nextPageCursor(from: cursor)
         guard let nextCursor = nextCursor else {
             #if DEBUG
             print("❌ CURSOR NAV: No next page available")
@@ -682,7 +684,7 @@ final class OnDemandPageGenerator: ObservableObject {
             return
         }
 
-        let prevCursor = previousPageCursor(from: cursor)
+        let prevCursor = await previousPageCursor(from: cursor)
         guard let prevCursor = prevCursor else {
             #if DEBUG
             print("❌ CURSOR NAV: No previous page available")
@@ -740,7 +742,7 @@ final class OnDemandPageGenerator: ObservableObject {
 
     // MARK: - Private Page-Aware Navigation Helpers
 
-    private func nextPageCursor(from cursor: Cursor) -> Cursor? {
+    private func nextPageCursor(from cursor: Cursor) async -> Cursor? {
         let chapterKey = cursor.chapterKey
 
         guard let pages = pageCache.get(chapterKey) else {
@@ -752,14 +754,18 @@ final class OnDemandPageGenerator: ObservableObject {
 
         if cursor.pageIndex + 1 < pages.pageCount {
             // Next page in same chapter
-            return Cursor(book: cursor.book, chapter: cursor.chapter, pageIndex: cursor.pageIndex + 1)
+            let nextCursor = Cursor(book: cursor.book, chapter: cursor.chapter, pageIndex: cursor.pageIndex + 1)
+            #if DEBUG
+            print("➡️ CURSOR NEXT: \(cursor.description) → \(nextCursor.description) (same chapter)")
+            #endif
+            return nextCursor
         } else {
             // Cross-chapter: first page of next chapter
-            return firstPageOfNextChapter(after: chapterKey)
+            return await firstPageOfNextChapter(after: chapterKey)
         }
     }
 
-    private func previousPageCursor(from cursor: Cursor) -> Cursor? {
+    private func previousPageCursor(from cursor: Cursor) async -> Cursor? {
         let chapterKey = cursor.chapterKey
 
         guard let pages = pageCache.get(chapterKey) else {
@@ -771,23 +777,156 @@ final class OnDemandPageGenerator: ObservableObject {
 
         if cursor.pageIndex > 0 {
             // Previous page in same chapter
-            return Cursor(book: cursor.book, chapter: cursor.chapter, pageIndex: cursor.pageIndex - 1)
+            let prevCursor = Cursor(book: cursor.book, chapter: cursor.chapter, pageIndex: cursor.pageIndex - 1)
+            #if DEBUG
+            print("⬅️ CURSOR PREV: \(cursor.description) → \(prevCursor.description) (same chapter)")
+            #endif
+            return prevCursor
         } else {
             // Cross-chapter: last page of previous chapter
-            return lastPageOfPreviousChapter(before: chapterKey)
+            return await lastPageOfPreviousChapter(before: chapterKey)
         }
     }
 
-    private func firstPageOfNextChapter(after chapterKey: ChapterKey) -> Cursor? {
-        // Simplified - would need book metadata for proper chapter navigation
-        // For now, return nil (end of content)
+    private func firstPageOfNextChapter(after chapterKey: ChapterKey) async -> Cursor? {
+        // Try to load the next chapter and get its first page
+        let nextChapter = chapterKey.chapter + 1
+
+        // First, try to load the chapter to see if it exists
+        let result = await loader.loadChapter(book: chapterKey.book, chapter: nextChapter)
+        if case .success(let chapter) = result, !chapter.verses.isEmpty {
+            // Compute pages for the next chapter
+            let chapterPages = pageCache.computePages(
+                book: chapterKey.book,
+                chapter: nextChapter,
+                verses: chapter.verses,
+                viewport: size
+            )
+            pageCache.put(chapterPages)
+
+            let cursor = Cursor(book: chapterKey.book, chapter: nextChapter, pageIndex: 0)
+            #if DEBUG
+            print("➡️ HANDOFF: \(chapterKey.description) → \(cursor.description) (next chapter)")
+            #endif
+            return cursor
+        }
+
+        // If next chapter doesn't exist, try next book
+        // This is a simplified implementation - in a full implementation,
+        // you'd need book metadata to know the chapter counts per book
+        #if DEBUG
+        print("➡️ HANDOFF: No more chapters in \(chapterKey.book)")
+        #endif
         return nil
     }
 
-    private func lastPageOfPreviousChapter(before chapterKey: ChapterKey) -> Cursor? {
-        // Simplified - would need book metadata for proper chapter navigation
-        // For now, return nil (beginning of content)
+    private func lastPageOfPreviousChapter(before chapterKey: ChapterKey) async -> Cursor? {
+        // Try to load the previous chapter and get its last page
+        guard chapterKey.chapter > 1 else {
+            #if DEBUG
+            print("⬅️ HANDOFF: Already at first chapter of \(chapterKey.book)")
+            #endif
+            return nil
+        }
+
+        let prevChapter = chapterKey.chapter - 1
+
+        // Load the previous chapter to see if it exists
+        let result = await loader.loadChapter(book: chapterKey.book, chapter: prevChapter)
+        if case .success(let chapter) = result, !chapter.verses.isEmpty {
+            // Compute pages for the previous chapter
+            let chapterPages = pageCache.computePages(
+                book: chapterKey.book,
+                chapter: prevChapter,
+                verses: chapter.verses,
+                viewport: size
+            )
+            pageCache.put(chapterPages)
+
+            // Get the last page of the previous chapter
+            let lastPageIndex = max(chapterPages.pageCount - 1, 0)
+            let cursor = Cursor(book: chapterKey.book, chapter: prevChapter, pageIndex: lastPageIndex)
+            #if DEBUG
+            print("⬅️ HANDOFF: \(chapterKey.description) → \(cursor.description) (previous chapter)")
+            #endif
+            return cursor
+        }
+
+        #if DEBUG
+        print("⬅️ HANDOFF: Previous chapter \(chapterKey.book) \(prevChapter) not found")
+        #endif
         return nil
+    }
+
+    // MARK: - Cross-Chapter Handoff Methods
+
+    private func handoffToNextChapterFirstPage() async {
+        guard let currentSlice = currentNode?.slice else {
+            #if DEBUG
+            print("❌ HANDOFF NEXT: No current slice available")
+            #endif
+            return
+        }
+
+        let nextChapter = currentSlice.endVerse.chapter + 1
+        let nextKey = VerseKey(book: currentSlice.endVerse.book,
+                              chapter: nextChapter,
+                              verse: 1) // Start of next chapter
+
+        // Try to load the next chapter
+        let result = await loader.loadChapter(book: nextKey.book, chapter: nextKey.chapter)
+        guard case .success(let chapter) = result, !chapter.verses.isEmpty else {
+            #if DEBUG
+            print("❌ HANDOFF NEXT: Could not load next chapter \(nextKey.book) \(nextKey.chapter)")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("↪️ HANDOFF NEXT: \(currentSlice.endVerse.description) → \(nextKey.description)")
+        #endif
+
+        // Generate the first page of the next chapter
+        await generatePage(startingAt: (nextKey.book, nextKey.chapter, nextKey.verse))
+    }
+
+    private func handoffToPreviousChapterLastPage() async {
+        guard let currentSlice = currentNode?.slice else {
+            #if DEBUG
+            print("❌ HANDOFF PREV: No current slice available")
+            #endif
+            return
+        }
+
+        // Can't go before chapter 1
+        guard currentSlice.startVerse.chapter > 1 else {
+            #if DEBUG
+            print("❌ HANDOFF PREV: Already at first chapter of \(currentSlice.startVerse.book)")
+            #endif
+            return
+        }
+
+        let prevChapter = currentSlice.startVerse.chapter - 1
+
+        // Load the previous chapter to find its last verse
+        let result = await loader.loadChapter(book: currentSlice.startVerse.book, chapter: prevChapter)
+        guard case .success(let chapter) = result, let lastVerse = chapter.verses.last else {
+            #if DEBUG
+            print("❌ HANDOFF PREV: Could not load previous chapter \(currentSlice.startVerse.book) \(prevChapter)")
+            #endif
+            return
+        }
+
+        let prevKey = VerseKey(book: currentSlice.startVerse.book,
+                              chapter: prevChapter,
+                              verse: lastVerse.verseNumber)
+
+        #if DEBUG
+        print("↩️ HANDOFF PREV: \(currentSlice.startVerse.description) → \(prevKey.description)")
+        #endif
+
+        // Generate a page starting from the last verse of the previous chapter
+        await generatePage(startingAt: (prevKey.book, prevKey.chapter, prevKey.verse))
     }
 
     private func loadPageForCursor(_ cursor: Cursor) async {

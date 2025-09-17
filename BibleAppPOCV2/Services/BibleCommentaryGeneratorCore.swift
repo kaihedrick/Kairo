@@ -1,3 +1,6 @@
+// 🚫 AI/ML functionality is completely disabled
+#if AI_FEATURES
+
 import Foundation
 import CoreML
 
@@ -241,3 +244,5 @@ public final class BibleCommentaryGeneratorCore {
         return out
     }
 }
+
+#endif // AI_FEATURES

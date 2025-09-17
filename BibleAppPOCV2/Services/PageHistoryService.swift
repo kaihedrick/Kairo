@@ -40,6 +40,20 @@ final class PageHistoryService: ObservableObject {
         let historyEntry = createHistoryEntry(for: optimizedPage, pageSize: pageSize)
         enhancedHistoryManager.pushPage(historyEntry)
     }
+
+    /// Push a DatabasePageContent to history
+    func pushDatabasePage(_ page: DatabasePageContent, pageSize: CGSize,
+                          horizontalPadding: CGFloat, verticalPadding: CGFloat) {
+        let historyEntry = PageHistoryEntry.createFromDatabasePage(page,
+            pageSize: pageSize,
+            horizontalPadding: horizontalPadding,
+            verticalPadding: verticalPadding)
+        enhancedHistoryManager.pushPage(historyEntry)
+
+        #if DEBUG
+        print("📚 HISTORY PUSH: \(page.navTitle) (\(page.startVerse.description) to \(page.endVerse.description))")
+        #endif
+    }
     
     /// Navigate backward in history
     func goBackward() -> PageHistoryEntry? {

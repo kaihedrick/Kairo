@@ -137,6 +137,31 @@ struct PageHistoryEntry: Equatable {
         )
         return layoutHash == currentHash
     }
+
+    /// Create a history entry from DatabasePageContent
+    static func createFromDatabasePage(_ page: DatabasePageContent,
+                                       pageSize: CGSize,
+                                       horizontalPadding: CGFloat,
+                                       verticalPadding: CGFloat) -> PageHistoryEntry {
+        let layoutHash = createLayoutHash(pageSize: pageSize,
+                                          horizontalPadding: horizontalPadding,
+                                          verticalPadding: verticalPadding)
+
+        return PageHistoryEntry(
+            book: page.startVerse.book,
+            chapter: page.startVerse.chapter,
+            verse: page.startVerse.verse,
+            renderedContent: String(page.content.characters),
+            navTitle: page.navTitle,
+            pageSize: pageSize,
+            layoutHash: layoutHash,
+            verseKeys: page.verseKeys.map { "\($0.book) \($0.chapter):\($0.verse)" },
+            hasSplitVerses: false, // Database pages don't split verses
+            endBook: page.endVerse.book,
+            endChapter: page.endVerse.chapter,
+            endVerse: page.endVerse.verse
+        )
+    }
     
     /// Debug description for troubleshooting
     var debugDescription: String {
