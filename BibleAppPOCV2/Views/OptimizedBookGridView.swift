@@ -104,8 +104,10 @@ struct OptimizedBookGridView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
-                // Background that extends to screen edges - adapts to dark mode
-                Color(UIColor.systemBackground).ignoresSafeArea()
+                // Liquid Glass Background
+                Color.clear
+                    .background(LG.backgroundMaterial)
+                    .ignoresSafeArea()
                 
                 // Main content layer - ScrollView with book grid
                 if viewModel.isInitializing {
@@ -149,41 +151,48 @@ struct OptimizedBookGridView: View {
     }
     
     private var initializationView: some View {
-        VStack(spacing: 20) {
-            ProgressView(value: viewModel.initializationProgress)
-                .progressViewStyle(LinearProgressViewStyle())
-                .frame(width: 200)
-            
-            Text("Loading Bible...")
-                .font(.headline)
-            
-            Text("\(Int(viewModel.initializationProgress * 100))% Complete")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        GlassCard {
+            VStack(spacing: LG.padding) {
+                ProgressView(value: viewModel.initializationProgress)
+                    .progressViewStyle(LinearProgressViewStyle())
+                    .frame(width: 200)
+
+                Text("Loading Bible...")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text("\(Int(viewModel.initializationProgress * 100))% Complete")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .padding(LG.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundColor(.orange)
-            
-            Text("Initialization Failed")
-                .font(.headline)
-            
-            Text(error)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            
-            Button("Retry") {
-                viewModel.retryInitialization()
+        GlassCard {
+            VStack(spacing: LG.padding) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundStyle(.orange)
+
+                Text("Initialization Failed")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("Retry") {
+                    viewModel.retryInitialization()
+                }
+                .glassButtonStyle()
             }
-            .buttonStyle(.borderedProminent)
         }
-        .padding()
+        .padding(LG.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
@@ -417,32 +426,20 @@ struct OptimizedBookGridView: View {
             if shouldShowGlassHeader {
                 GeometryReader { geometry in
                     VStack(spacing: 0) {
-                        Text("📖 Select a Book")
-                            .font(.title2.bold())
-                            .foregroundColor(.primary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, geometry.safeAreaInsets.top + 25)
-                            .padding(.bottom, 16)
-                            .padding(.horizontal, 20)
+                        HStack {
+                            Image(systemName: "book.closed")
+                                .foregroundStyle(.secondary)
+                            Text("Select a Book")
+                                .font(.title2.bold())
+                                .foregroundStyle(.primary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, geometry.safeAreaInsets.top + 25)
+                        .padding(.bottom, LG.smallPadding)
+                        .padding(.horizontal, LG.padding)
                     }
                     .frame(maxWidth: .infinity)
-                    .background(
-                        // Native iOS glass effect using available APIs
-                        RoundedRectangle(cornerRadius: 0)
-                            .fill(.ultraThinMaterial)
-                            .background(.regularMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 0)
-                                    .fill(.ultraThinMaterial.opacity(0.3))
-                                    .blendMode(.overlay)
-                            )
-                            .shadow(
-                                color: Color.black.opacity(0.25),
-                                radius: 4,
-                                x: 0,
-                                y: 1
-                            )
-                    )
+                    .background(LG.toolbarMaterial)
                     .ignoresSafeArea(edges: .top)
                     .onTapGesture {
                         scrollToTop()
@@ -453,7 +450,7 @@ struct OptimizedBookGridView: View {
                     insertion: .opacity.combined(with: .move(edge: .top)),
                     removal: .opacity.combined(with: .move(edge: .top))
                 ))
-                .animation(.easeInOut(duration: 0.3), value: shouldShowGlassHeader)
+                .lgSpring()
                 .zIndex(100)
             }
         }
@@ -551,49 +548,55 @@ struct OptimizedBookGridView: View {
     
     private func sectionHeader(_ title: String) -> some View {
         let bookCount = filteredBookGroups[title]?.count ?? 0
-        return Text("\(title) (\(bookCount) books)")
-            .font(.title3.weight(.semibold))
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 8)
+        return GlassCard {
+            Text("\(title) (\(bookCount) books)")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .padding(.horizontal, LG.padding)
+        .padding(.vertical, LG.smallPadding)
     }
     
     // MARK: - Search Empty State
     
     private var searchEmptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 48, weight: .ultraLight))
-                .foregroundColor(.secondary)
-            
-            VStack(spacing: 8) {
-                Text("No books found")
-                    .font(.title2.weight(.medium))
-                    .foregroundColor(.primary)
-                
-                Text("Try adjusting your search terms")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    searchText = ""
-                    isSearchActive = false
+        GlassCard {
+            VStack(spacing: LG.padding) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 48, weight: .ultraLight))
+                    .foregroundStyle(.secondary)
+
+                VStack(spacing: LG.smallPadding) {
+                    Text("No books found")
+                        .font(.title2.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    Text("Try adjusting your search terms")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-            }) {
-                Text("Clear Search")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.blue)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(.blue.opacity(0.1))
-                    )
+
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        searchText = ""
+                        isSearchActive = false
+                    }
+                }) {
+                    Text("Clear Search")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .padding(.horizontal, LG.padding)
+                        .padding(.vertical, LG.smallPadding)
+                        .background(
+                            RoundedRectangle(cornerRadius: LG.smallCornerRadius)
+                                .fill(LG.glassTint)
+                        )
+                }
             }
         }
+        .padding(LG.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear)
     }
     
     // Memory warning handling

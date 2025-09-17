@@ -10,6 +10,18 @@ import Foundation
 import SQLite3
 
 public class EnhancedBibleDatabase {
+    // B) Use SQLITE_TRANSIENT for text binds
+    private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    // MARK: - Helper Functions
+
+    /// Safely convert SQLite text column to Swift String
+    private func sqliteString(from statement: OpaquePointer?, column: Int32) -> String? {
+        guard let textPtr = sqlite3_column_text(statement, column) else { return nil }
+        // Cast to CChar pointer for String conversion
+        let cCharPtr = UnsafeRawPointer(textPtr).assumingMemoryBound(to: CChar.self)
+        return String(cString: cCharPtr, encoding: .utf8)
+    }
     private var db: OpaquePointer?
     private let dbPath: String
 
@@ -62,6 +74,55 @@ public class EnhancedBibleDatabase {
 
         if sqlite3_open(dbPath, &db) == SQLITE_OK {
             print("✅ Enhanced Bible database opened successfully")
+
+            // Part 0 - Open/close smoke test: Check SQLite version
+            #if DEBUG
+            let versionQuery = "SELECT sqlite_version();"
+            var versionStatement: OpaquePointer?
+            if sqlite3_prepare_v2(db, versionQuery, -1, &versionStatement, nil) == SQLITE_OK {
+                if sqlite3_step(versionStatement) == SQLITE_ROW {
+                    if let version = sqliteString(from: versionStatement, column: 0) {
+                        print("🔍 SQLite version: \(version)")
+                    }
+                }
+                sqlite3_finalize(versionStatement)
+            }
+
+            // Part 0 - Basic counts
+            let bookCountQuery = "SELECT COUNT(*) FROM books;"
+            var bookStatement: OpaquePointer?
+            if sqlite3_prepare_v2(db, bookCountQuery, -1, &bookStatement, nil) == SQLITE_OK {
+                if sqlite3_step(bookStatement) == SQLITE_ROW {
+                    let bookCount = Int(sqlite3_column_int(bookStatement, 0))
+                    print("🔍 Book count: \(bookCount)")
+                }
+                sqlite3_finalize(bookStatement)
+            }
+
+            let verseCountQuery = "SELECT COUNT(*) FROM verses;"
+            var verseStatement: OpaquePointer?
+            if sqlite3_prepare_v2(db, verseCountQuery, -1, &verseStatement, nil) == SQLITE_OK {
+                if sqlite3_step(verseStatement) == SQLITE_ROW {
+                    let verseCount = Int(sqlite3_column_int(verseStatement, 0))
+                    print("🔍 Verse count: \(verseCount)")
+                }
+                sqlite3_finalize(verseStatement)
+            }
+
+            // Part 0 - Sample book names
+            let bookNamesQuery = "SELECT id, name FROM books ORDER BY id LIMIT 10;"
+            var namesStatement: OpaquePointer?
+            if sqlite3_prepare_v2(db, bookNamesQuery, -1, &namesStatement, nil) == SQLITE_OK {
+                print("🔍 First 10 books:")
+                while sqlite3_step(namesStatement) == SQLITE_ROW {
+                    let id = Int(sqlite3_column_int(namesStatement, 0))
+                    let name = sqliteString(from: namesStatement, column: 1) ?? "Unknown"
+                    print("   • ID \(id): \(name)")
+                }
+                sqlite3_finalize(namesStatement)
+            }
+            #endif
+
             return true
         } else {
             if let errorMsg = String(cString: sqlite3_errmsg(db), encoding: .utf8) {
@@ -122,7 +183,7 @@ public class EnhancedBibleDatabase {
             
             while sqlite3_step(booksStatement) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(booksStatement, 0))
-                let name = String(cString: sqlite3_column_text(booksStatement, 1))
+                let name = sqliteString(from: booksStatement, column: 1) ?? "Unknown"
                 books.append((id, name))
                 bookCount += 1
             }
@@ -180,9 +241,9 @@ public class EnhancedBibleDatabase {
                                 verseCount += 1
                                 if verseCount == 1 {
                                     let verseNum = Int(sqlite3_column_int(versesStatement, 0))
-                                    let text = String(cString: sqlite3_column_text(versesStatement, 1))
+                                    let text = sqliteString(from: versesStatement, column: 1) ?? ""
                                     let id = Int(sqlite3_column_int(versesStatement, 2))
-                                    let normalized = String(cString: sqlite3_column_text(versesStatement, 3))
+                                    let normalized = sqliteString(from: versesStatement, column: 3) ?? ""
                                     
                                     let preview = text.count > 50 ? String(text.prefix(50)) + "..." : text
                                     print("   Verses in chapter \(firstChap): \(verseCount)")
@@ -211,10 +272,10 @@ public class EnhancedBibleDatabase {
         print("🔍 TESTING DIRECT QUERY:")
         
         let directQuery = """
-            SELECT v.id, v.chapter_id, v.verse_number, v.name, v.text, v.verse_id_normalized
-            FROM verses v 
-            JOIN chapters c ON v.chapter_id = c.id 
-            JOIN books b ON c.book_id = b.id 
+            SELECT v.id, c.chapter_number, v.verse_number, v.name, v.text, v.verse_id_normalized
+            FROM verses v
+            JOIN chapters c ON v.chapter_id = c.id
+            JOIN books b ON c.book_id = b.id
             WHERE b.name = 'Matthew' AND c.chapter_number = 1 AND v.verse_number = 1
         """
         
@@ -222,15 +283,15 @@ public class EnhancedBibleDatabase {
         if sqlite3_prepare_v2(db, directQuery, -1, &statement, nil) == SQLITE_OK {
             if sqlite3_step(statement) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(statement, 0))
-                let chapterId = Int(sqlite3_column_int(statement, 1))
+                let chapterNumber = Int(sqlite3_column_int(statement, 1))
                 let verseNumber = Int(sqlite3_column_int(statement, 2))
-                let name = String(cString: sqlite3_column_text(statement, 3))
-                let text = String(cString: sqlite3_column_text(statement, 4))
-                
+                let name = sqliteString(from: statement, column: 3) ?? "Unknown"
+                let text = sqliteString(from: statement, column: 4) ?? ""
+
                 let preview = text.count > 50 ? String(text.prefix(50)) + "..." : text
                 print("✅ Direct query successful:")
                 print("   Book: Matthew")
-                print("   Chapter: \(chapterId)")
+                print("   Chapter: \(chapterNumber)")
                 print("   Verse: \(verseNumber)")
                 print("   Text: '\(preview)'")
             } else {
@@ -298,7 +359,7 @@ public class EnhancedBibleDatabase {
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             while sqlite3_step(statement) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(statement, 0))
-                let name = String(cString: sqlite3_column_text(statement, 1))
+                let name = sqliteString(from: statement, column: 1) ?? "Unknown"
                 books.append(Book(id: id, name: name))
             }
         }
@@ -318,7 +379,7 @@ public class EnhancedBibleDatabase {
                 let id = Int(sqlite3_column_int(statement, 0))
                 let bookId = Int(sqlite3_column_int(statement, 1))
                 let chapterNumber = Int(sqlite3_column_int(statement, 2))
-                let name = String(cString: sqlite3_column_text(statement, 3))
+                let name = sqliteString(from: statement, column: 3) ?? "Unknown"
 
                 chapters.append(Chapter(id: id, bookId: bookId, chapterNumber: chapterNumber, name: name))
             }
@@ -339,9 +400,9 @@ public class EnhancedBibleDatabase {
                 let id = Int(sqlite3_column_int(statement, 0))
                 let chapterId = Int(sqlite3_column_int(statement, 1))
                 let verseNumber = Int(sqlite3_column_int(statement, 2))
-                let name = String(cString: sqlite3_column_text(statement, 3))
-                let text = String(cString: sqlite3_column_text(statement, 4))
-                let verseIdNormalized = String(cString: sqlite3_column_text(statement, 5))
+                let name = sqliteString(from: statement, column: 3) ?? "Unknown"
+                let text = sqliteString(from: statement, column: 4) ?? ""
+                let verseIdNormalized = sqliteString(from: statement, column: 5) ?? ""
 
                 verses.append(Verse(id: id, chapterId: chapterId, verseNumber: verseNumber,
                                    name: name, text: text, verseIdNormalized: verseIdNormalized))
@@ -351,11 +412,96 @@ public class EnhancedBibleDatabase {
         return verses
     }
 
+    // MARK: - Book Name Canonicalization
+
+    /// Canonicalize book names to handle aliases and variations
+    private func canonicalizeBookName(_ raw: String) -> String {
+        let aliases: [String: String] = [
+            "Song of Songs": "Song of Solomon",
+            "Canticles": "Song of Solomon",
+            "Song": "Song of Solomon",
+            "Revelations": "Revelation",
+            "Apocalypse": "Revelation",
+            "Rev": "Revelation",
+            "I John": "1 John",
+            "First John": "1 John",
+            "II John": "2 John",
+            "Second John": "2 John",
+            "III John": "3 John",
+            "Third John": "3 John",
+            "Ps": "Psalms",
+            "Psa": "Psalms",
+            "Proverbs": "Proverbs",
+            "Prov": "Proverbs",
+            "Ecc": "Ecclesiastes",
+            "Eccl": "Ecclesiastes",
+            "Ezek": "Ezekiel",
+            "Hos": "Hosea",
+            "Joel": "Joel",
+            "Amos": "Amos",
+            "Obad": "Obadiah",
+            "Oba": "Obadiah",
+            "Jonah": "Jonah",
+            "Jona": "Jonah",
+            "Mic": "Micah",
+            "Nah": "Nahum",
+            "Hab": "Habakkuk",
+            "Zeph": "Zephaniah",
+            "Zep": "Zephaniah",
+            "Hag": "Haggai",
+            "Zech": "Zechariah",
+            "Zec": "Zechariah",
+            "Mal": "Malachi",
+            "Matt": "Matthew",
+            "Mk": "Mark",
+            "Mrk": "Mark",
+            "Lk": "Luke",
+            "Luk": "Luke",
+            "Jn": "John",
+            "Jhn": "John",
+            "Acts": "Acts",
+            "Rom": "Romans",
+            "Cor": "Corinthians",
+            "Gal": "Galatians",
+            "Eph": "Ephesians",
+            "Phil": "Philippians",
+            "Col": "Colossians",
+            "Thess": "Thessalonians",
+            "Tim": "Timothy",
+            "Tit": "Titus",
+            "Phlm": "Philemon",
+            "Heb": "Hebrews",
+            "James": "James",
+            "Jas": "James",
+            "Pet": "Peter",
+            "Jude": "Jude",
+            "Jer": "Jeremiah",
+            "Lam": "Lamentations",
+            "Dan": "Daniel",
+            "Deut": "Deuteronomy"
+        ]
+
+        // Normalize whitespace & periods
+        let trimmed = raw.replacingOccurrences(of: "\\.", with: "", options: .regularExpression)
+                         .trimmingCharacters(in: .whitespacesAndNewlines)
+        return aliases[trimmed] ?? trimmed
+    }
+
+    /// Create normalized verse ID for fallback lookup
+    private func makeNormalizedId(book: String, chapter: Int, verse: Int) -> String {
+        let canonical = canonicalizeBookName(book)
+        // D) Normalize ID to UPPERCASE and compare NOCASE
+        let normBook = canonical.replacingOccurrences(of: " ", with: "_").uppercased()
+        return "\(normBook)_\(chapter)_\(verse)"
+    }
+
     /// Get a specific verse by book name, chapter, and verse number
     /// Following the same pattern as the main BibleDatabase - open, query, close
     func getVerseByReference(bookName: String, chapterNumber: Int, verseNumber: Int) -> Verse? {
         #if DEBUG
         print("🔍 Looking for verse: \(bookName) \(chapterNumber):\(verseNumber)")
+        print("🔍 Incoming reference string: \"\(bookName) \(chapterNumber):\(verseNumber)\"")
+        print("🔍 Parsed: {book: \"\(bookName)\", chapter: \(chapterNumber), verse: \(verseNumber)}")
         #endif
         
         // Open database connection (following the working pattern from BibleDatabase)
@@ -372,26 +518,84 @@ public class EnhancedBibleDatabase {
         }
         
         defer { sqlite3_close(localDb) } // Ensure database is closed when function exits
-        
+
+        // Helper for brevity
+        let prepare: (OpaquePointer?, String) -> OpaquePointer? = { db, sql in
+            var st: OpaquePointer?
+            if sqlite3_prepare_v2(db, sql, -1, &st, nil) == SQLITE_OK { return st }
+            return nil
+        }
+
         #if DEBUG
         print("✅ Database opened successfully for query")
+
+        // A) Log the exact file opened (prove we're on the right DB)
+        var listStmt: OpaquePointer?
+        if sqlite3_prepare_v2(localDb, "PRAGMA database_list;", -1, &listStmt, nil) == SQLITE_OK {
+            while sqlite3_step(listStmt) == SQLITE_ROW {
+                let seq = sqlite3_column_int(listStmt, 0)
+                let name = sqliteString(from: listStmt, column: 1) ?? "?"
+                let file = sqliteString(from: listStmt, column: 2) ?? "?"
+                print("🗂️ DB[\(seq)] name=\(name) path=\(file)")
+            }
+            sqlite3_finalize(listStmt)
+        }
+
+        // One-off verification queries
+        if let stmt = prepare(localDb, """
+            SELECT COUNT(*)
+            FROM verses v
+            JOIN chapters c ON v.chapter_id = c.id
+            JOIN books b ON c.book_id = b.id
+            WHERE b.name = 'Matthew' AND c.chapter_number = 1;
+            """) {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                print("🔍 Matthew 1 verse count:", sqlite3_column_int(stmt, 0))
+            }
+            sqlite3_finalize(stmt)
+        }
+
+        if let stmt = prepare(localDb, """
+            SELECT v.verse_id_normalized
+            FROM verses v
+            JOIN chapters c ON v.chapter_id = c.id
+            JOIN books b ON c.book_id = b.id
+            WHERE b.name = 'Matthew' AND c.chapter_number = 1
+            ORDER BY v.verse_number
+            LIMIT 3;
+            """) {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let norm = sqliteString(from: stmt, column: 0) ?? ""
+                print("🔎 Sample normalized id:", norm)
+            }
+            sqlite3_finalize(stmt)
+        }
         #endif
 
-        // Use the same query structure as our command line queries
+        // C) Make both sides NOCASE and keep TRIM
         let query = """
             SELECT v.id, v.chapter_id, v.verse_number, v.name, v.text, v.verse_id_normalized
             FROM verses v
             JOIN chapters c ON v.chapter_id = c.id
             JOIN books b ON c.book_id = b.id
-            WHERE b.name = ? AND c.chapter_number = ? AND v.verse_number = ?
+            WHERE TRIM(b.name) COLLATE NOCASE = TRIM(?) COLLATE NOCASE
+              AND c.chapter_number = ?
+              AND v.verse_number = ?
+            LIMIT 1
         """
+
+        #if DEBUG
+        print("🔍 SQL being used: WHERE TRIM(b.name) COLLATE NOCASE = TRIM(?) COLLATE NOCASE AND c.chapter_number = ? AND v.verse_number = ? LIMIT 1")
+        print("🔍 Bound values: book='\(bookName)', chapter=\(chapterNumber), verse=\(verseNumber)")
+        #endif
 
         var statement: OpaquePointer?
         var verse: Verse?
 
         let prepareResult = sqlite3_prepare_v2(localDb, query, -1, &statement, nil)
         if prepareResult == SQLITE_OK {
-            let bindResult1 = sqlite3_bind_text(statement, 1, bookName, -1, nil)
+            // B) Use SQLITE_TRANSIENT for text binds
+            let bindResult1 = sqlite3_bind_text(statement, 1, bookName, -1, SQLITE_TRANSIENT)
             let bindResult2 = sqlite3_bind_int(statement, 2, Int32(chapterNumber))
             let bindResult3 = sqlite3_bind_int(statement, 3, Int32(verseNumber))
             
@@ -409,9 +613,9 @@ public class EnhancedBibleDatabase {
                 let id = Int(sqlite3_column_int(statement, 0))
                 let chapterId = Int(sqlite3_column_int(statement, 1))
                 let verseNumber = Int(sqlite3_column_int(statement, 2))
-                let name = String(cString: sqlite3_column_text(statement, 3))
-                let text = String(cString: sqlite3_column_text(statement, 4))
-                let verseIdNormalized = String(cString: sqlite3_column_text(statement, 5))
+                let name = sqliteString(from: statement, column: 3) ?? "Unknown"
+                let text = sqliteString(from: statement, column: 4) ?? ""
+                let verseIdNormalized = sqliteString(from: statement, column: 5) ?? ""
 
                 verse = Verse(id: id, chapterId: chapterId, verseNumber: verseNumber,
                             name: name, text: text, verseIdNormalized: verseIdNormalized)
@@ -439,7 +643,105 @@ public class EnhancedBibleDatabase {
         }
         sqlite3_finalize(statement)
 
+        // Part 4 - Add Normalized-ID Fallback: If primary query fails, try fallback
+        if verse == nil {
+            #if DEBUG
+            print("🔄 Primary query failed for: \(bookName) \(chapterNumber):\(verseNumber)")
+            print("🔄 Trying fallback by normalized ID...")
+            #endif
+
+            let norm = makeNormalizedId(book: bookName, chapter: chapterNumber, verse: verseNumber)
+            if let fallbackVerse = getVerseByNormalizedId(norm) {
+                #if DEBUG
+                print("✅ Fallback successful using normalized ID: \(norm)")
+                #endif
+                return fallbackVerse
+            } else {
+                #if DEBUG
+                print("❌ Fallback also failed for normalized ID: \(norm)")
+                #endif
+            }
+        } else {
+            #if DEBUG
+            print("✅ Primary query successful for: \(bookName) \(chapterNumber):\(verseNumber)")
+            #endif
+        }
+
         return verse
+    }
+
+    /// Get a specific verse by normalized ID (fallback method)
+    func getVerseByNormalizedId(_ normalized: String) -> Verse? {
+        #if DEBUG
+        print("🔍 Looking up verse by normalized ID: \(normalized)")
+        #endif
+
+        // Open database connection
+        var localDb: OpaquePointer?
+        guard sqlite3_open(dbPath, &localDb) == SQLITE_OK else {
+            #if DEBUG
+            print("❌ Failed to open database for normalized ID lookup")
+            #endif
+            sqlite3_close(localDb)
+            return nil
+        }
+
+        defer { sqlite3_close(localDb) }
+
+        // D) Update fallback query to be NOCASE-safe
+        let query = """
+            SELECT v.id, v.chapter_id, v.verse_number, v.name, v.text, v.verse_id_normalized
+            FROM verses v
+            WHERE v.verse_id_normalized = ? COLLATE NOCASE
+            LIMIT 1
+        """
+
+        #if DEBUG
+        print("🔍 Normalized ID query: WHERE v.verse_id_normalized = ? COLLATE NOCASE LIMIT 1")
+        print("🔍 Bound value: normalized='\(normalized)'")
+        #endif
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(localDb, query, -1, &statement, nil) == SQLITE_OK else {
+            #if DEBUG
+            print("❌ Failed to prepare normalized ID query")
+            #endif
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+
+        // B) Use SQLITE_TRANSIENT for text binds
+        sqlite3_bind_text(statement, 1, normalized, -1, SQLITE_TRANSIENT)
+
+        let stepResult = sqlite3_step(statement)
+        #if DEBUG
+        print("🔍 Normalized ID sqlite3_step result: \(stepResult) (SQLITE_ROW=\(SQLITE_ROW))")
+        #endif
+
+        if stepResult == SQLITE_ROW {
+            let id = Int(sqlite3_column_int(statement, 0))
+            let chapterId = Int(sqlite3_column_int(statement, 1))
+            let verseNumber = Int(sqlite3_column_int(statement, 2))
+            let name = sqliteString(from: statement, column: 3) ?? "Unknown"
+            let text = sqliteString(from: statement, column: 4) ?? ""
+            let verseIdNormalized = sqliteString(from: statement, column: 5) ?? ""
+
+            let verse = Verse(id: id, chapterId: chapterId, verseNumber: verseNumber,
+                            name: name, text: text, verseIdNormalized: verseIdNormalized)
+
+            #if DEBUG
+            print("✅ Found verse by normalized ID: \(normalized)")
+            print("📖 Verse details: \(name) - \(text.prefix(50))...")
+            #endif
+
+            return verse
+        } else {
+            #if DEBUG
+            print("❌ No verse found for normalized ID: \(normalized)")
+            #endif
+        }
+
+        return nil
     }
 
     /// Get commentary for a specific verse ID
@@ -468,8 +770,8 @@ public class EnhancedBibleDatabase {
             if sqlite3_step(statement) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(statement, 0))
                 let verseId = Int(sqlite3_column_int(statement, 1))
-                let enhancedCommentary = String(cString: sqlite3_column_text(statement, 2))
-                let devotionalSummary = String(cString: sqlite3_column_text(statement, 3))
+                let enhancedCommentary = sqliteString(from: statement, column: 2) ?? ""
+                let devotionalSummary = sqliteString(from: statement, column: 3) ?? ""
                 
                 commentary = Commentary(id: id, verseId: verseId, 
                                       enhancedCommentary: enhancedCommentary, 
@@ -499,7 +801,7 @@ public class EnhancedBibleDatabase {
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             while sqlite3_step(statement) == SQLITE_ROW {
-                let name = String(cString: sqlite3_column_text(statement, 0))
+                let name = sqliteString(from: statement, column: 0) ?? "Unknown"
                 movements.append(name)
             }
         }
@@ -514,15 +816,15 @@ public class EnhancedBibleDatabase {
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             let searchPattern = "%\(searchText)%"
-            sqlite3_bind_text(statement, 1, searchPattern, -1, nil)
+            sqlite3_bind_text(statement, 1, searchPattern, -1, SQLITE_TRANSIENT)
 
             while sqlite3_step(statement) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(statement, 0))
                 let chapterId = Int(sqlite3_column_int(statement, 1))
                 let verseNumber = Int(sqlite3_column_int(statement, 2))
-                let name = String(cString: sqlite3_column_text(statement, 3))
-                let text = String(cString: sqlite3_column_text(statement, 4))
-                let verseIdNormalized = String(cString: sqlite3_column_text(statement, 5))
+                let name = sqliteString(from: statement, column: 3) ?? "Unknown"
+                let text = sqliteString(from: statement, column: 4) ?? ""
+                let verseIdNormalized = sqliteString(from: statement, column: 5) ?? ""
 
                 verses.append(Verse(id: id, chapterId: chapterId, verseNumber: verseNumber,
                                    name: name, text: text, verseIdNormalized: verseIdNormalized))

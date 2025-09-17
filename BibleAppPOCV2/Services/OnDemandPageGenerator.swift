@@ -74,6 +74,182 @@ private final class SliceNode {
     }
 }
 
+// MARK: - Page-Aware Navigation Data Structures
+
+struct PageRange: Equatable, Hashable {
+    let startVerse: Int
+    let endVerse: Int
+
+    var description: String {
+        "\(startVerse)-\(endVerse)"
+    }
+}
+
+struct ChapterKey: Hashable {
+    let book: String
+    let chapter: Int
+
+    var description: String {
+        "\(book) \(chapter)"
+    }
+}
+
+struct ChapterPages {
+    let key: ChapterKey
+    let ranges: [PageRange]
+    let verseHeights: [Int: CGFloat] // verseNumber → measured height
+
+    var pageCount: Int { ranges.count }
+
+    func pageIndex(containing verse: Int) -> Int {
+        // Binary search to find the page containing a verse
+        var lo = 0, hi = ranges.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            let range = ranges[mid]
+            if verse < range.startVerse {
+                hi = mid - 1
+            } else if verse > range.endVerse {
+                lo = mid + 1
+            } else {
+                return mid
+            }
+        }
+        // If not found, return the closest valid index
+        return max(min(lo, ranges.count - 1), 0)
+    }
+
+    func range(at index: Int) -> PageRange? {
+        ranges.indices.contains(index) ? ranges[index] : nil
+    }
+}
+
+struct Cursor {
+    var book: String
+    var chapter: Int
+    var pageIndex: Int
+
+    var chapterKey: ChapterKey {
+        ChapterKey(book: book, chapter: chapter)
+    }
+
+    var description: String {
+        "\(book) \(chapter) [\(pageIndex)]"
+    }
+}
+
+final class PageCache {
+    private var map: [ChapterKey: ChapterPages] = [:]
+    private var order: [ChapterKey] = [] // LRU order
+    let capacity = 6 // current, ±2 neighbors
+
+    func get(_ key: ChapterKey) -> ChapterPages? {
+        if let pages = map[key] {
+            // Move to front of LRU order
+            order.removeAll { $0 == key }
+            order.insert(key, at: 0)
+            return pages
+        }
+        return nil
+    }
+
+    func put(_ pages: ChapterPages) {
+        map[pages.key] = pages
+        order.removeAll { $0 == pages.key }
+        order.insert(pages.key, at: 0)
+
+        // Evict if over capacity
+        while order.count > capacity, let evicted = order.popLast() {
+            map.removeValue(forKey: evicted)
+            #if DEBUG
+            print("📚 CACHE EVICT: \(evicted.description)")
+            #endif
+        }
+
+        #if DEBUG
+        print("📚 CACHE PUT: \(pages.key.description) → pages=\(pages.pageCount)")
+        #endif
+    }
+
+    func clearAll() {
+        map.removeAll()
+        order.removeAll()
+        #if DEBUG
+        print("📚 CACHE CLEARED: All chapters evicted")
+        #endif
+    }
+
+    var cacheSize: Int { map.count }
+    var cachedChapters: [ChapterKey] { Array(map.keys) }
+
+    // MARK: - Page Computation
+
+    func computePages(book: String, chapter: Int, verses: [DatabaseVerse],
+                     viewport: CGSize, limit: CGFloat = 0.90, safety: CGFloat = 20) -> ChapterPages {
+        let maxAllowed = floor((viewport.height - safety) * limit)
+        var ranges: [PageRange] = []
+        var heights: [Int: CGFloat] = [:]
+
+        #if DEBUG
+        print("🧮 COMPUTING PAGES: \(book) \(chapter) (\(verses.count) verses), maxAllowed=\(String(format: "%.1f", maxAllowed))")
+        #endif
+
+        guard !verses.isEmpty else {
+            return ChapterPages(key: ChapterKey(book: book, chapter: chapter), ranges: [], verseHeights: [:])
+        }
+
+        var startVerse = verses.first!.verseNumber
+        var usedHeight: CGFloat = 0
+
+        for verse in verses {
+            // Format verse and measure height (simplified - use same logic as PageContentGenerator)
+            let verseText = JITTextFormatter.formatVerse(
+                book: book,
+                chapter: chapter,
+                verse: verse.verseNumber,
+                text: verse.text,
+                showChapterHeader: verse.verseNumber == 1,
+                showBookTitle: chapter == 1 && verse.verseNumber == 1
+            )
+
+            let verseHeight = JITTextFormatter.measureText(verseText, maxSize: CGSize(
+                width: viewport.width - (LayoutMetrics.horizontalPagePadding * 2),
+                height: .greatestFiniteMagnitude
+            )).height
+
+            heights[verse.verseNumber] = verseHeight
+
+            // Check if adding this verse would exceed the page limit
+            if usedHeight + verseHeight > maxAllowed && usedHeight > 0 {
+                // Complete current page and start new one
+                let endVerse = verse.verseNumber - 1
+                ranges.append(PageRange(startVerse: startVerse, endVerse: endVerse))
+
+                #if DEBUG
+                print("📄 PAGE COMPLETE: \(startVerse)-\(endVerse), height=\(String(format: "%.1f", usedHeight))")
+                #endif
+
+                startVerse = verse.verseNumber
+                usedHeight = 0
+            }
+
+            usedHeight += verseHeight
+        }
+
+        // Add the final page if there are remaining verses
+        if let lastVerse = verses.last?.verseNumber, startVerse <= lastVerse {
+            ranges.append(PageRange(startVerse: startVerse, endVerse: lastVerse))
+
+            #if DEBUG
+            print("📄 FINAL PAGE: \(startVerse)-\(lastVerse), height=\(String(format: "%.1f", usedHeight))")
+            print("📚 CHAPTER PAGES: \(book) \(chapter) → \(ranges.count) pages total")
+            #endif
+        }
+
+        return ChapterPages(key: ChapterKey(book: book, chapter: chapter), ranges: ranges, verseHeights: heights)
+    }
+}
+
 /// Errors that can occur while generating a page.
 enum PageGenerationError: LocalizedError {
     case missingChapter(VerseKey)
@@ -96,6 +272,10 @@ final class OnDemandPageGenerator: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var lastError: String?
     @Published private(set) var currentGeneratedPage: GeneratedPage?
+
+    // MARK: - Page-Aware Navigation
+    private var pageCache = PageCache()
+    private var currentCursor: Cursor?
 
     private let cache = SliceCache()
     private let loader = DatabaseBibleDataLoader.shared
@@ -140,7 +320,12 @@ final class OnDemandPageGenerator: ObservableObject {
     func generatePage(startingAt verse: (book: String, chapter: Int, verse: Int)) async {
         let key = VerseKey(book: verse.book, chapter: verse.chapter, verse: verse.verse)
         lastError = nil
-        
+
+        #if DEBUG
+        print("🚀 PAGE GENERATION REQUEST: \(key.description)")
+        print("📍 REQUEST DETAILS: book='\(verse.book)', chapter=\(verse.chapter), verse=\(verse.verse)")
+        #endif
+
         // Prevent duplicate generation if we're already generating this key
         if isGenerating {
             print("⚠️ Already generating page, skipping duplicate request for \(key.description)")
@@ -250,8 +435,19 @@ final class OnDemandPageGenerator: ObservableObject {
             return
         }
 
+        // Only use pending tail if we're continuing the exact same verse that was cut off
+        // Don't carry over tails from different verses/pages
         let tail = (pending?.key == key) ? pending?.text : nil
         pending = nil
+
+        #if DEBUG
+        if let tail = tail {
+            print("📝 USING TAIL: \(tail.characters.count) characters from \(pending?.key.description ?? "unknown")")
+        } else {
+            print("📝 NO TAIL: Generating fresh page for \(key.description)")
+        }
+        #endif
+
         let result = await PageContentGenerator.generate(
             from: key,
             pageSize: size,
@@ -265,6 +461,19 @@ final class OnDemandPageGenerator: ObservableObject {
             currentPage = slice
             currentGeneratedPage = generatedResult.page
             pending = generatedResult.remainder
+
+            #if DEBUG
+            print("✅ PAGE GENERATED SUCCESSFULLY: \(slice.startVerse.description) to \(slice.endVerse.description)")
+            print("📊 FINAL PAGE: \(slice.verseKeys.count) verses")
+            let verseNumbers = slice.verseKeys.map { $0.verse }
+            print("📋 FINAL VERSES: \(verseNumbers)")
+            if let remainder = generatedResult.remainder {
+                print("📄 REMAINDER: Next page starts at \(remainder.key.description)")
+            } else {
+                print("📄 REMAINDER: No remainder (end of chapter)")
+            }
+            #endif
+
             let newNode = SliceNode(key: key, slice: slice)
             
             // Properly link the new node into the doubly linked list
@@ -341,28 +550,24 @@ final class OnDemandPageGenerator: ObservableObject {
         #endif
 
         // Generate the next page since it doesn't exist in cache
-        if let currentKey = currentNode?.key,
-           let nextKey = await findNextVerse(after: currentKey) {
-            #if DEBUG
-            print("🔍 LINKED LIST: Generating next page for: \(nextKey.description)")
-            #endif
-
-            // Generate the next page by calling generatePage
-            await generatePage(startingAt: (nextKey.book, nextKey.chapter, nextKey.verse))
+        // Use page-based anchor calculation (endVerse + 1) instead of key-based (startVerse + 1)
+        guard let currentSlice = currentNode?.slice else {
+            print("❌ No current slice available for next page calculation")
             return
         }
 
-        // Priority 1: Handle pending remainder from current page
-        if let remain = pending {
-            await generatePage(startingAt: (remain.key.book, remain.key.chapter, remain.key.verse))
-            return
-        }
+        let nextVerse = currentSlice.endVerse.verse + 1
+        let nextKey = VerseKey(book: currentSlice.endVerse.book,
+                              chapter: currentSlice.endVerse.chapter,
+                              verse: nextVerse)
 
-        // Priority 2: Find the next verse after the current page's end
-        guard let endReference = currentNode?.slice.endReference,
-              let last = parseReference(endReference),
-              let next = await findNextVerse(after: last) else { return }
-        await generatePage(startingAt: (next.book, next.chapter, next.verse))
+        #if DEBUG
+        print("🔍 LINKED LIST: Generating next page for: \(nextKey.description)")
+        print("   Page-based anchor: \(currentSlice.endVerse.description) + 1 = \(nextKey.description)")
+        #endif
+
+        // Generate the next page by calling generatePage
+        await generatePage(startingAt: (nextKey.book, nextKey.chapter, nextKey.verse))
     }
 
     func generatePreviousPage() async {
@@ -439,6 +644,190 @@ final class OnDemandPageGenerator: ObservableObject {
         // NO FALLBACK: Legacy method should not guess page starts
         print("❌ LEGACY BACKWARD NAVIGATION: No reliable history available")
         lastError = "Cannot navigate backwards - no page history available"
+    }
+
+    // MARK: - Page-Aware Navigation Methods
+
+    /// Navigate to the next page using cursor-based navigation
+    func navigateToNextPage() async {
+        guard let cursor = currentCursor else {
+            #if DEBUG
+            print("❌ CURSOR NAV: No current cursor")
+            #endif
+            return
+        }
+
+        let nextCursor = nextPageCursor(from: cursor)
+        guard let nextCursor = nextCursor else {
+            #if DEBUG
+            print("❌ CURSOR NAV: No next page available")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("➡️ CURSOR NAV: \(cursor.description) → \(nextCursor.description)")
+        #endif
+
+        // Load the page for the new cursor
+        await loadPageForCursor(nextCursor)
+    }
+
+    /// Navigate to the previous page using cursor-based navigation
+    func navigateToPreviousPage() async {
+        guard let cursor = currentCursor else {
+            #if DEBUG
+            print("❌ CURSOR NAV: No current cursor")
+            #endif
+            return
+        }
+
+        let prevCursor = previousPageCursor(from: cursor)
+        guard let prevCursor = prevCursor else {
+            #if DEBUG
+            print("❌ CURSOR NAV: No previous page available")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("⬅️ CURSOR NAV: \(cursor.description) → \(prevCursor.description)")
+        #endif
+
+        // Load the page for the new cursor
+        await loadPageForCursor(prevCursor)
+    }
+
+    /// Jump to a specific verse using page-aware navigation
+    func jumpToVerse(book: String, chapter: Int, verse: Int) async {
+        let chapterKey = ChapterKey(book: book, chapter: chapter)
+
+        // Get or compute chapter pages
+        var chapterPages = pageCache.get(chapterKey)
+        if chapterPages == nil {
+            let result = await loader.loadChapter(book: book, chapter: chapter)
+            if case .success(let chapterData) = result {
+                chapterPages = pageCache.computePages(
+                    book: book,
+                    chapter: chapter,
+                    verses: chapterData.verses,
+                    viewport: size
+                )
+                if let chapterPages = chapterPages {
+                    pageCache.put(chapterPages)
+                }
+            }
+        }
+
+        guard let chapterPages = chapterPages else {
+            #if DEBUG
+            print("❌ JUMP: Could not load chapter \(chapterKey.description)")
+            #endif
+            return
+        }
+
+        // Find the page containing the target verse
+        let pageIndex = chapterPages.pageIndex(containing: verse)
+        let cursor = Cursor(book: book, chapter: chapter, pageIndex: pageIndex)
+
+        #if DEBUG
+        print("🎯 JUMP: verse=\(verse) → page=\(pageIndex) (\(chapterPages.ranges[pageIndex]))")
+        #endif
+
+        // Load the page for the cursor
+        await loadPageForCursor(cursor)
+    }
+
+    // MARK: - Private Page-Aware Navigation Helpers
+
+    private func nextPageCursor(from cursor: Cursor) -> Cursor? {
+        let chapterKey = cursor.chapterKey
+
+        guard let pages = pageCache.get(chapterKey) else {
+            #if DEBUG
+            print("❌ NEXT CURSOR: Chapter not cached \(chapterKey.description)")
+            #endif
+            return nil
+        }
+
+        if cursor.pageIndex + 1 < pages.pageCount {
+            // Next page in same chapter
+            return Cursor(book: cursor.book, chapter: cursor.chapter, pageIndex: cursor.pageIndex + 1)
+        } else {
+            // Cross-chapter: first page of next chapter
+            return firstPageOfNextChapter(after: chapterKey)
+        }
+    }
+
+    private func previousPageCursor(from cursor: Cursor) -> Cursor? {
+        let chapterKey = cursor.chapterKey
+
+        guard let pages = pageCache.get(chapterKey) else {
+            #if DEBUG
+            print("❌ PREV CURSOR: Chapter not cached \(chapterKey.description)")
+            #endif
+            return nil
+        }
+
+        if cursor.pageIndex > 0 {
+            // Previous page in same chapter
+            return Cursor(book: cursor.book, chapter: cursor.chapter, pageIndex: cursor.pageIndex - 1)
+        } else {
+            // Cross-chapter: last page of previous chapter
+            return lastPageOfPreviousChapter(before: chapterKey)
+        }
+    }
+
+    private func firstPageOfNextChapter(after chapterKey: ChapterKey) -> Cursor? {
+        // Simplified - would need book metadata for proper chapter navigation
+        // For now, return nil (end of content)
+        return nil
+    }
+
+    private func lastPageOfPreviousChapter(before chapterKey: ChapterKey) -> Cursor? {
+        // Simplified - would need book metadata for proper chapter navigation
+        // For now, return nil (beginning of content)
+        return nil
+    }
+
+    private func loadPageForCursor(_ cursor: Cursor) async {
+        let chapterKey = cursor.chapterKey
+
+        // Get or compute chapter pages
+        var chapterPages = pageCache.get(chapterKey)
+        if chapterPages == nil {
+            let result = await loader.loadChapter(book: cursor.book, chapter: cursor.chapter)
+            if case .success(let chapter) = result {
+                chapterPages = pageCache.computePages(
+                    book: cursor.book,
+                    chapter: cursor.chapter,
+                    verses: chapter.verses,
+                    viewport: size
+                )
+                if let chapterPages = chapterPages {
+                    pageCache.put(chapterPages)
+                }
+            }
+        }
+
+        guard let chapterPages = chapterPages,
+              let pageRange = chapterPages.range(at: cursor.pageIndex) else {
+            #if DEBUG
+            print("❌ LOAD CURSOR: Could not get page range for \(cursor.description)")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("📖 LOADING PAGE: \(cursor.description) → verses \(pageRange.description)")
+        #endif
+
+        // Generate the page using the existing logic
+        let verseKey = VerseKey(book: cursor.book, chapter: cursor.chapter, verse: pageRange.startVerse)
+        await generatePage(startingAt: (cursor.book, cursor.chapter, pageRange.startVerse))
+
+        // Update current cursor
+        currentCursor = cursor
     }
 
     /// Handle memory pressure by clearing caches
