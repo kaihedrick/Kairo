@@ -53,6 +53,36 @@ public struct VerseKey: Hashable, Codable, Sendable {
     var description: String { "\(book) \(chapter):\(verse)" }
 }
 
+/// Represents a single verse run for exact tapping
+public struct VerseRun: Identifiable, Codable {
+    public let id: UUID
+    public let key: VerseKey
+    public let content: String  // Store as plain for Codable; format back to AttributedString in view
+
+    public init(key: VerseKey, content: String) {
+        self.id = UUID()
+        self.key = key
+        self.content = content
+    }
+}
+
+/// Represents a single page in the fixed pagination system
+public struct ReaderPage {
+    let index: Int
+    let range: NSRange           // Substring range in chapter body
+    let verseMap: [(NSRange, VerseKey)] // Only the verse subranges that intersect this page
+}
+
+/// Cache key for pagination
+public struct PageKey: Hashable {
+    let book: String
+    let chapter: Int
+    let width: CGFloat
+    let height: CGFloat
+    let fontHash: Int // derive from point size + family + weight
+    let themeHash: Int // light/dark + foreground/background
+}
+
 /// Additional context about where a page sits in a book.
 public struct PageNavigationContext: Equatable, Codable {
     let isFirstVerseOfBook: Bool
@@ -105,6 +135,12 @@ struct OptimizedPageSlice: Identifiable, Equatable, Codable {
     let startVerse: VerseKey
     let endVerse: VerseKey
     let navigationContext: PageNavigationContext
+    
+    // New optional property for backward compatibility
+    public let verseRunsStorage: [VerseRun]? // default nil in existing inits
+    
+    // Convenience accessor to avoid breaking old inits
+    public var verseRunsForTapping: [VerseRun]? { verseRunsStorage }
 
     // Custom Codable implementation to handle AttributedString
     enum CodingKeys: String, CodingKey {
@@ -142,6 +178,9 @@ struct OptimizedPageSlice: Identifiable, Equatable, Codable {
             // Fallback for older data without verseRuns
             verseRuns = []
         }
+        
+        // Initialize verseRunsStorage as nil for backward compatibility
+        verseRunsStorage = nil
     }
     
     init(content: AttributedString, verseKeys: [VerseKey], startVerse: VerseKey, endVerse: VerseKey, navigationContext: PageNavigationContext) {
@@ -152,6 +191,7 @@ struct OptimizedPageSlice: Identifiable, Equatable, Codable {
         self.startVerse = startVerse
         self.endVerse = endVerse
         self.navigationContext = navigationContext
+        self.verseRunsStorage = nil
     }
 
     init(content: AttributedString, verseRuns: [PageSegment], startVerse: VerseKey, endVerse: VerseKey, navigationContext: PageNavigationContext) {
@@ -162,6 +202,7 @@ struct OptimizedPageSlice: Identifiable, Equatable, Codable {
         self.startVerse = startVerse
         self.endVerse = endVerse
         self.navigationContext = navigationContext
+        self.verseRunsStorage = nil
     }
 
     static func == (lhs: OptimizedPageSlice, rhs: OptimizedPageSlice) -> Bool {
