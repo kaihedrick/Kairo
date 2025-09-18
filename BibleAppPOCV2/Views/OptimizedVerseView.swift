@@ -4,6 +4,8 @@ import SwiftUI
 struct OptimizedVerseView: View {
     let bookName: String
     let chapterNumber: Int
+    let verseCount: Int
+    @Binding var navigationPath: [BibleNavigationRoute]
 
     @State private var chapterContent: DatabaseChapter?
     @State private var isLoading = true
@@ -14,106 +16,76 @@ struct OptimizedVerseView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
     private let tileSize: CGFloat = 50
 
-    // Glass effect namespace for native iOS 26+ blur
-    @Namespace private var glassNamespace
-
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .top) {
-                // Liquid Glass Background
-                Color.clear
-                    .background(LG.backgroundMaterial)
-                    .ignoresSafeArea()
+        ZStack(alignment: .top) {
+            Color.clear
+                .background(LG.backgroundMaterial)
+                .ignoresSafeArea()
 
-                // Main content layer
-                Group {
-                    if isLoading {
-                        GlassCard {
-                            VStack(spacing: LG.padding) {
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                                Text("Loading \(bookName) \(chapterNumber)...")
-                                    .font(.headline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Group {
+                if isLoading {
+                    GlassCard {
+                        VStack(spacing: LG.padding) {
+                            ProgressView().scaleEffect(1.2)
+                            Text("Loading \(bookName) \(chapterNumber)...")
+                                .font(.headline).foregroundStyle(.secondary)
                         }
-                        .padding(LG.padding)
-                    } else if let error = loadError {
-                        GlassCard {
-                            VStack(spacing: LG.padding) {
-                                Image(systemName: "exclamationmark.triangle")
-                                    .font(.largeTitle)
-                                    .foregroundStyle(.orange)
-
-                                Text("Failed to load chapter")
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-
-                                Text(error.localizedDescription)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-
-                                Button("Retry") {
-                                    Task {
-                                        await loadChapterContent()
-                                    }
-                                }
-                                .glassButtonStyle()
-                                .padding(.top)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .padding(LG.padding)
+                } else if let error = loadError {
+                    GlassCard {
+                        VStack(spacing: LG.padding) {
+                            Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.orange)
+                            Text("Failed to load chapter").font(.headline)
+                            Text(error.localizedDescription)
+                                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                            Button("Retry") { Task { await loadChapterContent() } }
+                                .glassButtonStyle().padding(.top)
                         }
-                        .padding(LG.padding)
-                    } else if let content = chapterContent {
-                        TabView(selection: $pageIndex) {
-                            ScrollView {
-                                GlassCard {
-                                    LazyVGrid(columns: columns, spacing: LG.smallPadding) {
-                                        ForEach(content.verses, id: \.verseNumber) { verse in
-                                            NavigationLink {
-                                                destinationView(verse: verse)
-                                            } label: {
-                                                VerseTileView(verseNumber: verse.verseNumber)
-                                                    .frame(width: tileSize, height: tileSize)
-                                                    .glassTile(cornerRadius: 12, id: "verse-\(verse.verseNumber)", namespace: glassNamespace)
-                                            }
-                                            .buttonStyle(PlainButtonStyle()) // Ensure proper tap behavior
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .padding(LG.padding)
+                } else if let content = chapterContent {
+                    TabView(selection: $pageIndex) {
+                        ScrollView {
+                            GlassCard {
+                                LazyVGrid(columns: columns, spacing: LG.smallPadding) {
+                                    ForEach(content.verses, id: \.verseNumber) { verse in
+                                        Button(action: {
+                                            navigationPath.append(.reader(book: bookName, chapter: chapterNumber, verse: verse.verseNumber))
+                                        }) {
+                                            VerseTileView(verseNumber: verse.verseNumber)
                                         }
+                                        .buttonStyle(.plain)
                                     }
-                                    .padding(LG.padding)
                                 }
                                 .padding(LG.padding)
                             }
-                            .tag(0)
+                            .padding(LG.padding)
                         }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .tag(0)
                     }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                 }
             }
-            .navigationTitle("\(bookName) \(chapterNumber) - Verses")
-            .navigationBarTitleDisplayMode(.large)
-            .task {
-                await loadChapterContent()
-            }
         }
+        .navigationTitle("\(bookName) \(chapterNumber) - Verses")
+        .navigationBarTitleDisplayMode(.large)
+        .task { await loadChapterContent() }
     }
 
     @ViewBuilder
     private func destinationView(verse: DatabaseVerse) -> some View {
         GeometryReader { geometry in
-            if geometry.size.height > 50 {
-                BibleReaderView(
-                    pageSize: CGSize(
-                        width: geometry.size.width,
-                        height: geometry.size.height
-                    ),
-                    initialVerse: (bookName, chapterNumber, verse.verseNumber)
-                )
-            } else {
-                Color.clear
-            }
+            let safeSize = CGSize(
+                width: geometry.size.width,
+                height: max(geometry.size.height, 600) // Ensure minimum height during transitions
+            )
+            BibleReaderView(
+                pageSize: safeSize,
+                initialVerse: (bookName, chapterNumber, verse.verseNumber)
+            )
         }
         .navigationBarTitleDisplayMode(.inline)
     }

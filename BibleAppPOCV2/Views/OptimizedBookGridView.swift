@@ -9,6 +9,14 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - Navigation Routes
+
+enum BibleNavigationRoute: Hashable {
+    case chapters(book: String, chapterCount: Int)
+    case verses(book: String, chapter: Int, verseCount: Int)
+    case reader(book: String, chapter: Int, verse: Int)
+}
+
 // MARK: - Optimized Book Grid View
 
 struct OptimizedBookGridView: View {
@@ -17,6 +25,9 @@ struct OptimizedBookGridView: View {
     @State private var isSearchActive = false
     @FocusState private var isSearchFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    // Navigation State
+    @State private var navigationPath: [BibleNavigationRoute] = []
     
     // PERFORMANCE: Cache testament classifications
     @State private var cachedGroups: [String: [DatabaseBookMetadata]] = [:]
@@ -102,7 +113,7 @@ struct OptimizedBookGridView: View {
     ])
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ZStack(alignment: .top) {
                 // Liquid Glass Background
                 Color.clear
@@ -125,6 +136,19 @@ struct OptimizedBookGridView: View {
                 bottomSearchOverlay
             }
             .navigationBarHidden(true)  // Hide navigation bar since we have custom header
+            .navigationDestination(for: BibleNavigationRoute.self) { route in
+                switch route {
+                case let .chapters(book, chapterCount):
+                    OptimizedChapterView(bookName: book, chapterCount: chapterCount, navigationPath: $navigationPath)
+                case let .verses(book, chapter, verseCount):
+                    OptimizedVerseView(bookName: book, chapterNumber: chapter, verseCount: verseCount, navigationPath: $navigationPath)
+                case let .reader(book, chapter, verse):
+                    BibleReaderView(
+                        pageSize: UIScreen.main.bounds.size,
+                        initialVerse: (book: book, chapter: chapter, verse: verse)
+                    )
+                }
+            }
         }
         .onChange(of: isSearchActive) { _, _ in
             // Recalculate layout when search state changes
@@ -217,9 +241,9 @@ struct OptimizedBookGridView: View {
                             ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
                                 Section(header: sectionHeader(section)) {
                                     ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
-                                        NavigationLink {
-                                            OptimizedChapterView(bookName: bookMeta.name, chapterCount: bookMeta.chapterCount)
-                                        } label: {
+                                        Button(action: {
+                                            navigationPath.append(.chapters(book: bookMeta.name, chapterCount: bookMeta.chapterCount))
+                                        }) {
                                             BookTileView(
                                                 abbreviation: getBookAbbreviation(for: bookMeta.name),
                                                 fullName: bookMeta.name
@@ -231,7 +255,7 @@ struct OptimizedBookGridView: View {
                                             .animation(.easeInOut(duration: 0.25), value: searchText)
                                         }
                                         .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
-                                        .buttonStyle(PlainButtonStyle()) // Ensure proper tap behavior
+                                        .buttonStyle(.plain) // Ensure proper tap behavior
                                     }
                                 }
                             }
@@ -296,7 +320,7 @@ struct OptimizedBookGridView: View {
         let tileHeight: CGFloat
         let horizontalPadding: CGFloat
         let verticalPadding: CGFloat
-        let interColumnSpacing: CGFloat = 8  // Reduced from 12 to 8 for more space
+        let interColumnSpacing: CGFloat = 12  // Consistent spacing across all views
         let gridItems: [GridItem]
         
         // Search-specific padding
@@ -689,6 +713,8 @@ struct OptimizedBookGridView: View {
                     .glassedEffect(shape: Capsule(), interactive: true)
                     .glassEffectUnionSafe(id: "searchArea", namespace: glassNamespace)
                     .frame(width: isSearchActive ? min(geometry.size.width - 40, 400) : 56, height: 56)
+                    .contentShape(Capsule())
+                    .allowsHitTesting(true) // Only the search pill is tappable
                     .scaleEffect(isSearchActive ? 1.0 : 0.95)
                     .animation(.spring(response: 0.4, dampingFraction: 0.7, blendDuration: 0.1), value: isSearchActive)
                     .onTapGesture {
@@ -710,17 +736,7 @@ struct OptimizedBookGridView: View {
                 .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 14) // Safe area aware
             }
         }
-        .allowsHitTesting(true)
-        .onTapGesture {
-            // Dismiss search when tapping outside the search container
-            if isSearchActive && !isSearchFocused {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    if searchText.isEmpty {
-                        isSearchActive = false
-                    }
-                }
-            }
-        }
+        .allowsHitTesting(false) // Let taps pass through to NavigationLinks below
     }
     
     // MARK: - Scroll to Top Function

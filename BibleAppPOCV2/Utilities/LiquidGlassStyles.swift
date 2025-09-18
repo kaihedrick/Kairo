@@ -19,6 +19,7 @@ struct GlassCard<Content: View>: View {
             .overlay(
                 RoundedRectangle(cornerRadius: LG.cornerRadius, style: .continuous)
                     .stroke(LG.glassBorder, lineWidth: 1)
+                    .allowsHitTesting(false) // Decorative border - don't block taps
             )
             .shadow(color: LG.glassShadow, radius: LG.shadowRadius, y: LG.shadowOffset)
             .overlay(
@@ -30,6 +31,7 @@ struct GlassCard<Content: View>: View {
                         .init(color: .white.opacity(0.06), location: 0.6),
                         .init(color: .clear, location: 1.0)
                     ], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .allowsHitTesting(false) // Decorative highlight - don't block taps
             )
     }
 }
@@ -52,7 +54,11 @@ struct GlassButtonStyle: ButtonStyle {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(material, in: Capsule())
-            .overlay(Capsule().stroke(LG.glassBorder))
+            .overlay(
+                Capsule()
+                    .stroke(LG.glassBorder)
+                    .allowsHitTesting(false) // Decorative border - don't block taps
+            )
             .shadow(color: LG.glassShadow, radius: LG.smallShadowRadius, y: LG.smallShadowOffset)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .lgSpring()
@@ -139,6 +145,7 @@ struct GlassToast: View {
         .overlay(
             RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous)
                 .stroke(LG.glassBorder.opacity(0.5), lineWidth: 1)
+                .allowsHitTesting(false) // Decorative border - don't block taps
         )
         .shadow(color: LG.glassShadow, radius: LG.smallShadowRadius, y: LG.smallShadowOffset)
         .padding(.horizontal, LG.padding)
@@ -161,6 +168,7 @@ struct GlassVerseRow<Content: View>: View {
             .overlay(
                 RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous)
                     .stroke(isSelected ? LG.glassBorder.opacity(0.8) : LG.glassBorder.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+                    .allowsHitTesting(false) // Decorative border - don't block taps
             )
             .shadow(color: LG.glassShadow.opacity(isSelected ? 0.3 : 0.1), radius: isSelected ? LG.smallShadowRadius : LG.smallShadowRadius/2, y: isSelected ? LG.smallShadowOffset : LG.smallShadowOffset/2)
             .lgSpring()
@@ -168,6 +176,9 @@ struct GlassVerseRow<Content: View>: View {
 }
 
 // MARK: - Glass Navigation Link Style
+// ⚠️ WARNING: Do NOT use this ButtonStyle with NavigationLink!
+// It can break tap detection. Instead, style the NavigationLink label directly.
+// Use .buttonStyle(.plain) with NavigationLink for reliable tap behavior.
 struct GlassNavigationLinkStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -176,6 +187,7 @@ struct GlassNavigationLinkStyle: ButtonStyle {
             .overlay(
                 RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous)
                     .stroke(LG.glassBorder.opacity(0.5), lineWidth: 1)
+                    .allowsHitTesting(false) // Decorative border - don't block taps
             )
             .shadow(color: LG.glassShadow.opacity(0.3), radius: LG.smallShadowRadius, y: LG.smallShadowOffset)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
@@ -187,6 +199,68 @@ struct GlassNavigationLinkStyle: ButtonStyle {
 extension Button {
     func glassButtonStyle() -> some View {
         self.buttonStyle(GlassButtonStyle())
+    }
+}
+
+// MARK: - Hit-Testing Helpers for Glass Components
+extension View {
+    /// Applies glass styling to a view while ensuring proper hit-testing
+    func glassStyled() -> some View {
+        self
+            .background(LG.cardMaterial, in: RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous)
+                    .stroke(LG.glassBorder.opacity(0.5), lineWidth: 1)
+                    .allowsHitTesting(false) // Decorative - don't block taps
+            )
+            .shadow(color: LG.glassShadow.opacity(0.3), radius: LG.smallShadowRadius, y: LG.smallShadowOffset)
+    }
+
+    /// Adds decorative glass overlay that doesn't interfere with taps
+    func glassOverlay(shape: some Shape = RoundedRectangle(cornerRadius: 12, style: .continuous)) -> some View {
+        self.overlay(
+            shape
+                .stroke(LG.glassBorder.opacity(0.3), lineWidth: 1)
+                .allowsHitTesting(false) // Purely decorative
+        )
+    }
+
+    /// Adds glass highlight that doesn't block taps
+    func glassHighlight(shape: some Shape = RoundedRectangle(cornerRadius: 12, style: .continuous)) -> some View {
+        self.overlay(
+            shape
+                .fill(LinearGradient(
+                    colors: [.white.opacity(0.1), .clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .allowsHitTesting(false) // Purely decorative highlight
+        )
+    }
+
+    /// Ensures proper content shape for tappable glass elements
+    func glassTappable(shape: some Shape = RoundedRectangle(cornerRadius: 12, style: .continuous)) -> some View {
+        self
+            .contentShape(shape)
+            .allowsHitTesting(true) // Ensure this element is tappable
+    }
+}
+
+// MARK: - NavigationLink Glass Styling (Safe)
+extension View {
+    /// Safe way to style NavigationLink labels with glass effects
+    /// This styles the label directly instead of using ButtonStyle
+    func glassNavigationLabel() -> some View {
+        self
+            .padding(LG.smallPadding)
+            .background(LG.cardMaterial.opacity(0.6), in: RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous)
+                    .stroke(LG.glassBorder.opacity(0.5), lineWidth: 1)
+                    .allowsHitTesting(false) // Decorative - don't interfere with NavigationLink
+            )
+            .shadow(color: LG.glassShadow.opacity(0.3), radius: LG.smallShadowRadius, y: LG.smallShadowOffset)
+            .contentShape(RoundedRectangle(cornerRadius: LG.smallCornerRadius, style: .continuous))
     }
 }
 
