@@ -239,6 +239,7 @@ public struct DatabaseBibleMetadata: Codable {
 public struct DatabasePageContent: Identifiable, Equatable, Codable {
     public let id: UUID
     public let content: AttributedString
+    public let verseRuns: [PageSegment] // Each verse as its own segment for precise tapping
     public let verses: [DatabaseVerse]
     public let verseKeys: [VerseKey]
     public let startVerse: VerseKey
@@ -262,7 +263,7 @@ public struct DatabasePageContent: Identifiable, Equatable, Codable {
     // Custom Codable implementation to handle AttributedString
     enum CodingKeys: String, CodingKey {
         case id, verses, verseKeys, startVerse, endVerse, navigationContext
-        case startReference, endReference, references, contentString
+        case startReference, endReference, references, contentString, verseRuns
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -277,6 +278,10 @@ public struct DatabasePageContent: Identifiable, Equatable, Codable {
         try container.encode(endReference, forKey: .endReference)
         try container.encode(references, forKey: .references)
         try container.encode(String(content.characters), forKey: .contentString)
+
+        // Encode verse runs as JSON data
+        let verseRunData = try JSONEncoder().encode(verseRuns)
+        try container.encode(verseRunData, forKey: .verseRuns)
     }
 
     public init(from decoder: Decoder) throws {
@@ -292,10 +297,19 @@ public struct DatabasePageContent: Identifiable, Equatable, Codable {
         references = try container.decode([String].self, forKey: .references)
         let contentString = try container.decode(String.self, forKey: .contentString)
         content = AttributedString(contentString)
+
+        // Decode verse runs
+        if let verseRunData = try? container.decode(Data.self, forKey: .verseRuns) {
+            verseRuns = try JSONDecoder().decode([PageSegment].self, from: verseRunData)
+        } else {
+            // Fallback for older data without verseRuns
+            verseRuns = []
+        }
     }
 
     public init(id: UUID = UUID(),
                 content: AttributedString,
+                verseRuns: [PageSegment] = [],
                 verses: [DatabaseVerse],
                 verseKeys: [VerseKey],
                 startVerse: VerseKey,
@@ -306,6 +320,7 @@ public struct DatabasePageContent: Identifiable, Equatable, Codable {
                 references: [String]) {
         self.id = id
         self.content = content
+        self.verseRuns = verseRuns
         self.verses = verses
         self.verseKeys = verseKeys
         self.startVerse = startVerse

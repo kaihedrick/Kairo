@@ -121,41 +121,81 @@ struct BibleReaderView: View {
 
     // MARK: - Helper Views
 
-    /// Displays a page of Bible text without scrolling
+    /// Displays a page of Bible text with precise verse tapping
     private func pageView(_ page: DatabasePageContent, size: CGSize) -> some View {
-        Text(page.content)
+        ZStack(alignment: .topLeading) {
+            // Render each verse as its own tappable button
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(page.verseRuns, id: \.id) { segment in
+                    Button {
+                        Task {
+                            await handleVerseTap(segment.verseKey)
+                        }
+                    } label: {
+                        Text(segment.attributed)
+                            .multilineTextAlignment(.leading)
+                            .lineSpacing(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
             .padding(.vertical, LayoutMetrics.verticalPagePadding)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
-            .multilineTextAlignment(.leading)
-            .clipped()
             .coordinateSpace(name: "BibleScroll")
-            .gesture(
-                DragGesture(minimumDistance: 20) // Standard swipe detection
-                    .onChanged { value in
-                        isDragging = true
-                        dragOffset = value.translation
-                    }
-                    .onEnded { value in
-                        isDragging = false
-                        dragOffset = .zero
-                        handleSwipeGesture(value)
-                    }
-            )
-            .onTapGesture { location in
-                Task {
-                    await handleTextTap(location: location, page: page, size: size)
+        }
+        .gesture(
+            DragGesture(minimumDistance: 20) // Standard swipe detection
+                .onChanged { value in
+                    isDragging = true
+                    dragOffset = value.translation
                 }
-            }
-            .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
-                if let newPage = pageGenerator.currentPage {
-                    updateCurrentPageInfo(newPage)
+                .onEnded { value in
+                    isDragging = false
+                    dragOffset = .zero
+                    handleSwipeGesture(value)
                 }
+        )
+        .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
+            if let newPage = pageGenerator.currentPage {
+                updateCurrentPageInfo(newPage)
             }
-            .onAppear {
-                updateCurrentPageInfo(page)
-            }
+        }
+        .onAppear {
+            updateCurrentPageInfo(page)
+        }
     }
+    /// Handles direct verse tap (when using verseRuns approach)
+    @MainActor
+    private func handleVerseTap(_ verseKey: VerseKey) async {
+        #if DEBUG
+        print("🎯 DIRECT VERSE TAP: \(verseKey.description)")
+        #endif
+
+        // Create payload and post notification (single source of truth)
+        let payload = VerseTapPayload(book: verseKey.book, chapter: verseKey.chapter, verse: verseKey.verse)
+
+        NotificationCenter.default.post(
+            name: .kairoVerseTapped,
+            object: nil,
+            userInfo: ["payload": payload]
+        )
+
+        // Update UI state for popup display
+        let summary = VerseSummary(
+            reference: payload.description,
+            book: payload.book,
+            chapter: payload.chapter,
+            verse: payload.verse,
+            summaryText: payload.description,
+            modelVersion: "Enhanced Bible Database (Database Only)"
+        )
+
+        selectedVerse = summary
+        showingSummaryPopup = true
+    }
+
     /// Handles tap on text to show summary for the tapped verse
     private func handleTextTap(location: CGPoint, page: DatabasePageContent, size: CGSize) async {
         // Find the verse that was tapped based on location
