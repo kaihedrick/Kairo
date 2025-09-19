@@ -32,9 +32,15 @@ struct BibleReaderView: View {
     @State private var showingPerformanceOverlay = false
     @State private var cacheStats: (hitRate: Double, size: Int) = (0.0, 0)
 
-    // For gesture handling
+    // For gesture handling (legacy - can be removed if not used elsewhere)
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging = false
+    
+    // Swipe-vs-tap arbitration
+    @GestureState private var dragTranslation: CGSize = .zero
+    @State private var isSwipingPage: Bool = false
+    private let TAP_SLOP: CGFloat = 14   // pts of allowed motion for a real tap
+    private let SWIPE_TRIGGER: CGFloat = 60 // pts to commit a page turn
     
     // For summary popup
     @State private var showingSummaryPopup = false
@@ -236,11 +242,17 @@ struct BibleReaderView: View {
         var map: [(NSRange, VerseKey)] = []
 
         for seg in runs {
-            let nsSeg = NSAttributedString(seg.attributed)
+            // Start with a mutable copy so we can trim any \n artifacts
+            let raw = NSAttributedString(seg.attributed)
+            let nsSeg = NSMutableAttributedString(attributedString: raw)
+            // Trim leading/trailing newlines to enforce single-paragraph flow
+            while nsSeg.string.hasSuffix("\n") { nsSeg.deleteCharacters(in: NSRange(location: nsSeg.length - 1, length: 1)) }
+            while nsSeg.string.hasPrefix("\n") { nsSeg.deleteCharacters(in: NSRange(location: 0, length: 1)) }
+
             let start = out.length
             out.append(nsSeg)
-            // Ensure paragraph flow: append a space (not a newline) if needed
-            if !String(seg.attributed.characters).hasSuffix(" ") {
+            // Join with a single space if the last char isn't whitespace
+            if let last = out.string.last, !last.isWhitespace {
                 out.append(NSAttributedString(string: " "))
             }
             let end = out.length
@@ -257,39 +269,60 @@ struct BibleReaderView: View {
         let (nsBody, verseMap) = buildBodyNS(from: page.verseRuns)
         let fullText = AttributedString(nsBody)
 
-        return ScrollView { // intrinsic height; no forced page height
-            ZStack(alignment: .topLeading) {
-                Text(fullText)
-                    .multilineTextAlignment(.leading)
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
-                    .padding(.vertical, LayoutMetrics.verticalPagePadding)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Header (page 1 only) — book title only (no "Chapter N")
+                headerViewIfNeeded(page: page, size: size)
 
-                VerseTapOverlay(nsText: nsBody,
-                                verseMap: verseMap,
-                                contentInsets: UIEdgeInsets(top: LayoutMetrics.verticalPagePadding,
-                                                            left: LayoutMetrics.horizontalPagePadding,
-                                                            bottom: LayoutMetrics.verticalPagePadding,
-                                                            right: LayoutMetrics.horizontalPagePadding)) { verseKey in
-                    Task { await handleVerseTap(verseKey) }
+                // Single continuous paragraph with an overlay for precise taps
+                ZStack(alignment: .topLeading) {
+                    Text(fullText)
+                        .multilineTextAlignment(.leading)
+                        .lineSpacing(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.disabled)
+
+                    VerseTapOverlay(
+                        nsText: nsBody,
+                        verseMap: verseMap,
+                        contentInsets: .zero
+                    ) { key in
+                        guard !isSwipingPage else { return }
+                        Task { await handleVerseTap(key) }
+                    }
+                    .allowsHitTesting(true)
+                    .accessibilityHidden(true)
                 }
-                .allowsHitTesting(true)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, LayoutMetrics.horizontalPagePadding)
+            .padding(.vertical, LayoutMetrics.verticalPagePadding)
         }
-        .gesture(
-            DragGesture(minimumDistance: 20) // Standard swipe detection
-                .onChanged { value in
-                    isDragging = true
-                    dragOffset = value.translation
+        .scrollIndicators(.hidden)
+        .scrollDisabled(true)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 12, coordinateSpace: .local)
+                .updating($dragTranslation) { value, state, _ in
+                    state = value.translation
+                    // Once we exceed tap slop horizontally, mark as swiping to suppress taps
+                    if abs(value.translation.width) > TAP_SLOP { isSwipingPage = true }
                 }
                 .onEnded { value in
-                    isDragging = false
-                    dragOffset = .zero
-                    handleSwipeGesture(value)
-                }
+                    defer { isSwipingPage = false }
+                    let dx = value.translation.width
+                    guard abs(dx) > SWIPE_TRIGGER else { return }
+                    if dx < 0 {
+                        // existing paging call to go forward
+                        Task {
+                            await pageGenerator.generateNextPage()
+                        }
+                    } else {
+                        // existing paging call to go backward
+                        Task {
+                            await pageGenerator.generatePreviousPage()
+                        }
+                    }
+                }, including: .all
         )
         .onChange(of: pageGenerator.currentPage?.startVerse) { _, _ in
             if let newPage = pageGenerator.currentPage {
@@ -375,13 +408,14 @@ struct BibleReaderView: View {
 
         if verseCount == 0 { return nil }
 
-        // Calculate which verse was tapped based on vertical position
-        // This uses a more accurate approach by considering text layout
-        let textHeight = pageHeight - (LayoutMetrics.verticalPagePadding * 2)
+        // Calculate available text height *excluding* page padding and optional header height
+        let headerH = headerHeightFor(page: page, size: size)
+        let textHeight = pageHeight - (LayoutMetrics.verticalPagePadding * 2) - headerH
         let verseHeight = textHeight / CGFloat(max(1, verseCount))
 
-        // Find the verse index based on tap position
-        let tappedIndex = Int((tapY - LayoutMetrics.verticalPagePadding) / verseHeight)
+        // Map Y to verse index, skipping the header area on page 1
+        let yInText = (tapY - LayoutMetrics.verticalPagePadding) - headerH
+        let tappedIndex = Int(yInText / verseHeight)
 
         // Clamp index to valid range
         let clampedIndex = max(0, min(verseCount - 1, tappedIndex))
@@ -422,6 +456,40 @@ struct BibleReaderView: View {
     /// Updates the current page info display
     private func updateCurrentPageInfo(_ page: DatabasePageContent) {
         currentPageInfo = page.navTitle
+    }
+
+    // MARK: - Header rendering for page 1
+    @ViewBuilder
+    private func headerViewIfNeeded(page: DatabasePageContent, size: CGSize) -> some View {
+        // Only show when this page starts at verse 1
+        if page.startVerse.verse == 1 {
+            // Keep the book title on the very first chapter page,
+            // but do NOT render a "Chapter N" header — verse 1's "1" will be inline.
+            let showBook = page.startVerse.chapter == 1
+        VStack(alignment: .leading, spacing: 2) {
+            if showBook {
+                let bookTitle = JITTextFormatter.formatBookTitle(book: page.startVerse.book)
+                Text(bookTitle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        }
+    }
+
+    // Measure the visual header on page 1 so we can subtract it for hit-testing
+    private func headerHeightFor(page: DatabasePageContent, size: CGSize) -> CGFloat {
+        guard page.startVerse.verse == 1 else { return 0 }
+        let availableWidth = size.width - (LayoutMetrics.horizontalPagePadding * 2)
+
+        var total: CGFloat = 0
+        if page.startVerse.chapter == 1 {
+            let book = JITTextFormatter.formatBookTitle(book: page.startVerse.book)
+            total += JITTextFormatter.measureText(book, maxSize: CGSize(width: availableWidth, height: .greatestFiniteMagnitude)).height
+        }
+        // No chapter header anymore - only book title on first page
+        // Match the smaller spacing used between header and first verse
+        total += 2
+        return total
     }
 
     /// Displays an error message

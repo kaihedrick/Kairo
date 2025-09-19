@@ -96,14 +96,22 @@ final class PageContentGenerator {
             print("🔍 PROCESSING VERSE \(verse.verseNumber): '\(verse.text.prefix(30))...'")
             #endif
 
-            let formatted = JITTextFormatter.formatVerse(
+            var formatted = JITTextFormatter.formatVerse(
                 book: key.book,
                 chapter: key.chapter,
                 verse: verse.verseNumber,
                 text: verse.text,
-                showChapterHeader: verse.verseNumber == 1 && segments.isEmpty,
-                showBookTitle: key.chapter == 1 && verse.verseNumber == 1 && segments.isEmpty
+                showChapterHeader: false,
+                showBookTitle: false
             )
+
+            // If this is the first visible verse and it's verse 1 of the chapter,
+            // just prepend a chapter glyph and keep verse 1 *exactly as formatted*.
+            if verse.verseNumber == 1 {
+                let chapterGlyph = Self.makeInlineChapterGlyph(chapter: key.chapter, baseAttributes: nil)
+                let hair = AttributedString("\u{200A}") // narrow space after the big chapter number
+                formatted = chapterGlyph + hair + formatted
+            }
 
             // Measure this verse's actual height
             let verseHeight = JITTextFormatter.measureText(formatted, maxSize: maxSize).height
@@ -137,8 +145,8 @@ final class PageContentGenerator {
                 chapter: key.chapter,
                 verse: verse.verseNumber,
                 text: verse.text,
-                showChapterHeader: verse.verseNumber == 1,
-                showBookTitle: key.chapter == 1 && verse.verseNumber == 1
+                showChapterHeader: false,
+                showBookTitle: false
             )
             
             segments.append(PageSegment(attributed: formatted, verseKey: verseKey))
@@ -176,4 +184,18 @@ final class PageContentGenerator {
         
         return .success((page: page, remainder: remainder))
     }
+    
+    // MARK: - Helper Functions for Inline Chapter Glyph
+    
+    // Build an inline chapter glyph (big numeral) borrowing base attributes
+    private static func makeInlineChapterGlyph(chapter: Int, baseAttributes: AttributeContainer? = nil) -> AttributedString {
+        var attrs = AttributeContainer()
+        if let base = baseAttributes { attrs.merge(base) }
+        attrs.font = .system(size: 20, weight: .bold, design: .default) // tweak to taste
+        attrs.baselineOffset = 2
+        var s = AttributedString(String(chapter))
+        s.mergeAttributes(attrs)
+        return s
+    }
+
 }
