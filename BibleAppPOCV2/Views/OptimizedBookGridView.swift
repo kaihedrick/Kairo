@@ -242,6 +242,8 @@ struct OptimizedBookGridView: View {
                                 Section(header: sectionHeader(section)) {
                                     ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
                                         Button(action: {
+                                            // Prefetch neighboring books for smoother navigation
+                                            prewarmFor(book: bookMeta.name)
                                             navigationPath.append(.chapters(book: bookMeta.name, chapterCount: bookMeta.chapterCount))
                                         }) {
                                             BookTileView(
@@ -252,7 +254,7 @@ struct OptimizedBookGridView: View {
                                             .glassTile(cornerRadius: 12, id: bookMeta.name, namespace: bookTileNamespace)
                                             .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
                                             .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
-                                            .animation(.easeInOut(duration: 0.25), value: searchText)
+                                            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.88, blendDuration: 0.2), value: searchText)
                                         }
                                         .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
                                         .buttonStyle(.plain) // Ensure proper tap behavior
@@ -267,6 +269,7 @@ struct OptimizedBookGridView: View {
                 }
             }
             .coordinateSpace(name: "scrollView")
+            .background(HighHzHint()) // 120Hz optimization for book selection
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
                 let newOffset = -value
                 
@@ -744,6 +747,22 @@ struct OptimizedBookGridView: View {
     private func scrollToTop() {
         // Post notification to trigger scroll to top
         NotificationCenter.default.post(name: Notification.Name("ScrollToTop"), object: nil)
+    }
+    
+    // MARK: - 120Hz Optimizations
+    
+    /// Prefetch adjacent books' chapter counts for smoother navigation
+    private func prewarmFor(book: String) {
+        Task.detached(priority: .utility) {
+            let canon = Array(bookAbbreviations.keys).sorted()
+            guard let i = canon.firstIndex(of: book) else { return }
+            let neighbors = [canon[safe: i-1], canon[safe: i+1]].compactMap { $0 }
+            for b in neighbors {
+                // Prefetch chapter counts for neighboring books
+                // Note: This is a placeholder - implement actual prefetching logic
+                print("Prefetching data for book: \(b)")
+            }
+        }
     }
     
 }

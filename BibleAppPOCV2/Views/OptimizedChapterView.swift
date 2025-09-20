@@ -59,7 +59,26 @@ struct OptimizedChapterView: View {
                 .padding(LG.padding)
             }
         }
+        .background(HighHzHint()) // 120Hz optimization for chapter selection
         .navigationTitle("\(bookName) - Chapters")
         .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            // Prefetch verse counts for first few chapters
+            prewarmChapterData()
+        }
+    }
+    
+    // MARK: - 120Hz Optimizations
+    
+    /// Prefetch verse counts for first few chapters to improve responsiveness
+    private func prewarmChapterData() {
+        Task.detached(priority: .utility) {
+            // Prefetch verse counts for first 5 chapters
+            let chaptersToPrefetch = Array(1...min(5, chapterCount))
+            for chapter in chaptersToPrefetch {
+                // Note: This is a placeholder - implement actual prefetching logic
+                print("Prefetching data for chapter: \(chapter)")
+            }
+        }
     }
 }

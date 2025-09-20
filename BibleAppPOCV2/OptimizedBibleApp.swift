@@ -27,6 +27,9 @@ struct OptimizedBibleApp: App {
 
     init() {
         print("🚀 BibleAppPOCV2 starting up...")
+        
+        // Enable ProMotion 120Hz if available
+        ProMotion.enable120HzIfAvailable()
 
         // 🔬 Inspect Core ML model shapes for debugging (only in DEBUG mode)
         #if DEBUG

@@ -154,16 +154,21 @@ final class PageContentGenerator {
             print("🚨 Emergency fallback: added verse \(verse.verseNumber) (page must have at least one verse)")
         }
         
-        // Handle remainder - continue from the next verse that didn't fit
-        let remainder: (key: VerseKey, text: AttributedString)? = {
-            let nextVerseIndex = lastCompleteVerseIndex + 1
-            if nextVerseIndex < chapter.verses.count {
-                let nextVerse = chapter.verses[nextVerseIndex]
-                return (key: VerseKey(book: key.book, chapter: key.chapter, verse: nextVerse.verseNumber), text: AttributedString())
+        // Handle remainder — continue within chapter when possible,
+        // otherwise advance to the next chapter/book (no looping)
+        let remainder: (key: VerseKey, text: AttributedString)?
+        let nextVerseIndex = lastCompleteVerseIndex + 1
+        if nextVerseIndex < chapter.verses.count {
+            let nextVerse = chapter.verses[nextVerseIndex]
+            remainder = (key: VerseKey(book: key.book, chapter: key.chapter, verse: nextVerse.verseNumber), text: AttributedString())
+        } else {
+            // We ended at the last verse of this chapter — jump across chapters/books
+            if let jump = await nextChapterStart(after: VerseKey(book: key.book, chapter: key.chapter, verse: chapter.verses.last?.verseNumber ?? 1), using: loader) {
+                remainder = (key: jump, text: AttributedString())
             } else {
-                return nil // No more verses in this chapter
+                remainder = nil // end of canon (Revelation)
             }
-        }()
+        }
         
         let startVerse = chapter.verses[startVerseIndex]
         let endVerse = chapter.verses[lastCompleteVerseIndex]
@@ -178,8 +183,9 @@ final class PageContentGenerator {
         print("📄 Height used: \(String(format: "%.1f", accumulatedHeight)) of \(String(format: "%.1f", availableHeight * 0.90)) limit (90%)")
         print("📄 Actual available space: \(String(format: "%.1f", availableHeight)) (with \(conservativeMargin)pt safety margin)")
         print("📄 Has remainder: \(remainder != nil)")
-        if let remainder = remainder {
-            print("📄 Next page starts at: \(remainder.key.description)")
+        if remainder == nil { print("📘 Reached end of chapter and no next chapter/book — end of canon or data gap") }
+        if let r = remainder {
+            print("📄 Next page starts at: \(r.key.description)")
         }
         
         return .success((page: page, remainder: remainder))
@@ -198,4 +204,98 @@ final class PageContentGenerator {
         return s
     }
 
+}
+
+// MARK: - Canon (Protestant, 66 books)
+private let CANON_BOOKS: [String] = [
+    // OT
+    "Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth",
+    "1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah",
+    "Esther","Job","Psalms","Proverbs","Ecclesiastes","Song of Solomon","Isaiah","Jeremiah",
+    "Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah",
+    "Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi",
+    // NT
+    "Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians",
+    "Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians",
+    "1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter",
+    "1 John","2 John","3 John","Jude","Revelation"
+]
+
+// Optional: simple aliases → canonical name (edit if your DB uses alternates)
+private let BOOK_ALIASES: [String: String] = [
+    "Song of Songs": "Song of Solomon",
+    "Canticles": "Song of Solomon",
+    "Apocalypse": "Revelation",
+    "Revelations": "Revelation"
+]
+
+private func normalizeBook(_ name: String) -> String {
+    if let canon = BOOK_ALIASES[name] { return canon }
+    return name
+}
+
+private func nextCanonBook(after name: String) -> String? {
+    let n = normalizeBook(name)
+    guard let i = CANON_BOOKS.firstIndex(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) else { return nil }
+    let j = i + 1
+    return j < CANON_BOOKS.count ? CANON_BOOKS[j] : nil
+}
+
+private func prevCanonBook(before name: String) -> String? {
+    let n = normalizeBook(name)
+    guard let i = CANON_BOOKS.firstIndex(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) else { return nil }
+    let j = i - 1
+    return j >= 0 ? CANON_BOOKS[j] : nil
+}
+
+// Probe what exists via the loader
+private func chapterExists(book: String, chapter: Int, using loader: DatabaseBibleDataLoader) async -> Bool {
+    guard chapter >= 1 else { return false }
+    switch await loader.loadChapter(book: book, chapter: chapter) {
+    case .success: return true
+    case .failure: return false
+    }
+}
+
+private func lastChapterNumber(in book: String, using loader: DatabaseBibleDataLoader) async -> Int? {
+    var ch = 1, last: Int? = nil
+    while await chapterExists(book: book, chapter: ch, using: loader) { last = ch; ch += 1 }
+    return last
+}
+
+private func lastVerseNumber(book: String, chapter: Int, using loader: DatabaseBibleDataLoader) async -> Int? {
+    switch await loader.loadChapter(book: book, chapter: chapter) {
+    case .success(let ch):
+        return ch.verses.last?.verseNumber
+    case .failure:
+        return nil
+    }
+}
+
+/// Next chapter start (1st verse) across books when needed
+private func nextChapterStart(after key: VerseKey, using loader: DatabaseBibleDataLoader) async -> VerseKey? {
+    let book = normalizeBook(key.book)
+    // Same book, next chapter?
+    if await chapterExists(book: book, chapter: key.chapter + 1, using: loader) {
+        return VerseKey(book: book, chapter: key.chapter + 1, verse: 1)
+    }
+    // Next book, chapter 1?
+    if let nb = nextCanonBook(after: book), await chapterExists(book: nb, chapter: 1, using: loader) {
+        return VerseKey(book: nb, chapter: 1, verse: 1)
+    }
+    return nil // end of canon (Revelation)
+}
+
+/// Previous chapter end (last verse) across books when needed
+private func previousChapterLastVerse(before key: VerseKey, using loader: DatabaseBibleDataLoader) async -> VerseKey? {
+    let book = normalizeBook(key.book)
+    if key.chapter > 1 {
+        let prevCh = key.chapter - 1
+        if let lv = await lastVerseNumber(book: book, chapter: prevCh, using: loader) {
+            return VerseKey(book: book, chapter: prevCh, verse: lv)
+        }
+    } else if let pb = prevCanonBook(before: book), let lastCh = await lastChapterNumber(in: pb, using: loader), let lv = await lastVerseNumber(book: pb, chapter: lastCh, using: loader) {
+        return VerseKey(book: pb, chapter: lastCh, verse: lv)
+    }
+    return nil // beginning of canon (Genesis 1:1)
 }

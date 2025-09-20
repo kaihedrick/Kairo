@@ -142,6 +142,9 @@ struct BibleReaderView: View {
             view.backgroundColor = .clear
             view.textContainerInset = contentInsets
             view.update(text: nsText, map: verseMap)
+            
+            // Configure for ProMotion 120Hz
+            ProMotion.configureView(view)
 
             // Tap recognizer that yields to scrolling/swiping
             let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))

@@ -70,6 +70,7 @@ struct OptimizedVerseView: View {
                 }
             }
         }
+        .background(HighHzHint()) // 120Hz optimization for verse selection
         .navigationTitle("\(bookName) \(chapterNumber) - Verses")
         .navigationBarTitleDisplayMode(.large)
         .task { await loadChapterContent() }
@@ -95,18 +96,27 @@ struct OptimizedVerseView: View {
         loadError = nil
 
         do {
+            // Small debounce to prevent rapid loading during navigation
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            
             let result = try await loader.loadChapter(book: bookName, chapter: chapterNumber)
             switch result {
             case .success(let chapter):
-                chapterContent = chapter
+                await MainActor.run {
+                    chapterContent = chapter
+                    isLoading = false
+                }
             case .failure(let error):
-                throw error
+                await MainActor.run {
+                    loadError = error
+                    isLoading = false
+                }
             }
-
-            isLoading = false
         } catch {
-            loadError = error
-            isLoading = false
+            await MainActor.run {
+                loadError = error
+                isLoading = false
+            }
         }
     }
 }
