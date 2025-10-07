@@ -6,6 +6,7 @@ struct OptimizedChapterView: View {
     let chapterCount: Int
     @Binding var navigationPath: [BibleNavigationRoute]
 
+    @State private var isNavigating = false
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
     private let tileSize: CGFloat = 50
 
@@ -47,7 +48,15 @@ struct OptimizedChapterView: View {
                         ForEach(1...chapterCount, id: \.self) { chapterNumber in
                             Button(action: {
                                 let verseCount = getVerseCount(forChapter: chapterNumber)
+                                
+                                // Set navigation state to prevent competing animations during push
+                                isNavigating = true
                                 navigationPath.append(.verses(book: bookName, chapter: chapterNumber, verseCount: verseCount))
+                                
+                                // Reset navigation state after push animation completes
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                    isNavigating = false
+                                }
                             }) {
                                 ChapterTileView(chapterNumber: chapterNumber)
                             }

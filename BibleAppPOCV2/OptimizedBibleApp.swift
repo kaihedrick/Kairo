@@ -31,10 +31,13 @@ struct OptimizedBibleApp: App {
         // Enable ProMotion 120Hz if available
         ProMotion.enable120HzIfAvailable()
 
-        // 🔬 Inspect Core ML model shapes for debugging (only in DEBUG mode)
+        // 🔬 ML inspection only when AI features are enabled and in DEBUG mode
+        // Runs in background to avoid blocking main thread during startup
         #if DEBUG
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            IntegrationTest.inspectModelShapes()
+        if FeatureGate.aiAvailable {
+            DispatchQueue.global(qos: .utility).async {
+                IntegrationTest.inspectModelShapes()
+            }
         }
         #endif
     }

@@ -11,6 +11,7 @@ struct OptimizedVerseView: View {
     @State private var isLoading = true
     @State private var loadError: Error?
     @State private var pageIndex: Int = 0
+    @State private var isNavigating = false
 
     private let loader = DatabaseBibleDataLoader.shared
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
@@ -53,7 +54,14 @@ struct OptimizedVerseView: View {
                                 LazyVGrid(columns: columns, spacing: LG.smallPadding) {
                                     ForEach(content.verses, id: \.verseNumber) { verse in
                                         Button(action: {
+                                            // Set navigation state to prevent competing animations during push
+                                            isNavigating = true
                                             navigationPath.append(.reader(book: bookName, chapter: chapterNumber, verse: verse.verseNumber))
+                                            
+                                            // Reset navigation state after push animation completes
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                                isNavigating = false
+                                            }
                                         }) {
                                             VerseTileView(verseNumber: verse.verseNumber)
                                         }
@@ -73,7 +81,17 @@ struct OptimizedVerseView: View {
         .background(HighHzHint()) // 120Hz optimization for verse selection
         .navigationTitle("\(bookName) \(chapterNumber) - Verses")
         .navigationBarTitleDisplayMode(.large)
-        .task { await loadChapterContent() }
+        .task {
+            // 1) Let the push finish one runloop turn
+            await Task.yield()
+            
+            // 2) Do heavy work off the main actor
+            await Task.detached(priority: .userInitiated) {
+                await loadChapterContent()
+            }.value
+            
+            // 3) Commit UI state on main actor (handled inside loadChapterContent)
+        }
     }
 
     @ViewBuilder

@@ -322,19 +322,29 @@ final class OnDemandPageGenerator: ObservableObject {
         lastError = nil
 
         #if DEBUG
-        print("🚀 PAGE GENERATION REQUEST: \(key.description)")
-        print("📍 REQUEST DETAILS: book='\(verse.book)', chapter=\(verse.chapter), verse=\(verse.verse)")
+        if VerboseLogs.paging {
+            print("🚀 PAGE GENERATION REQUEST: \(key.description)")
+            print("📍 REQUEST DETAILS: book='\(verse.book)', chapter=\(verse.chapter), verse=\(verse.verse)")
+        }
         #endif
 
         // Prevent duplicate generation if we're already generating this key
         if isGenerating {
-            print("⚠️ Already generating page, skipping duplicate request for \(key.description)")
+            #if DEBUG
+            if VerboseLogs.paging {
+                print("⚠️ Already generating page, skipping duplicate request for \(key.description)")
+            }
+            #endif
             return
         }
         
         // Check if we already have this page loaded
         if let current = currentPage, current.startVerse == key {
-            print("✅ Page \(key.description) already loaded, skipping generation")
+            #if DEBUG
+            if VerboseLogs.paging {
+                print("✅ Page \(key.description) already loaded, skipping generation")
+            }
+            #endif
             return
         }
         
@@ -346,43 +356,57 @@ final class OnDemandPageGenerator: ObservableObject {
 
         if let node = currentNode, node.key == key {
             #if DEBUG
-            print("✅ LINKED LIST: Page already current: \(node.key.description)")
+            if VerboseLogs.paging {
+                print("✅ LINKED LIST: Page already current: \(node.key.description)")
+            }
             #endif
             currentNode = node
             currentPage = node.slice
             pending = nil
             #if DEBUG
-            print("📖 LINKED LIST: Reused current node for \(key.description)")
+            if VerboseLogs.paging {
+                print("📖 LINKED LIST: Reused current node for \(key.description)")
+            }
             #endif
             return
         } else if let node = currentNode?.next, node.key == key {
             #if DEBUG
-            print("✅ LINKED LIST: Found next page in linked list: \(node.key.description)")
+            if VerboseLogs.paging {
+                print("✅ LINKED LIST: Found next page in linked list: \(node.key.description)")
+            }
             #endif
             currentNode = node
             currentPage = node.slice
             pending = nil
             #if DEBUG
-            print("📖 LINKED LIST: Moved to next node for \(key.description)")
+            if VerboseLogs.paging {
+                print("📖 LINKED LIST: Moved to next node for \(key.description)")
+            }
             #endif
             return
         } else if let node = currentNode?.prev, node.key == key {
             #if DEBUG
-            print("✅ LINKED LIST: Found previous page in linked list: \(node.key.description)")
+            if VerboseLogs.paging {
+                print("✅ LINKED LIST: Found previous page in linked list: \(node.key.description)")
+            }
             #endif
             currentNode = node
             currentPage = node.slice
             pending = nil
             #if DEBUG
-            print("📖 LINKED LIST: Moved to prev node for \(key.description)")
-            print("🔙 After moving to prev - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            if VerboseLogs.paging {
+                print("📖 LINKED LIST: Moved to prev node for \(key.description)")
+                print("🔙 After moving to prev - Current: \(currentNode?.key.description ?? "nil"), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+            }
             #endif
             return
         }
 
         if pending == nil, let cached = await cache.get(key) {
             #if DEBUG
-            print("📚 CACHE: Found cached page for \(key.description)")
+            if VerboseLogs.paging {
+                print("📚 CACHE: Found cached page for \(key.description)")
+            }
             #endif
             let newNode = SliceNode(key: key, slice: cached)
 
@@ -429,8 +453,10 @@ final class OnDemandPageGenerator: ObservableObject {
             
             #if DEBUG
             // Debug log the linked list state
-            print("📖 LINKED LIST: Loaded \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
-            print("🔗 LINKED LIST STATE: \(debugLinkedList())")
+            if VerboseLogs.paging {
+                print("📖 LINKED LIST: Loaded \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+                print("🔗 LINKED LIST STATE: \(debugLinkedList())")
+            }
             #endif
             return
         }
@@ -441,10 +467,12 @@ final class OnDemandPageGenerator: ObservableObject {
         pending = nil
 
         #if DEBUG
-        if let tail = tail {
-            print("📝 USING TAIL: \(tail.characters.count) characters from \(pending?.key.description ?? "unknown")")
-        } else {
-            print("📝 NO TAIL: Generating fresh page for \(key.description)")
+        if VerboseLogs.paging {
+            if let tail = tail {
+                print("📝 USING TAIL: \(tail.characters.count) characters from \(pending?.key.description ?? "unknown")")
+            } else {
+                print("📝 NO TAIL: Generating fresh page for \(key.description)")
+            }
         }
         #endif
 
@@ -470,14 +498,16 @@ final class OnDemandPageGenerator: ObservableObject {
                                           verticalPadding: verticalPadding)
 
             #if DEBUG
-            print("✅ PAGE GENERATED SUCCESSFULLY: \(slice.startVerse.description) to \(slice.endVerse.description)")
-            print("📊 FINAL PAGE: \(slice.verseKeys.count) verses")
-            let verseNumbers = slice.verseKeys.map { $0.verse }
-            print("📋 FINAL VERSES: \(verseNumbers)")
-            if let remainder = generatedResult.remainder {
-                print("📄 REMAINDER: Next page starts at \(remainder.key.description)")
-            } else {
-                print("📄 REMAINDER: No remainder (end of chapter)")
+            if VerboseLogs.paging {
+                print("✅ PAGE GENERATED SUCCESSFULLY: \(slice.startVerse.description) to \(slice.endVerse.description)")
+                print("📊 FINAL PAGE: \(slice.verseKeys.count) verses")
+                let verseNumbers = slice.verseKeys.map { $0.verse }
+                print("📋 FINAL VERSES: \(verseNumbers)")
+                if let remainder = generatedResult.remainder {
+                    print("📄 REMAINDER: Next page starts at \(remainder.key.description)")
+                } else {
+                    print("📄 REMAINDER: No remainder (end of chapter)")
+                }
             }
             #endif
 
@@ -490,14 +520,22 @@ final class OnDemandPageGenerator: ObservableObject {
                     newNode.prev = oldNode
                     oldNode.next = newNode
                 }
-                print("📖 LINKED LIST: Created new node from generation during history navigation")
+                #if DEBUG
+                if VerboseLogs.paging {
+                    print("📖 LINKED LIST: Created new node from generation during history navigation")
+                }
+                #endif
             } else {
                 // Normal forward navigation
                 if let oldNode = currentNode {
                     newNode.prev = oldNode
                     oldNode.next = newNode
                 }
-                print("📖 LINKED LIST: Created new node from generation during normal navigation")
+                #if DEBUG
+                if VerboseLogs.paging {
+                    print("📖 LINKED LIST: Created new node from generation during normal navigation")
+                }
+                #endif
             }
             
             currentNode = newNode
@@ -515,8 +553,10 @@ final class OnDemandPageGenerator: ObservableObject {
             
             #if DEBUG
             // Debug log the linked list state
-            print("📖 LINKED LIST: Generated \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
-            print("🔗 LINKED LIST STATE: \(debugLinkedList())")
+            if VerboseLogs.paging {
+                print("📖 LINKED LIST: Generated \(key.description), Prev: \(currentNode?.prev?.key.description ?? "nil"), Next: \(currentNode?.next?.key.description ?? "nil")")
+                print("🔗 LINKED LIST STATE: \(debugLinkedList())")
+            }
             #endif
         case .failure(let error):
             currentPage = nil
@@ -528,15 +568,19 @@ final class OnDemandPageGenerator: ObservableObject {
         defer { Task { await trimCacheToThreePages() } }
 
         #if DEBUG
-        print("➡️ FORWARD NAVIGATION: Starting history-driven forward navigation")
-        print("➡️ Current node: \(currentNode?.key.description ?? "nil")")
-        print("➡️ Current node next: \(currentNode?.next?.key.description ?? "nil")")
+        if VerboseLogs.nav {
+            print("➡️ FORWARD NAVIGATION: Starting history-driven forward navigation")
+            print("➡️ Current node: \(currentNode?.key.description ?? "nil")")
+            print("➡️ Current node next: \(currentNode?.next?.key.description ?? "nil")")
+        }
         #endif
 
         // 1. Try cached next node in linked list
         if let nextNode = currentNode?.next {
             #if DEBUG
-            print("✅ LINKED LIST: Found cached next page: \(nextNode.key.description)")
+            if VerboseLogs.nav {
+                print("✅ LINKED LIST: Found cached next page: \(nextNode.key.description)")
+            }
             #endif
 
             // Ensure the next node's prev pointer is correctly set

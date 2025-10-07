@@ -41,21 +41,13 @@ class IntegrationTest {
     }
 
     static func inspectModelShapes() {
-        print("🔬 Starting Core ML Model Shape Inspection...")
-
-        Task {
+        // Run inspection in background without blocking main thread
+        Task.detached(priority: .utility) {
             let generator = await BibleCommentaryGenerator.shared
 
-            // Wait for the generator to be ready (with timeout)
-            var waitCount = 0
-            while !(await MainActor.run { generator.isReady }) && waitCount < 50 {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                waitCount += 1
-                print("⏳ IntegrationTest: Waiting for generator... attempt \(waitCount)/50")
-            }
-
+            // Simple check without busy-wait loop
             if !(await MainActor.run { generator.isReady }) {
-                print("❌ IntegrationTest: Generator never became ready after 5 seconds")
+                print("⚠️ IntegrationTest: Generator not ready, skipping inspection")
                 return
             }
 
@@ -64,8 +56,5 @@ class IntegrationTest {
                 generator.inspectModelShapes()
             }
         }
-
-        // Keep the run loop alive for a bit
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 3.0))
     }
 } 

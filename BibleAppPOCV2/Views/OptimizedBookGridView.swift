@@ -43,9 +43,13 @@ struct OptimizedBookGridView: View {
     @State private var lastScrollOffset: CGFloat = 0
     @State private var isScrollingUp: Bool = false
     
-    private var shouldShowGlassHeader: Bool {
-        scrollOffset > 50 // Threshold for glass header activation
-    }
+    // NAVIGATION STATE: For 120Hz push transition optimization
+    @State private var isNavigating = false
+    @State private var shouldShowGlassHeader = false
+    
+    // HAPTIC FEEDBACK: Pre-warmed generators for better performance
+    private let softFeedback = UIImpactFeedbackGenerator(style: .soft)
+    private let lightFeedback = UIImpactFeedbackGenerator(style: .light)
     
     private var headerOpacity: Double {
         if shouldShowGlassHeader {
@@ -233,68 +237,15 @@ struct OptimizedBookGridView: View {
                     searchEmptyState
                         .padding(.top, 20)
                 } else {
-                    VStack(spacing: 16) {
-                        // Default header inside ScrollView (visible before scroll threshold)
-                        defaultHeader
-                        
-                        LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
-                            ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
-                                Section(header: sectionHeader(section)) {
-                                    ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
-                                        Button(action: {
-                                            // Prefetch neighboring books for smoother navigation
-                                            prewarmFor(book: bookMeta.name)
-                                            navigationPath.append(.chapters(book: bookMeta.name, chapterCount: bookMeta.chapterCount))
-                                        }) {
-                                            BookTileView(
-                                                abbreviation: getBookAbbreviation(for: bookMeta.name),
-                                                fullName: bookMeta.name
-                                            )
-                                            .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
-                                            .glassTile(cornerRadius: 12, id: bookMeta.name, namespace: bookTileNamespace)
-                                            .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
-                                            .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
-                                            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.88, blendDuration: 0.2), value: searchText)
-                                        }
-                                        .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
-                                        .buttonStyle(.plain) // Ensure proper tap behavior
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, stableGridLayout.horizontalPadding)
-                        .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
-                    }
-                    .padding(.top, stableGridLayout.verticalPadding)
+                    bookGridContent
                 }
             }
             .coordinateSpace(name: "scrollView")
             .background(HighHzHint()) // 120Hz optimization for book selection
+            .scrollDisabled(isNavigating)
+            .allowsHitTesting(!isNavigating)
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                let newOffset = -value
-                
-                // Enhanced scroll tracking with direction and smoothing
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7, blendDuration: 0.1)) {
-                    lastScrollOffset = scrollOffset
-                    scrollOffset = newOffset
-                    
-                    // Track scroll direction for enhanced glass effect behavior
-                    isScrollingUp = newOffset < lastScrollOffset
-                }
-                
-                // Haptic feedback when glass header transitions
-                let previouslyShowing = lastScrollOffset > 50
-                let nowShowing = scrollOffset > 50
-                
-                if !previouslyShowing && nowShowing {
-                    // Glass header just appeared
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .soft)
-                    impactFeedback.impactOccurred(intensity: 0.4)
-                } else if previouslyShowing && !nowShowing {
-                    // Glass header just disappeared
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred(intensity: 0.6)
-                }
+                handleScrollPreferenceChange(value)
             }
             .onAppear {
                 // Layout calculation will be handled by parent view if needed
@@ -314,6 +265,80 @@ struct OptimizedBookGridView: View {
                 }
             }
         }
+    }
+    
+    private var bookGridContent: some View {
+        VStack(spacing: 16) {
+            // Default header inside ScrollView (visible before scroll threshold)
+            defaultHeader
+            
+            LazyVGrid(columns: stableGridLayout.gridItems, spacing: 12) {
+                ForEach(filteredBookGroups.keys.sorted(), id: \.self) { section in
+                    Section(header: sectionHeader(section)) {
+                        ForEach(filteredBookGroups[section] ?? [], id: \.name) { bookMeta in
+                            bookTileButton(for: bookMeta)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, stableGridLayout.horizontalPadding)
+            .padding(.bottom, stableGridLayout.verticalPadding + 140)  // Extra padding for bottom search overlay
+        }
+        .padding(.top, stableGridLayout.verticalPadding)
+    }
+    
+    private func bookTileButton(for bookMeta: DatabaseBookMetadata) -> some View {
+        Button(action: {
+            // Prefetch neighboring books for smoother navigation
+            prewarmFor(book: bookMeta.name)
+            
+            // Set navigation state to prevent competing animations during push
+            isNavigating = true
+            navigationPath.append(.chapters(book: bookMeta.name, chapterCount: bookMeta.chapterCount))
+            
+            // Reset navigation state after push animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                isNavigating = false
+            }
+        }) {
+            BookTileView(
+                abbreviation: getBookAbbreviation(for: bookMeta.name),
+                fullName: bookMeta.name
+            )
+            .frame(width: stableGridLayout.columnWidth, height: stableGridLayout.tileHeight)
+            .glassTile(cornerRadius: 12, id: bookMeta.name, namespace: bookTileNamespace)
+            .opacity(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.3))
+            .scaleEffect(searchText.isEmpty ? 1.0 : (bookMeta.name.localizedCaseInsensitiveContains(searchText) ? 1.0 : 0.95))
+            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.88, blendDuration: 0.2), value: searchText)
+        }
+        .disabled(!searchText.isEmpty && !bookMeta.name.localizedCaseInsensitiveContains(searchText))
+        .buttonStyle(.plain) // Ensure proper tap behavior
+    }
+    
+    private func handleScrollPreferenceChange(_ value: CGFloat) {
+        guard !isNavigating else { return }
+        let newOffset = -value
+        let willShowHeader = newOffset > 50
+        let previouslyShowing = shouldShowGlassHeader
+        
+        if willShowHeader != previouslyShowing {
+            shouldShowGlassHeader = willShowHeader
+            
+            // Fire haptics only on state change, not every tick — and not during push
+            if !isNavigating && (previouslyShowing != willShowHeader) {
+                if willShowHeader {
+                    softFeedback.prepare()
+                    softFeedback.impactOccurred(intensity: 0.4)
+                } else {
+                    lightFeedback.prepare()
+                    lightFeedback.impactOccurred(intensity: 0.6)
+                }
+            }
+        }
+        
+        lastScrollOffset = scrollOffset
+        scrollOffset = newOffset
+        isScrollingUp = newOffset < lastScrollOffset
     }
     
     // STABLE LAYOUT: Mobile-first grid structure with smaller tiles
@@ -442,8 +467,8 @@ struct OptimizedBookGridView: View {
                 .padding(.horizontal, 20)
                 .id("scrollTop") // Add ID for scroll-to-top
         }
-        .opacity(shouldShowGlassHeader ? 0.0 : 1.0)
-        .animation(.easeInOut(duration: 0.3), value: shouldShowGlassHeader)
+        .opacity(shouldShowGlassHeader ? 1 : 0)
+        .animation(isNavigating ? nil : .easeInOut(duration: 0.18), value: shouldShowGlassHeader)
     }
     
     // MARK: - Glassy Header (pinned at top, appears on scroll)

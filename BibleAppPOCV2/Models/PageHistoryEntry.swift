@@ -163,12 +163,21 @@ struct PageHistoryEntry: Equatable {
         )
     }
     
-    /// Debug description for troubleshooting
+    /// Brief description without rendered content (performance-friendly)
+    var briefDescription: String {
+        let offsetInfo = characterOffset != nil ? " offset:\(characterOffset!)" : ""
+        let fragmentInfo = fragmentOffset != nil ? " fragment:\(fragmentOffset!)" : ""
+        let splitInfo = hasSplitVerses ? " [SPLIT]" : ""
+        return "PageHistoryEntry(\(book) \(chapter):\(verse)\(offsetInfo)\(fragmentInfo) → \(endBook) \(endChapter):\(endVerse)\(splitInfo), size:\(Int(pageSize.width))×\(Int(pageSize.height)))"
+    }
+    
+    /// Debug description for troubleshooting (includes full details, use sparingly)
     var debugDescription: String {
         let offsetInfo = characterOffset != nil ? " offset:\(characterOffset!)" : ""
         let fragmentInfo = fragmentOffset != nil ? " fragment:\(fragmentOffset!)" : ""
         let splitInfo = hasSplitVerses ? " [SPLIT]" : ""
-        return "PageHistoryEntry(\(book) \(chapter):\(verse)\(offsetInfo)\(fragmentInfo) → \(endBook) \(endChapter):\(endVerse)\(splitInfo), size:\(pageSize))"
+        let contentPreview = renderedContent.prefix(50).replacingOccurrences(of: "\n", with: " ")
+        return "PageHistoryEntry(\(book) \(chapter):\(verse)\(offsetInfo)\(fragmentInfo) → \(endBook) \(endChapter):\(endVerse)\(splitInfo), size:\(pageSize), content: \"\(contentPreview)...\")"
     }
     
     /// Custom initializer for PageHistoryEntry
@@ -309,8 +318,11 @@ class EnhancedPageHistoryManager: ObservableObject {
             currentIndex = history.count - 1
         }
         
-        print("📚 ENHANCED HISTORY: Added page \(currentIndex + 1), total: \(history.count)")
-        print("📚 ENTRY: \(entry.debugDescription)")
+        #if DEBUG
+        if VerboseLogs.nav {
+            print("📚 HISTORY: idx=\(currentIndex + 1)/\(history.count) \(entry.briefDescription)")
+        }
+        #endif
     }
     
     /// Push a page back to history (used when restoration fails)
@@ -323,7 +335,11 @@ class EnhancedPageHistoryManager: ObservableObject {
             currentIndex = history.count - 1
         }
         
-        print("📚 ENHANCED HISTORY: Pushed page back to history at position \(currentIndex + 1)")
+        #if DEBUG
+        if VerboseLogs.nav {
+            print("📚 HISTORY: pushed back at idx=\(currentIndex + 1)")
+        }
+        #endif
     }
     
     /// Navigate backward in history
@@ -333,8 +349,11 @@ class EnhancedPageHistoryManager: ObservableObject {
         currentIndex -= 1
         let entry = history[currentIndex]
         
-        print("📚 ENHANCED HISTORY: Moved back to page \(currentIndex + 1)/\(history.count)")
-        print("📚 ENTRY: \(entry.debugDescription)")
+        #if DEBUG
+        if VerboseLogs.nav {
+            print("📚 HISTORY: ← back to idx=\(currentIndex + 1)/\(history.count) \(entry.briefDescription)")
+        }
+        #endif
         
         return entry
     }
@@ -346,8 +365,11 @@ class EnhancedPageHistoryManager: ObservableObject {
         currentIndex += 1
         let entry = history[currentIndex]
         
-        print("📚 ENHANCED HISTORY: Moved forward to page \(currentIndex + 1)/\(history.count)")
-        print("📚 ENTRY: \(entry.debugDescription)")
+        #if DEBUG
+        if VerboseLogs.nav {
+            print("📚 HISTORY: → forward to idx=\(currentIndex + 1)/\(history.count) \(entry.briefDescription)")
+        }
+        #endif
         
         return entry
     }
@@ -356,7 +378,12 @@ class EnhancedPageHistoryManager: ObservableObject {
     func clearHistory() {
         history.removeAll()
         currentIndex = -1
-        print("📚 ENHANCED HISTORY: Cleared all pages")
+        
+        #if DEBUG
+        if VerboseLogs.nav {
+            print("📚 HISTORY: cleared all pages")
+        }
+        #endif
     }
     
     /// Clean up incompatible entries when layout changes
@@ -366,7 +393,11 @@ class EnhancedPageHistoryManager: ObservableObject {
         }
         
         if compatibleEntries.count != history.count {
-            print("📚 ENHANCED HISTORY: Cleaned up \(history.count - compatibleEntries.count) incompatible entries")
+            #if DEBUG
+            if VerboseLogs.nav {
+                print("📚 HISTORY: cleaned up \(history.count - compatibleEntries.count) incompatible entries")
+            }
+            #endif
             history = compatibleEntries
             currentIndex = min(currentIndex, history.count - 1)
         }

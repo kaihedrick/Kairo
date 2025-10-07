@@ -64,3 +64,21 @@ struct Log {
         print("✅ \(message)")
     }
 }
+
+// MARK: - Verbose Debug Logging Controls
+
+#if DEBUG
+struct VerboseLogs {
+    /// Navigation and page history logging (disable for performance)
+    static var nav = false
+    
+    /// Page generation and layout logging
+    static var paging = false
+    
+    /// Database query logging
+    static var db = false
+    
+    /// ViewModel state changes
+    static var viewModel = false
+}
+#endif
